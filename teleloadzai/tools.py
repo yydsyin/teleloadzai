@@ -24,6 +24,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -85,13 +86,18 @@ SPECS: tuple[ToolSpec, ...] = (
              exe_name="N_m3u8DL-RE.exe", asset_keywords=("win-x64",),
              extract_only=("N_m3u8DL-RE.exe",)),
 
+    # No command line at all: `--help` opens a language menu (checked 2026-09-21).
+    # version_args empty = never start it just to read a version.
     ToolSpec("tiktokdownloader", "TikTokDownloader", "JoeanAmier/TikTokDownloader", "zip",
              what_for="TikTok and Douyin, without the watermark.",
-             asset_keywords=("Windows",)),
+             exe_name="DouK-Downloader.exe", asset_keywords=("Windows",),
+             version_args=()),
 
+    # Ships two programs; the plain one is the command-line one. Without
+    # exe_name we picked XHS-Downloader-GUI.exe, the graphical one.
     ToolSpec("xhs-downloader", "XHS-Downloader", "JoeanAmier/XHS-Downloader", "zip",
              what_for="Xiaohongshu, video and photos.",
-             asset_keywords=("Windows",)),
+             exe_name="XHS-Downloader.exe", asset_keywords=("Windows",)),
 
     ToolSpec("streamlink", "Streamlink", "streamlink/windows-builds", "zip",
              what_for="Records a live stream while it happens.",
@@ -203,11 +209,18 @@ def installed_path(tool_id: str) -> Path | None:
             for found in inside.rglob(tool.exe_name):
                 return found
 
-    # A whole-folder tool: take the first program we find in it.
+    # A whole-folder tool and no name given: guess, but never blindly.
+    # "Biggest .exe" alone chose XHS-Downloader-GUI.exe over the command-line
+    # one (2026-09-21), so the graphical and helper programs are pushed last.
     inside = BIN_DIR / tool.id
     if inside.is_dir():
-        exes = sorted(inside.rglob("*.exe"), key=lambda p: p.stat().st_size, reverse=True)
+        exes = [p for p in inside.rglob("*.exe")
+                if not any(word in p.stem.lower()
+                           for word in ("gui", "setup", "install", "uninstall", "update"))]
         if exes:
+            wanted = tool.id.replace("-", "").lower()
+            exes.sort(key=lambda p: (p.stem.replace("-", "").lower() != wanted,
+                                     -p.stat().st_size))
             return exes[0]
 
     system = shutil.which(tool.exe_name or tool.id)
@@ -249,16 +262,31 @@ def installed_version(tool_id: str) -> str:
 
 
 def _ask_program(tool: ToolSpec, path: Path) -> str:
+    """Ask a program its version, without ever letting it take over.
+
+    Some tools have no command line: TikTokDownloader answers `--version` by
+    opening its language menu, and we stored its banner ">>>>>>>>>>" as a
+    version (2026-09-21). Two guards: `version_args=()` means never run it,
+    and stdin is closed so a program waiting for a human cannot hold us.
+    """
+    if not tool.version_args:
+        return ""
     try:
         finished = subprocess.run(
             [str(path), *tool.version_args],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=20, creationflags=_NO_WINDOW,
+            stdin=subprocess.DEVNULL,
+            timeout=15, creationflags=_NO_WINDOW,
         )
     except Exception:
         return ""
+
     text = (finished.stdout or finished.stderr or "").strip()
-    return text.splitlines()[0][:60] if text else ""
+    if not text:
+        return ""
+    first = text.splitlines()[0].strip()[:60]
+    # A version has a digit in it. A menu, a banner or a box drawing does not.
+    return first if any(c.isdigit() for c in first) else ""
 
 
 def _pip_version(tool: ToolSpec) -> str:
@@ -358,22 +386,54 @@ class InstallError(RuntimeError):
     pass
 
 
+DOWNLOAD_TRIES = 3
+
+
 def _download(url: str, target: Path, on_progress: ProgressFn | None, label: str) -> None:
-    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(request, timeout=60) as response:
-        total = int(response.headers.get("Content-Length") or 0)
-        done = 0
-        with target.open("wb") as out:
-            while True:
-                chunk = response.read(262144)
-                if not chunk:
-                    break
-                out.write(chunk)
-                done += len(chunk)
-                if on_progress and total:
-                    on_progress(label, int(done * 100 / total))
-    if on_progress:
-        on_progress(label, 100)
+    """Fetch a file, retrying a broken connection.
+
+    Streamlink died at 99% on a connection reset (2026-09-21) and the plain
+    retry worked at once: the failure was a passing hiccup, but the user was
+    told "install failed" with nowhere to go.
+
+    A short read is also a failure. Without the size check a truncated file
+    would land as a valid install and only break much later.
+    """
+    last_error: Exception | None = None
+
+    for attempt in range(1, DOWNLOAD_TRIES + 1):
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+            with urllib.request.urlopen(request, timeout=60) as response:
+                total = int(response.headers.get("Content-Length") or 0)
+                done = 0
+                with target.open("wb") as out:
+                    while True:
+                        chunk = response.read(262144)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+                        done += len(chunk)
+                        if on_progress and total:
+                            on_progress(label, int(done * 100 / total))
+
+            if total and done < total:
+                raise InstallError(f"received {done} bytes out of {total}")
+
+            if on_progress:
+                on_progress(label, 100)
+            return
+
+        except Exception as exc:
+            last_error = exc
+            target.unlink(missing_ok=True)      # never keep half a file
+            if attempt < DOWNLOAD_TRIES:
+                if on_progress:
+                    on_progress(f"{label} — connection lost, trying again "
+                                f"({attempt + 1} of {DOWNLOAD_TRIES})", 0)
+                time.sleep(2 * attempt)
+
+    raise InstallError(f"download failed after {DOWNLOAD_TRIES} tries: {last_error}")
 
 
 def install(tool_id: str, on_progress: ProgressFn | None = None) -> str:
