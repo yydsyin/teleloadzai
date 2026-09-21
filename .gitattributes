@@ -1,0 +1,13 @@
+# Store everything with LF inside the repository, whatever the machine does
+# locally. Without this, a Windows checkout turns every file into a fake
+# change on the next diff.
+* text=auto eol=lf
+
+# Windows needs CRLF in a .bat file, or the console can mis-read it.
+*.bat text eol=crlf
+
+# Never touch these.
+*.exe binary
+*.zip binary
+*.png binary
+*.jpg binary

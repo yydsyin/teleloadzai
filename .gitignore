@@ -1,0 +1,11 @@
+# tools Teleloadz downloads for itself
+bin/
+# settings, caches, update notes
+data/
+# anything the user downloads
+downloads/
+*.log
+__pycache__/
+*.pyc
+# the user's old script, kept locally only
+_old/

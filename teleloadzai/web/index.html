@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__APP_NAME__</title>
+<style>
+  :root {
+    --bg: #f4f5f7;  --card: #ffffff;  --ink: #1b1d21;  --soft: #6b7079;
+    --line: #e2e5ea; --accent: #2f6df6; --ok: #1f9d55; --bad: #d1483c;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c; --card: #1f2227; --ink: #e9eaec; --soft: #9aa0a8;
+      --line: #2e3339; --accent: #5b8cff; --ok: #35c07a; --bad: #ef6d60;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 16px 60px;
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 2px; letter-spacing: -.01em; }
+  .sub { color: var(--soft); font-size: 13px; }
+  .topbar {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 12px; margin-bottom: 22px;
+  }
+  .section-title { font-weight: 600; }
+  .field { margin-top: 16px; }
+  .field:first-of-type { margin-top: 0; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; }
+  input[type=text], select {
+    padding: 11px 12px; font-size: 15px; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--line);
+    border-radius: 8px; outline: none; min-width: 0;
+  }
+  input[type=text] { flex: 1; }
+  input[type=text]:focus, select:focus { border-color: var(--accent); }
+  button {
+    padding: 11px 16px; font-size: 15px; font-weight: 600; cursor: pointer;
+    color: #fff; background: var(--accent); border: 0; border-radius: 8px;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  button.ghost {
+    background: transparent; color: var(--soft);
+    border: 1px solid var(--line); font-weight: 500;
+  }
+  button.tiny { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
+
+  .hint { color: var(--soft); font-size: 13px; }
+  .hidden { display: none !important; }
+
+  .preview { display: flex; gap: 14px; align-items: flex-start; }
+  .thumb {
+    width: 132px; height: 76px; flex: none; object-fit: cover;
+    border-radius: 6px; background: var(--bg); border: 1px solid var(--line);
+  }
+  .title { font-weight: 600; margin-bottom: 2px; word-break: break-word; }
+  .meta { color: var(--soft); font-size: 13px; }
+
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 99px;
+    background: var(--bg); border: 1px solid var(--line);
+    font-size: 12px; color: var(--soft);
+  }
+  .controls { display: flex; gap: 6px; margin: 14px 0 12px; flex-wrap: wrap; align-items: center; }
+  .choice {
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 14px;
+    border: 1px solid var(--line); background: transparent; color: var(--ink); font-weight: 500;
+  }
+  .choice[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .controls select { padding: 7px 10px; font-size: 14px; }
+
+  .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .job { border-top: 1px solid var(--line); padding: 12px 0; }
+  .job:first-child { border-top: 0; }
+  .job-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .job-name { font-weight: 500; word-break: break-word; }
+  .job-right { display: flex; gap: 8px; align-items: center; flex: none; }
+  .bar { height: 6px; background: var(--bg); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  .state-done .bar > i { background: var(--ok); }
+  .state-error .bar > i, .state-cancelled .bar > i { background: var(--bad); }
+  .state-waiting .bar > i, .state-skipped .bar > i { background: var(--soft); }
+  .small { font-size: 12.5px; color: var(--soft); white-space: nowrap; }
+
+  .tool { border-top: 1px solid var(--line); padding: 11px 0; }
+  .tool:first-child { border-top: 0; }
+  .tool-top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .tool-name { font-weight: 600; }
+  .tool-buttons { display: flex; gap: 6px; flex: none; }
+  .badge {
+    display: inline-block; font-size: 11.5px; padding: 1px 7px; border-radius: 99px;
+    border: 1px solid var(--line); color: var(--soft); margin-left: 6px; white-space: nowrap;
+  }
+  .badge.ok { color: var(--ok); border-color: var(--ok); }
+  .badge.alert { color: var(--bad); border-color: var(--bad); }
+  .err { color: var(--bad); font-size: 13px; margin-top: 6px; word-break: break-word; }
+  a { color: var(--accent); }
+  .warn { border-left: 3px solid var(--bad); padding-left: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <h1>__APP_NAME__</h1>
+      <div class="sub">Paste a link. __APP_NAME__ finds the site and the right tool.</div>
+    </div>
+    <button class="ghost" id="settings-toggle" aria-expanded="false">Settings</button>
+  </div>
+
+  <div class="card hidden" id="welcome">
+    <div class="section-title">Welcome</div>
+    <div class="hint" style="margin:6px 0 14px">
+      <b>yt-dlp</b> and <b>FFmpeg</b> are the base — they already cover most sites.
+      The others are only needed for a few platforms. Install what you use;
+      you can add or remove any of them later in Settings.
+    </div>
+    <div id="welcome-tools"></div>
+    <div class="row" style="margin-top:16px">
+      <button id="welcome-done">Continue</button>
+      <button class="ghost" id="welcome-skip">Skip — decide later</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <input type="text" id="url" placeholder="https://..." autocomplete="off" spellcheck="false">
+      <button id="read">Read</button>
+    </div>
+    <div class="hint" id="status" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card hidden" id="result">
+    <div class="preview">
+      <img class="thumb hidden" id="thumb" alt="">
+      <div style="min-width:0">
+        <div class="title" id="title">…</div>
+        <div class="meta" id="meta"></div>
+        <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="choice" data-mode="mp3" aria-pressed="false">MP3 — audio</button>
+      <button class="choice" data-mode="mp4" aria-pressed="true">MP4 — video</button>
+      <span class="hint" style="margin-left:6px">Quality</span>
+      <select id="quality"></select>
+    </div>
+
+    <div class="hidden" id="need-tool" style="margin-bottom:12px">
+      <div class="hint" id="need-tool-text"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="tiny" id="need-tool-install">Install and continue</button>
+      </div>
+    </div>
+
+    <button id="go">Add to queue</button>
+  </div>
+
+  <div class="card hidden warn" id="unsupported">
+    <div class="title" id="unsupported-title"></div>
+    <div class="hint" id="unsupported-note" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card hidden" id="jobs-card">
+    <div class="head">
+      <span class="hint" id="queue-info">Downloads</span>
+      <button class="ghost tiny" id="clear">Clear finished</button>
+    </div>
+    <div id="jobs"></div>
+  </div>
+
+  <div class="card hidden" id="settings">
+    <div class="head">
+      <span class="section-title">Settings</span>
+      <button class="ghost tiny" id="settings-close">Close</button>
+    </div>
+
+    <div class="field">
+      <div class="head">
+        <span class="hint">Tools</span>
+        <button class="ghost tiny" id="tools-refresh">Check versions</button>
+      </div>
+      <div id="tools-list" class="hint">Loading…</div>
+      <div class="card warn hidden" id="python-help" style="margin:12px 0 0">
+        <div class="title" id="python-help-title">Python is needed</div>
+        <div class="hint" style="margin:6px 0 10px" id="python-help-text"></div>
+        <div class="row" style="flex-wrap:wrap">
+          <button id="python-install">Install Python</button>
+          <button class="ghost" id="python-manual">Download it myself</button>
+          <button class="ghost" id="python-recheck">Check again</button>
+        </div>
+        <div class="hint" id="python-help-status" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="hint" style="margin-bottom:8px">Default folder</div>
+      <div class="row">
+        <input type="text" id="folder" spellcheck="false">
+        <button class="ghost" id="browse">Browse…</button>
+        <button class="ghost" id="save-folder">Save</button>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        Where the "Save as" window opens. Also where files go when you turn the
+        question off.
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="row" style="cursor:pointer">
+        <input type="checkbox" id="ask-where" style="width:16px;height:16px;accent-color:var(--accent)">
+        <span>Ask where to save each file</span>
+      </label>
+      <div class="hint" style="margin:4px 0 0 24px">
+        A Windows "Save as" window opens when you add a link, so you choose the
+        folder and the name for that one file.
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="row">
+        <span class="hint">Downloads at the same time</span>
+        <select id="parallel">
+          <option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const TOKEN = "__APP_TOKEN__";
+// Injected by the server from config.py, so the name stays in one place.
+const APP_NAME = "__APP_NAME__";
+const $ = (id) => document.getElementById(id);
+
+async function api(path, body) {
+  const options = { method: body ? "POST" : "GET", headers: { "X-App-Token": TOKEN } };
+  if (body) {
+    options.headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(path, options);
+  return response.json();
+}
+
+let mode = "mp4";
+let currentUrl = "";
+let qualityLists = { mp3: ["best"], mp4: ["best"] };
+let polling = false;
+let askWhere = true;
+
+function updateGoLabel() {
+  $("go").textContent = askWhere ? "Add…" : "Add to queue";
+}
+
+const setStatus = (text) => { $("status").textContent = text || ""; };
+
+function qualityLabel(value) {
+  if (value === "best") return "Best";
+  return mode === "mp3" ? value + " kbps" : value + "p";
+}
+
+function fillQualities() {
+  const list = qualityLists[mode] || ["best"];
+  $("quality").innerHTML = list
+    .map((v) => `<option value="${v}">${qualityLabel(v)}</option>`)
+    .join("");
+}
+
+function formatTime(seconds) {
+  if (!seconds && seconds !== 0) return "";
+  const s = Math.round(seconds);
+  const m = Math.floor(s / 60), r = s % 60;
+  if (m < 60) return `${m}:${String(r).padStart(2, "0")}`;
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
+
+for (const button of document.querySelectorAll(".choice")) {
+  button.addEventListener("click", () => {
+    mode = button.dataset.mode;
+    for (const other of document.querySelectorAll(".choice")) {
+      other.setAttribute("aria-pressed", String(other === button));
+    }
+    fillQualities();
+  });
+}
+
+async function read() {
+  const url = $("url").value.trim();
+  if (!url) return;
+  currentUrl = url;
+  $("result").classList.add("hidden");
+  $("unsupported").classList.add("hidden");
+  setStatus("Reading the link…");
+
+  const found = await api("/api/detect", { url });
+  if (found.error) { setStatus("Error: " + found.error); return; }
+
+  if (!found.supported) {
+    $("unsupported-title").textContent = found.platform + " cannot be downloaded from a link.";
+    $("unsupported-note").textContent = found.note || "";
+    $("unsupported").classList.remove("hidden");
+    setStatus("");
+    return;
+  }
+
+  $("platform").textContent = found.platform;
+  const best = found.tools[0];
+  $("tool").textContent = best ? best.name + " — " + best.why : "";
+
+  // Never answer "not supported" when a tool exists: offer it (decision 6).
+  const missing = best && !best.installed ? best : null;
+  $("need-tool").classList.toggle("hidden", !missing);
+  $("go").disabled = Boolean(missing);
+  if (missing) {
+    const size = missing.size ? ` (${Math.round(missing.size / 1048576)} MB)` : "";
+    const python = missing.needs_python ? " It also needs Python." : "";
+    $("need-tool-text").textContent =
+      `${found.platform} is best with ${missing.name}${size}, and it is not installed yet.${python}`;
+    $("need-tool-install").dataset.tool = missing.id;
+    $("need-tool-install").textContent = `Install ${missing.name} and continue`;
+  }
+
+  setStatus("Asking the site for the title…");
+  const info = await api("/api/probe", { url: found.final_url || url });
+  if (info.error) {
+    $("title").textContent = "(could not read the title)";
+    $("meta").textContent = info.error;
+    $("thumb").classList.add("hidden");
+  } else {
+    $("title").textContent = info.title;
+    const bits = [];
+    if (info.uploader) bits.push(info.uploader);
+    if (info.duration) bits.push(formatTime(info.duration));
+    if (info.is_playlist) bits.push(info.entries + " items (only the first one for now)");
+    $("meta").textContent = bits.join(" · ");
+    if (info.thumbnail) { $("thumb").src = info.thumbnail; $("thumb").classList.remove("hidden"); }
+    else { $("thumb").classList.add("hidden"); }
+  }
+  setStatus("");
+  $("result").classList.remove("hidden");
+}
+
+function jobRow(job) {
+  const row = document.createElement("div");
+  // "already there" is not a success: it must not look green.
+  row.className = "job state-" + (job.skipped && job.state === "done" ? "skipped" : job.state);
+
+  const percent = parseFloat((job.percent || "0").replace("%", ""))
+    || (job.state === "done" ? 100 : 0);
+
+  let right = "";
+  if (job.state === "done") right = job.skipped ? "already there" : "done";
+  else if (job.state === "error") right = "failed";
+  else if (job.state === "cancelled") right = "cancelled";
+  else if (job.state === "waiting") right = "waiting";
+  else right = [job.percent, job.speed, job.eta && "eta " + job.eta].filter(Boolean).join("  ");
+
+  const canCancel = job.state === "waiting" || job.state === "running";
+
+  row.innerHTML = `
+    <div class="job-top">
+      <span class="job-name"></span>
+      <span class="job-right">
+        <span class="small"></span>
+        ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
+      </span>
+    </div>
+    <div class="bar"><i style="width:${percent}%"></i></div>
+    <div class="err ${job.error ? "" : "hidden"}"></div>
+    ${job.state === "done" && job.skipped ? `<div class="hint" style="margin-top:6px">
+        This file was already there. <b>Nothing was downloaded.</b>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button class="ghost tiny" data-force="${job.id}">Download again</button>
+      </div>` : ""}
+    ${job.state === "error" ? `<div class="row" style="margin-top:8px">
+        <button class="ghost tiny" data-update="${job.tool}">Update ${job.tool}</button>
+        <button class="ghost tiny" data-retry="${job.id}">Retry</button>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        An old tool is the cause most of the time. Try updating first.
+      </div>` : ""}`;
+
+  // Show the name the user chose in the "Save as" window, when there is one.
+  const shown = job.target ? job.target.split("\\").pop() : job.title;
+  row.querySelector(".job-name").textContent =
+    `${shown}  ·  ${job.mode.toUpperCase()} ${job.quality === "best" ? "" : job.quality}`.trim();
+  row.querySelector(".small").textContent = right;
+  row.querySelector(".err").textContent = job.error || "";
+  const update = row.querySelector("[data-update]");
+  if (update) update.addEventListener("click", async () => {
+    update.disabled = true;
+    update.textContent = "updating…";
+    await installTool(update.dataset.update);
+    await waitForInstall(update.dataset.update);
+    update.textContent = "updated — press Retry";
+  });
+
+  const force = row.querySelector("[data-force]");
+  if (force) force.addEventListener("click", async () => {
+    await api("/api/job/" + force.dataset.force + "/retry", { force: true });
+    refresh();
+  });
+
+  const retry = row.querySelector("[data-retry]");
+  if (retry) retry.addEventListener("click", async () => {
+    await api("/api/job/" + retry.dataset.retry + "/retry", {});
+    refresh();
+  });
+
+  const stop = row.querySelector(".cancel");
+  if (stop) stop.addEventListener("click", async () => {
+    await api("/api/job/" + job.id + "/cancel", {});
+    refresh();
+  });
+  return row;
+}
+
+async function refresh() {
+  const data = await api("/api/jobs");
+  const jobs = data.jobs || [];
+  const list = $("jobs");
+  list.textContent = "";
+  for (const job of jobs) list.appendChild(jobRow(job));
+  $("jobs-card").classList.toggle("hidden", jobs.length === 0);
+
+  const running = jobs.filter((j) => j.state === "running").length;
+  const waiting = jobs.filter((j) => j.state === "waiting").length;
+  $("queue-info").textContent = waiting
+    ? `Downloads — ${running} running, ${waiting} waiting`
+    : "Downloads";
+
+  const busy = running + waiting > 0;
+  if (busy && !polling) { polling = true; setTimeout(tick, 700); }
+  return busy;
+}
+
+async function tick() {
+  const busy = await refresh();
+  if (busy) setTimeout(tick, 700);
+  else polling = false;
+}
+
+// ---- Tools page -----------------------------------------------------------
+
+let toolsData = { tools: [], python: {}, progress: {} };
+let toolsPolling = false;
+
+function toolRow(tool, progress) {
+  const row = document.createElement("div");
+  row.className = "tool";
+
+  const badges = [];
+  if (tool.essential) badges.push('<span class="badge">base</span>');
+  if (tool.installed && tool.outside) badges.push('<span class="badge alert">not ours</span>');
+  else if (tool.installed) badges.push('<span class="badge ok">installed</span>');
+  if (tool.update_available) badges.push('<span class="badge alert">update</span>');
+  for (const need of tool.requires || []) {
+    const missing = tool.blocked && need === "Python";
+    badges.push(`<span class="badge ${missing ? "alert" : ""}">needs ${need}</span>`);
+  }
+
+  const running = progress && progress.state === "running";
+  const failed = progress && progress.state === "error";
+
+  let buttons = "";
+  if (running) buttons = '<span class="small">working…</span>';
+  else if (!tool.installed) buttons = `<button class="tiny" data-install="${tool.id}">Install</button>`;
+  else {
+    if (tool.update_available) buttons += `<button class="tiny" data-install="${tool.id}">Update</button>`;
+    if (!tool.essential) buttons += `<button class="ghost tiny" data-remove="${tool.id}">Remove</button>`;
+  }
+
+  const size = tool.size ? ` · ${Math.round(tool.size / 1048576)} MB` : "";
+  const version = tool.installed
+    ? (tool.version || "installed")
+    : (tool.latest ? "not installed · latest " + tool.latest + size : "not installed");
+
+  row.innerHTML = `
+    <div class="tool-top">
+      <div style="min-width:0">
+        <span class="tool-name"></span>${badges.join("")}
+        <div class="hint"></div>
+      </div>
+      <div class="tool-buttons">${buttons}</div>
+    </div>
+    ${running ? `<div class="bar"><i style="width:${progress.percent || 0}%"></i></div>
+                 <div class="small" style="margin-top:4px">${progress.stage || ""}</div>` : ""}
+    ${failed ? `<div class="err"></div>` : ""}`;
+
+  row.querySelector(".tool-name").textContent = tool.name;
+  row.querySelector(".hint").textContent = tool.what_for + " — " + version;
+  if (failed) {
+    row.querySelector(".err").textContent =
+      progress.error === "python_missing"
+        ? "Python is needed for this tool. See below."
+        : progress.error;
+  }
+  return row;
+}
+
+function renderTools() {
+  // The first-launch screen and Settings show the SAME list (decision 17),
+  // so there is only one place to fix when something changes.
+  for (const id of ["tools-list", "welcome-tools"]) {
+    const list = document.getElementById(id);
+    if (!list) continue;
+    list.textContent = "";
+    for (const tool of toolsData.tools) {
+      list.appendChild(toolRow(tool, (toolsData.progress || {})[tool.id]));
+    }
+    for (const button of list.querySelectorAll("[data-install]")) {
+      button.addEventListener("click", () => installTool(button.dataset.install));
+    }
+    for (const button of list.querySelectorAll("[data-remove]")) {
+      button.addEventListener("click", async () => {
+        await api("/api/tools/remove", { id: button.dataset.remove });
+        loadTools();
+      });
+    }
+  }
+
+  const python = toolsData.python || {};
+  const needed = toolsData.tools.some((t) => t.blocked);
+  $("python-help").classList.toggle("hidden", !needed);
+  if (needed) {
+    $("python-help-text").textContent = python.winget
+      ? "gallery-dl and f2 are Python programs. Python is not on this PC. Windows can install it for you."
+      : "gallery-dl and f2 are Python programs. Python is not on this PC, and this PC has no winget, so you must install it yourself.";
+    $("python-install").classList.toggle("hidden", !python.winget);
+  }
+}
+
+async function loadTools(refresh) {
+  const data = refresh ? await api("/api/tools/refresh", {}) : await api("/api/tools");
+  toolsData = { ...toolsData, ...data };
+  if (!data.progress) toolsData.progress = (await api("/api/tools/progress")).progress;
+  renderTools();
+  const busy = Object.values(toolsData.progress || {}).some((p) => p.state === "running");
+  if (busy && !toolsPolling) { toolsPolling = true; setTimeout(pollTools, 800); }
+}
+
+async function pollTools() {
+  toolsData.progress = (await api("/api/tools/progress")).progress;
+  const busy = Object.values(toolsData.progress).some((p) => p.state === "running");
+  if (busy) { renderTools(); setTimeout(pollTools, 800); }
+  else { toolsPolling = false; loadTools(); }
+}
+
+async function installTool(id) {
+  await api("/api/tools/install", { id });
+  loadTools();
+}
+
+/** Wait until an install finishes. Returns its last progress, or null. */
+async function waitForInstall(id) {
+  for (let i = 0; i < 450; i++) {           // ~6 minutes, enough for FFmpeg
+    const progress = (await api("/api/tools/progress")).progress[id];
+    if (!progress || progress.state !== "running") return progress || null;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+  }
+  return null;
+}
+
+// ---- first launch ---------------------------------------------------------
+
+async function closeWelcome() {
+  await api("/api/settings", { setup_done: true });
+  $("welcome").classList.add("hidden");
+  $("url").focus();
+}
+$("welcome-done").addEventListener("click", closeWelcome);
+$("welcome-skip").addEventListener("click", closeWelcome);
+
+$("tools-refresh").addEventListener("click", () => {
+  document.getElementById("tools-list").textContent = "Asking GitHub…";
+  loadTools(true);
+});
+
+$("python-manual").addEventListener("click", () => {
+  window.open(toolsData.python.download_page || "https://www.python.org/downloads/windows/", "_blank");
+});
+$("python-recheck").addEventListener("click", async () => {
+  $("python-help-status").textContent = "Checking…";
+  await loadTools();
+  $("python-help-status").textContent =
+    (toolsData.python || {}).found ? "Python found." : "Still not found.";
+});
+$("python-install").addEventListener("click", async () => {
+  $("python-help-status").textContent =
+    "Windows is installing Python. Answer its window if it asks. This can take minutes…";
+  const result = await api("/api/python/install", {});
+  $("python-help-status").textContent = result.ok
+    ? "Python installed."
+    : "Not installed: " + (result.error || "unknown") + ` — you may need to restart ${APP_NAME}.`;
+  loadTools();
+});
+
+function showSettings(open) {
+  $("settings").classList.toggle("hidden", !open);
+  $("settings-toggle").setAttribute("aria-expanded", String(open));
+  if (open) {
+    loadTools();      // versions come from the 24 h cache, so this is instant
+    $("settings").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+}
+$("settings-toggle").addEventListener("click", () => {
+  showSettings($("settings").classList.contains("hidden"));
+});
+$("settings-close").addEventListener("click", () => showSettings(false));
+
+$("need-tool-install").addEventListener("click", async () => {
+  const id = $("need-tool-install").dataset.tool;
+  $("need-tool-install").disabled = true;
+  $("need-tool-text").textContent = "Installing… this can take a moment.";
+  await installTool(id);
+  const result = await waitForInstall(id);
+  $("need-tool-install").disabled = false;
+  if (result && result.state === "error") {
+    $("need-tool-text").textContent = result.error === "python_missing"
+      ? "This tool needs Python. Open Settings to install it."
+      : "Install failed: " + result.error;
+    return;
+  }
+  read();        // read the link again, now that the tool is here
+});
+
+$("read").addEventListener("click", read);
+$("url").addEventListener("keydown", (event) => { if (event.key === "Enter") read(); });
+
+$("go").addEventListener("click", async () => {
+  const title = $("title").textContent;
+  let target = "";
+
+  if (askWhere) {
+    setStatus("Choose where to save it in the Windows window…");
+    const chosen = await api("/api/save-as", { suggested: title, mode });
+    if (chosen.cancelled || !chosen.path) { setStatus("Cancelled."); return; }
+    target = chosen.path;
+  }
+
+  const job = await api("/api/download", {
+    url: currentUrl, mode, quality: $("quality").value, title, target,
+  });
+  if (job.error) { setStatus("Error: " + job.error); return; }
+  setStatus("");
+  $("url").value = "";
+  $("url").focus();
+  refresh();
+});
+
+$("clear").addEventListener("click", async () => { await api("/api/jobs/clear", {}); refresh(); });
+
+$("browse").addEventListener("click", async () => {
+  setStatus("Choose a folder in the Windows window…");
+  const result = await api("/api/browse", {});
+  setStatus(result.cancelled ? "" : "Folder saved.");
+  if (result.download_folder) $("folder").value = result.download_folder;
+});
+
+$("save-folder").addEventListener("click", async () => {
+  const settings = await api("/api/settings", { download_folder: $("folder").value.trim() });
+  $("folder").value = settings.download_folder || "";
+  setStatus("Folder saved.");
+});
+
+$("parallel").addEventListener("change", async () => {
+  await api("/api/settings", { max_parallel: Number($("parallel").value) });
+});
+
+$("ask-where").addEventListener("change", async () => {
+  askWhere = $("ask-where").checked;
+  updateGoLabel();
+  await api("/api/settings", { ask_where: askWhere });
+});
+
+(async function start() {
+  qualityLists = await api("/api/qualities");
+  fillQualities();
+  const settings = await api("/api/settings");
+  $("folder").value = settings.download_folder || "";
+  $("parallel").value = String(settings.max_parallel || 2);
+  askWhere = settings.ask_where !== false;
+  $("ask-where").checked = askWhere;
+  updateGoLabel();
+
+  if (!settings.setup_done) {      // first launch: the same tool list, up front
+    $("welcome").classList.remove("hidden");
+    loadTools();
+  }
+
+  refresh();
+  $("url").focus();
+})();
+</script>
+</body>
+</html>

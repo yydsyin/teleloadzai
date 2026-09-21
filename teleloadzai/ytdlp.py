@@ -1,0 +1,280 @@
+"""Run yt-dlp: read what is behind a link, or download it.
+
+This is the only place that knows the yt-dlp command line. The MP3 and MP4
+options are chosen for quality first: best audio for MP3, best video plus
+best audio merged for MP4.
+
+Nothing here assumes a tool is installed (CLAUDE.md, hard rule 3): the
+functions raise ``ToolMissing`` and the caller decides what to tell the user.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable
+
+from .paths import BIN_DIR
+
+# Keeps the black console window from flashing when the GUI runs a tool.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+# yt-dlp prints one line per progress update, in our own format so that
+# parsing never depends on the human-readable output.
+_PROGRESS_TAG = "TLZ_P"
+_FILE_TAG = "TLZ_F"
+_PROGRESS_TEMPLATE = (
+    f"download:{_PROGRESS_TAG}\t%(progress._percent_str)s"
+    "\t%(progress._speed_str)s\t%(progress._eta_str)s"
+)
+_FILE_TEMPLATE = f"after_move:{_FILE_TAG}\t%(filepath)s"
+
+
+class ToolMissing(RuntimeError):
+    """A needed program is not installed yet."""
+
+
+class DownloadFailed(RuntimeError):
+    """yt-dlp ran but did not succeed."""
+
+
+@dataclass(frozen=True)
+class Progress:
+    percent: str      # "  42.1%"
+    speed: str        # "3.20MiB/s"
+    eta: str          # "00:12"
+
+
+@dataclass(frozen=True)
+class MediaInfo:
+    title: str
+    uploader: str
+    duration: int | None       # seconds
+    thumbnail: str | None
+    extractor: str
+    webpage_url: str
+    is_playlist: bool
+    entries: int               # 1 for a single video
+
+
+@dataclass(frozen=True)
+class DownloadResult:
+    files: list[Path]
+    log_tail: list[str]
+    # Files that were already there and that yt-dlp did NOT rewrite. Without
+    # this we would report a success that never happened (bug of 2026-09-20,
+    # found again on 2026-09-21 on the path where the user is not asked).
+    skipped: list[Path] = field(default_factory=list)
+
+    @property
+    def nothing_downloaded(self) -> bool:
+        return bool(self.skipped) and not (set(self.files) - set(self.skipped))
+
+
+def find_tool(name: str) -> Path | None:
+    """Look in our own `bin/` first, then in the system PATH."""
+    for candidate in (BIN_DIR / f"{name}.exe", BIN_DIR / name):
+        if candidate.is_file():
+            return candidate
+    found = shutil.which(name)
+    return Path(found) if found else None
+
+
+def require_ytdlp() -> Path:
+    tool = find_tool("yt-dlp")
+    if tool is None:
+        raise ToolMissing("yt-dlp is not installed")
+    return tool
+
+
+def _ffmpeg_arguments() -> list[str]:
+    """Tell yt-dlp where ffmpeg is, when it is not beside it."""
+    ffmpeg = find_tool("ffmpeg")
+    if ffmpeg is None:
+        raise ToolMissing("ffmpeg is not installed")
+    return ["--ffmpeg-location", str(ffmpeg.parent)]
+
+
+def _run(command: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        creationflags=_NO_WINDOW,
+    )
+
+
+def probe(url: str, timeout: float = 60.0) -> MediaInfo:
+    """Read the title, duration and thumbnail of a link. Downloads nothing."""
+    tool = require_ytdlp()
+    command = [
+        str(tool),
+        "--dump-single-json",
+        "--flat-playlist",       # do not open every video of a playlist
+        "--no-warnings",
+        "--no-colors",
+        url,
+    ]
+    finished = _run(command, timeout)
+    if finished.returncode != 0:
+        raise DownloadFailed(_short_error(finished.stderr))
+
+    data = json.loads(finished.stdout)
+    entries = data.get("entries")
+    is_playlist = isinstance(entries, list)
+
+    return MediaInfo(
+        title=data.get("title") or "(no title)",
+        uploader=data.get("uploader") or data.get("channel") or "",
+        duration=data.get("duration"),
+        thumbnail=data.get("thumbnail"),
+        extractor=data.get("extractor_key") or data.get("extractor") or "",
+        webpage_url=data.get("webpage_url") or url,
+        is_playlist=is_playlist,
+        entries=len(entries) if is_playlist else 1,
+    )
+
+
+# What the quality dropdown offers. "best" is always first and is the default.
+AUDIO_QUALITIES = ("best", "320", "192", "128")     # kbps
+VIDEO_QUALITIES = ("best", "1080", "720", "480", "360")   # max height
+
+
+def _output_arguments(
+    mode: str, out_dir: Path, quality: str = "best", out_path: Path | None = None
+) -> list[str]:
+    """Build the yt-dlp options for the chosen format and quality.
+
+    ``out_path`` is an exact file the user picked in the "Save as" window.
+    Its extension is dropped and left to yt-dlp, so extracting audio cannot
+    produce ``name.mp3.mp3``.
+    """
+    if out_path is not None:
+        target = str(out_path.with_suffix("")) + ".%(ext)s"
+    else:
+        target = str(out_dir / "%(title)s.%(ext)s")
+
+    if mode == "mp3":
+        # yt-dlp: 0 = best variable bitrate, or a fixed rate like "192K".
+        audio_quality = "0" if quality == "best" else f"{quality}K"
+        return [
+            "-x",
+            "--audio-format", "mp3",
+            "--audio-quality", audio_quality,
+            "-o", target,
+        ]
+
+    if mode == "mp4":
+        if quality == "best":
+            selector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+        else:
+            # Take the best that is not taller than the chosen height, and
+            # fall back step by step so we never end with nothing.
+            selector = (
+                f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/"
+                f"bestvideo[height<={quality}]+bestaudio/"
+                f"best[height<={quality}]/best"
+            )
+        return [
+            "-f", selector,
+            "--merge-output-format", "mp4",
+            "-o", target,
+        ]
+
+    raise ValueError(f"unknown mode: {mode!r}")
+
+
+def download(
+    url: str,
+    mode: str,
+    out_dir: Path,
+    on_progress: Callable[[Progress], None] | None = None,
+    playlist: bool = False,
+    quality: str = "best",
+    on_start: Callable[[subprocess.Popen], None] | None = None,
+    out_path: Path | None = None,
+    force: bool = False,
+) -> DownloadResult:
+    """Download one link as MP3 or MP4, reporting progress line by line.
+
+    ``on_start`` receives the running process, so the caller can stop it
+    when the user cancels the job.
+
+    ``out_path`` is the exact file chosen in the "Save as" window. Windows
+    already asked the user about replacing it, so we force the overwrite --
+    otherwise yt-dlp would silently skip and we would report a success that
+    did not happen.
+    """
+    tool = require_ytdlp()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    command = [
+        str(tool),
+        "--newline",
+        "--no-colors",
+        "--no-warnings",
+        "--progress", "--progress-template", _PROGRESS_TEMPLATE,
+        "--print", _FILE_TEMPLATE,
+        *(["--yes-playlist"] if playlist else ["--no-playlist"]),
+        *(["--force-overwrites"] if (out_path is not None or force) else []),
+        *_ffmpeg_arguments(),
+        *_output_arguments(mode, out_dir, quality, out_path),
+        url,
+    ]
+
+    files: list[Path] = []
+    tail: list[str] = []
+    # Anything whose date is older than this was NOT written by this run.
+    started_at = time.time() - 2      # a little slack for clock rounding
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        creationflags=_NO_WINDOW,
+    )
+    if on_start:
+        on_start(process)
+
+    assert process.stdout is not None
+    for line in process.stdout:
+        line = line.rstrip("\n")
+        if line.startswith(_PROGRESS_TAG):
+            if on_progress:
+                parts = line.split("\t")
+                while len(parts) < 4:
+                    parts.append("")
+                on_progress(Progress(parts[1].strip(), parts[2].strip(), parts[3].strip()))
+        elif line.startswith(_FILE_TAG):
+            files.append(Path(line.split("\t", 1)[1].strip()))
+        elif line.strip():
+            tail.append(line)
+            del tail[:-40]          # keep only the last 40 lines
+
+    if process.wait() != 0:
+        raise DownloadFailed(_short_error("\n".join(tail)))
+
+    # yt-dlp leaves an existing file alone and says nothing useful about it.
+    # The only reliable proof is the file's own date.
+    skipped = [f for f in files if f.exists() and f.stat().st_mtime < started_at]
+    return DownloadResult(files, tail, skipped)
+
+
+def _short_error(text: str) -> str:
+    """Keep the useful line of a yt-dlp error, not the whole dump."""
+    for line in reversed((text or "").splitlines()):
+        clean = line.strip()
+        if clean.startswith("ERROR:"):
+            return clean
+    return (text or "").strip().splitlines()[-1] if (text or "").strip() else "unknown error"
