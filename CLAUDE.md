@@ -54,6 +54,7 @@ One desktop interface that groups the best video/audio download tools behind a s
 ### 2.2 Writing and changing things
 
 - **Ask before writing code or making a real change** (new files, new features, deleting something, anything hard to undo). Propose, then WAIT for a clear yes. Asking a question and starting anyway is not allowed.
+- 🔎 **Before starting a new big thing, say if a skill could help — and ask to go and look.** Not only the skills already on this PC: **the internet too**. A roadmap step, a new tool to drive, a part of the trade we have never touched — that is the moment. I say *what* I would look for and *why*; the user decides. ⚠️ Three limits: a skill is **read before being installed**, never installed blind. A skill is **not a menu** (§2.1) — I come back with **one**, not with twelve. And I say plainly when the search found nothing, instead of bringing back something almost useful. *(Asked by the user 2026-09-22, after a search found `verifying-external-behavior`, which describes the `--record_data false` bug better than we had.)* **This rule is not only for Teleloadzai** — it also lives in `~/.claude/CLAUDE.md`, for every project.
 - 🚨 **NEVER modify this file on my own initiative** (SDH rule, adopted 2026-09-21 — it **replaces** the earlier "bookkeeping needs no second yes" rule). When something should go in: (1) tell him, (2) explain **what** and **why**, (3) ask, (4) write **only** on a yes. I detect the moment; he decides.
 - **Targeted edits only.** Never rewrite a whole file without need. Change the smallest possible fragment.
 - **Say which files are touched**, every time.
@@ -69,11 +70,14 @@ One desktop interface that groups the best video/audio download tools behind a s
 - **Checking a registry is not proof.** A name can be free on PyPI, npm and GitHub and still belong to a real company. **Always do a real web search too** before saying something is free, available, or does not exist. *(Lesson of 2026-09-20: "Grabbity" passed every registry and was a Latvian software company.)*
 - Before recommending any tool: check its repo is **not archived**, and its **last commit date**.
 
-**Three tools, and they do different jobs:**
+**Six tools, and they do different jobs. Five are skills (🧰), one is an agent (🤖) — a different thing, called a different way.**
 
 - 🧰 **`mes-erreurs-recurrentes`** says **WHAT** to check — the mistakes I repeat, each with the control that catches it. Load it before announcing "done", "fixed", "verified", "0 error", and before claiming something is absent, clean or impossible. It is global: it applies to every project of this user.
 - 🧰 **`doubt-driven-development`** says **HOW** — have the work re-read by a fresh context whose job is to **demolish**, not to approve. I re-read with the idea that produced the mistake, so I cannot see it.
-- 🧰 **`silent-failure-hunter`** hunts **one precise family of bug**: code that fails quietly while the app reports success. *(Added 2026-09-21 at the user's request. It is exactly the bug of 2026-09-20: yt-dlp skipped the download, the file never changed, and the window said **done**.)*
+- 🧰 **`verifying-external-behavior`** — before writing code around **somebody else's program**. Every tool we drive is somebody else's program. Its sentence is our own bug: *"permissive clients don't reject wrong arguments — they ignore them"* — that is `--record_data false`, passed to XHS-Downloader, ignored by it, announced by me as fixed. Load it before adding a flag, a sub-command or a config file to a recipe. *(Installed 2026-09-22 from `wdm0006/python-skills`, MIT.)*
+- 🧰 **`security-and-hardening`** — before any code that touches a **cookie**, a token or a saved credential, which means all of step 5. ⚠️ It is written for Node web apps; most of it does not apply. Take "Secrets Management", "Never log sensitive data", "Destructive Operations on Derived Paths", and leave the rest.
+- 🧰 **`ux-copy`** — when writing **what the user is told**: an error, an empty state, a loading line, a confirm box. It is how decisions 33 and 34 get their sentences. We wrote the rules; this writes the words.
+- 🤖 **`silent-failure-hunter`** hunts **one precise family of bug**: code that fails quietly while the app reports success. *(Added 2026-09-21 at the user's request. It is exactly the bug of 2026-09-20: yt-dlp skipped the download, the file never changed, and the window said **done**.)* ⚠️ It lives in `agents/`, not `skills/` — an **agent**, not a skill. Corrected 2026-09-22; this file called it a skill for a day.
 - **A confirmed mistake of MINE gets written into `mes-erreurs-recurrentes` the same day** — the habit, not the project's bug.
 
 ### 2.3bis After a big section is finished
@@ -174,6 +178,7 @@ Re-verify this table before trusting it. Tools die fast in this field.
 
 ## 6. Still open
 
+- 🚨 **What may an error message contain?** Two of our own rules pull against each other. Decision 34 says **every failure reaches the user in plain words**. Hard rule 1 says **never print a cookie** — not in a log, not in an error. A tool that fails on a cookie can put it in the line it prints, and we show that line: `_short_error()` in `runners.py` returns the last 200 characters of the tool's output, whatever is in them. **Not decided:** clean the text before showing it, or never show a tool's raw line at all. *(Found 2026-09-22 while looking for skills — nobody had seen the two rules meet. It must be answered inside step 5, not after it.)*
 - WeChat Channels — a living tool exists (`ltaoo/wx_channels_download`) but it does not fit the "paste a link" model: it needs Administrator rights, installs a root certificate, and the user clicks inside WeChat. **Not decided:** v1 shows a clear message + link; v2 could launch the tool for the user. I will not write interception or decryption code myself.
 - Publish on PyPI or not.
 - yt-dlp has two channels, *stable* and *nightly*. Nightly gets fixes for broken sites several days earlier. Offer the choice to the user? **Not decided.**
