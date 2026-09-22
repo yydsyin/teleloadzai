@@ -21,6 +21,7 @@ One desktop interface that groups the best video/audio download tools behind a s
 | `paths.py` | where `bin/` and `data/` live |
 | `platforms.py` + `detect.py` | the brain: link -> platform -> tool |
 | `ytdlp.py` | runs yt-dlp |
+| `runners.py` | runs every other tool: one engine, one recipe each. Also says which tools are **not usable yet**, so the window never offers one it cannot drive. |
 | `tools.py` | the Tool Manager: install, update, versions |
 | `jobs.py` | the download queue |
 | `dialogs.py` | the Windows "Save as" and folder windows |
@@ -91,6 +92,7 @@ A roadmap step marked ✅ is a **big section**. Do not wait for a compaction to 
 
 1. **RUN IT** — start the app, open the page: 0 console error, then really do a detect, a download, and the Tools page. The most profitable pass, and the one that gets skipped.
 2. **WHAT WE JUST CHANGED** — against what I announced, and against the older rules.
+   ➕ **Added 2026-09-22 by a pass 0** — a **recipe** is a new kind of thing: flags we pass to somebody else's program. **A flag is not a fix until its effect has been SEEN.** No pass asked this, and that is exactly how `--record_data false` survived: it was passed to XHS-Downloader, the problem was announced fixed, and the database kept appearing. The control: change the flag, run the tool, and look at what is on the disk. If nothing differs, the flag does nothing.
 3. **THE FROZEN DECISIONS** — the decisions table of §3 and the hard rules of §5 (never log a cookie, no DRM, never assume a tool is installed, `.gitignore`).
 4. **NUMBERS AND IDENTIFIERS, COUNTED IN THE CODE** — never copied from another file nor from my own prose. "1752 extractors", "8 tools", "24 platforms": recount them.
 5. **NAMES THAT ANSWER EACH OTHER** — HTML ids ↔ `getElementById`, API routes ↔ `fetch` calls, tool ids ↔ `platforms.py` ↔ `tools.py`, placeholders (`__APP_NAME__`, `__APP_TOKEN__`) ↔ what the server injects.

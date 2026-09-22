@@ -204,6 +204,27 @@ def can_run(tool_id: str) -> bool:
     return tool_id in RECIPES or tool_id == "yt-dlp"
 
 
+# A tool can be installed and still be useless to us today. Offering it and
+# failing on the button is a dead end, which decisions 6 and 15 forbid: a
+# TikTok link proposed TikTokDownloader, looked ready, and answered "no
+# runner" when pressed (found 2026-09-22 by the audit).
+NOT_READY: dict[str, str] = {
+    "tiktokdownloader":
+        "it has no command line — it needs its own local server, which is not built yet",
+    "f2":
+        "it needs a cookie in its own settings file, which comes with step 5",
+}
+
+
+def unavailable_reason(tool_id: str) -> str | None:
+    """Why this tool cannot be used right now, or None when it can."""
+    if tool_id in NOT_READY:
+        return NOT_READY[tool_id]
+    if not can_run(tool_id):
+        return "Teleloadzai does not know how to drive this tool yet"
+    return None
+
+
 # --------------------------------------------------------------------------
 # the engine
 # --------------------------------------------------------------------------

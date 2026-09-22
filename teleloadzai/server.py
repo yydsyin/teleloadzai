@@ -129,11 +129,25 @@ def install_progress() -> dict:
 
 def detection_json(result: Detection) -> dict:
     platform = result.platform
+    offered = [o for o in platform.tools if runners.unavailable_reason(o.tool_id) is None]
+    blocked = [
+        {"name": tool_name(o.tool_id), "why": runners.unavailable_reason(o.tool_id)}
+        for o in platform.tools if runners.unavailable_reason(o.tool_id) is not None
+    ]
+
+    # A platform whose tools all exist but none of which we can drive is not
+    # "supported": saying so would promise a download we cannot make.
+    note = platform.note
+    if platform.tools and not offered:
+        note = (note + " " if note else "") + " · ".join(
+            f"{b['name']}: {b['why']}" for b in blocked)
+
     return {
         "platform": platform.name,
         "platform_id": platform.id,
-        "supported": platform.is_supported,
-        "note": platform.note,
+        "supported": bool(offered),
+        "note": note,
+        "blocked": blocked,
         "final_url": result.final_url,
         "was_shortened": result.was_shortened,
         "redirect_error": result.redirect_error,
@@ -148,7 +162,7 @@ def detection_json(result: Detection) -> dict:
                 "size": tools.latest_release(option.tool_id).get("size", 0),
                 "needs_python": bool(getattr(tools.spec(option.tool_id), "needs_python", False)),
             }
-            for option in platform.tools
+            for option in offered
         ],
     }
 

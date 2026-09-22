@@ -149,6 +149,7 @@
         <div class="title" id="title">…</div>
         <div class="meta" id="meta"></div>
         <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span></div>
+        <div class="hint hidden" id="blocked-tools" style="margin-top:6px"></div>
       </div>
     </div>
 
@@ -372,6 +373,15 @@ async function read() {
   const several = currentTools.length > 1;
   $("tool-pick").classList.toggle("hidden", !several);
   $("tool-label").classList.toggle("hidden", !several);
+
+  // Say what exists but cannot be used, instead of offering it and failing
+  // on the button (decisions 6 and 15).
+  const blocked = found.blocked || [];
+  $("blocked-tools").classList.toggle("hidden", blocked.length === 0);
+  $("blocked-tools").textContent = blocked.length
+    ? "Not usable yet — " + blocked.map((b) => `${b.name}: ${b.why}`).join(" · ")
+    : "";
+
   showChosenTool();
 
   setStatus("Asking the site for the title…");
