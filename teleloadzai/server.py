@@ -46,6 +46,8 @@ def load_settings() -> dict:
         "ask_where": bool(stored.get("ask_where", True)),
         # False until the first-launch screen has been answered once.
         "setup_done": bool(stored.get("setup_done", False)),
+        # A live stream never ends by itself: stop recording after this long.
+        "record_minutes": int(stored.get("record_minutes") or 60),
     }
 
 
@@ -56,6 +58,15 @@ def save_settings(settings: dict) -> None:
 
 def download_folder() -> Path:
     return Path(load_settings()["download_folder"])
+
+
+def record_minutes() -> int:
+    """How long a live recording may last. 0 means no limit, at the user's risk."""
+    try:
+        value = int(load_settings()["record_minutes"])
+    except (TypeError, ValueError):
+        return 60
+    return max(0, min(24 * 60, value))
 
 
 def max_parallel() -> int:
@@ -321,7 +332,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": f"{tool} is not installed"}, 400)
                 return
             job = QUEUE.add(url, mode, quality, title, download_folder(),
-                            Path(target) if target else None, tool=tool)
+                            Path(target) if target else None, tool=tool,
+                            limit_minutes=record_minutes())
             self._json(job.as_dict())
             return
 
@@ -363,6 +375,8 @@ class Handler(BaseHTTPRequestHandler):
                 settings["ask_where"] = bool(body["ask_where"])
             if "setup_done" in body:
                 settings["setup_done"] = bool(body["setup_done"])
+            if "record_minutes" in body:
+                settings["record_minutes"] = body["record_minutes"]
             save_settings(settings)
             self._json(load_settings())
             return

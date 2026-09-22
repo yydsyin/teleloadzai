@@ -234,6 +234,24 @@
 
     <div class="field">
       <div class="row">
+        <span class="hint">Stop a live recording after</span>
+        <select id="record-minutes">
+          <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="60">1 hour</option>
+          <option value="120">2 hours</option>
+          <option value="240">4 hours</option>
+          <option value="0">no limit</option>
+        </select>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        A live stream never ends by itself. Without a limit it records until
+        your disk is full.
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="row">
         <span class="hint">Downloads at the same time</span>
         <select id="parallel">
           <option value="1">1</option><option value="2">2</option>
@@ -707,6 +725,10 @@ $("parallel").addEventListener("change", async () => {
   await api("/api/settings", { max_parallel: Number($("parallel").value) });
 });
 
+$("record-minutes").addEventListener("change", async () => {
+  await api("/api/settings", { record_minutes: Number($("record-minutes").value) });
+});
+
 $("ask-where").addEventListener("change", async () => {
   askWhere = $("ask-where").checked;
   updateGoLabel();
@@ -719,6 +741,7 @@ $("ask-where").addEventListener("change", async () => {
   const settings = await api("/api/settings");
   $("folder").value = settings.download_folder || "";
   $("parallel").value = String(settings.max_parallel || 2);
+  $("record-minutes").value = String(settings.record_minutes ?? 60);
   askWhere = settings.ask_where !== false;
   $("ask-where").checked = askWhere;
   updateGoLabel();

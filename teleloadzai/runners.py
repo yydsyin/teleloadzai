@@ -49,6 +49,11 @@ class Request:
     out_name: str = ""          # wanted base name; some tools ignore it
     mode: str = "mp4"
     quality: str = "best"
+    # A live stream has no end. Without a limit the recording stops only when
+    # the user presses Stop, or when the disk is full (2026-09-22).
+    limit_minutes: int = 60
+    # The user has asked again for something the tool believes it already has.
+    force: bool = False
 
 
 @dataclass
@@ -69,6 +74,14 @@ class Recipe:
     build: Callable[[Path, Request], list[str]]
     module: str = ""            # run as `python -m <module>` instead of an exe
     note: str = ""              # shown to the user when it matters
+    # Runs after the tool, on the files it produced, and returns the final
+    # list. Used to repackage a recording into something that plays anywhere.
+    after: Callable[[list[Path]], list[Path]] | None = None
+    # Files the tool writes for its own bookkeeping. They are NOT downloads,
+    # and counting them means reporting a success that never happened:
+    # XHS-Downloader skipped a note it had already seen, wrote only its own
+    # database, and that alone looked like a download (2026-09-22).
+    ignore: tuple[str, ...] = ()
 
 
 # --------------------------------------------------------------------------
@@ -80,17 +93,40 @@ def _gallery_dl(_exe: Path, r: Request) -> list[str]:
     return [r.url, "-D", str(r.out_dir), "--windows-filenames"]
 
 
+# Our quality names are not streamlink's. It calls them 1080p60, 720p, worst,
+# and a comma list is tried in order, so the last entry is always a safe net.
+_STREAMLINK_QUALITY = {
+    "best": "best",
+    "1080": "1080p60,1080p,best",
+    "720": "720p60,720p,best",
+    "480": "480p,best",
+    "360": "360p,worst,best",
+}
+
+
 def _streamlink(exe: Path, r: Request) -> list[str]:
-    name = (r.out_name or "stream") + (".mp3" if r.mode == "mp3" else ".ts")
-    return [str(exe), r.url, "best", "-o", str(r.out_dir / name),
-            "--progress", "force"]
+    # A recording arrives as .ts; `after` repackages it to .mp4.
+    name = (r.out_name or "stream") + ".ts"
+    wanted = "audio_only,worst" if r.mode == "mp3" else _STREAMLINK_QUALITY.get(r.quality, "best")
+
+    command = [str(exe), r.url, wanted, "-o", str(r.out_dir / name), "--progress", "force"]
+    if r.limit_minutes > 0:
+        # Without this a live stream records until the disk is full.
+        command += ["--stream-segmented-duration", f"{r.limit_minutes}m"]
+    return command
 
 
 def _xhs(exe: Path, r: Request) -> list[str]:
     # It builds its own folder under --work_path, so we give it ours.
-    return [str(exe), "--url", r.url,
-            "--work_path", str(r.out_dir.parent),
-            "--folder_name", r.out_dir.name]
+    command = [str(exe), "--url", r.url,
+               "--work_path", str(r.out_dir.parent),
+               "--folder_name", r.out_dir.name]
+    # It keeps a history of everything it has ever fetched, beside its own
+    # program, and silently refuses a note it has seen before. Only when the
+    # user asks for it again do we switch that history off.
+    if r.force:
+        command += ["--download_record", "false"]
+    return command
 
 
 def _n_m3u8dl_re(exe: Path, r: Request) -> list[str]:
@@ -112,10 +148,51 @@ def _f2(_exe: Path, r: Request) -> list[str]:
     return [site, "-u", r.url, "-p", str(r.out_dir)]
 
 
+def _repackage_to_mp4(files: list[Path]) -> list[Path]:
+    """Turn a .ts recording into a .mp4, without touching the video itself.
+
+    streamlink writes .ts, which plays in VLC but is not what a user expects
+    to find in his folder. ffmpeg copies the streams into an mp4 container:
+    no re-encoding, nothing lost, a few seconds at most.
+
+    If anything goes wrong the .ts is kept. A playable file with the wrong
+    extension beats no file at all.
+    """
+    ffmpeg = tools.installed_path("ffmpeg")
+    if ffmpeg is None:
+        return files
+
+    final: list[Path] = []
+    for path in files:
+        if path.suffix.lower() != ".ts" or not path.is_file():
+            final.append(path)
+            continue
+
+        target = path.with_suffix(".mp4")
+        try:
+            done = subprocess.run(
+                [str(ffmpeg), "-y", "-i", str(path), "-c", "copy",
+                 "-movflags", "+faststart", str(target)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                stdin=subprocess.DEVNULL, timeout=1800, creationflags=_NO_WINDOW,
+            )
+        except Exception:
+            final.append(path)
+            continue
+
+        if done.returncode == 0 and target.is_file() and target.stat().st_size > 0:
+            path.unlink(missing_ok=True)
+            final.append(target)
+        else:
+            target.unlink(missing_ok=True)      # never leave a broken mp4
+            final.append(path)
+    return final
+
+
 RECIPES: dict[str, Recipe] = {
     "gallery-dl": Recipe("gallery-dl", _gallery_dl, module="gallery_dl"),
-    "streamlink": Recipe("streamlink", _streamlink),
-    "xhs-downloader": Recipe("xhs-downloader", _xhs),
+    "streamlink": Recipe("streamlink", _streamlink, after=_repackage_to_mp4),
+    "xhs-downloader": Recipe("xhs-downloader", _xhs, ignore=("*.db",)),
     "n-m3u8dl-re": Recipe("n-m3u8dl-re", _n_m3u8dl_re),
     "f2": Recipe("f2", _f2, module="f2",
                  note="f2 needs a cookie in its own config file for most sites."),
@@ -228,16 +305,20 @@ def run(
     # server sent, so a picture from 2005 lands with a 2005 date, and a
     # "newer than the start" filter threw away the only file it downloaded
     # (found 2026-09-21). Comparing before and after needs no clock.
-    after = _snapshot(request.out_dir)
+    afterwards = _snapshot(request.out_dir)
     written = sorted(
-        path for path, stamp in after.items()
-        if path not in before or before[path] != stamp
+        path for path, stamp in afterwards.items()
+        if (path not in before or before[path] != stamp)
+        and not any(path.match(pattern) for pattern in recipe.ignore)
     )
 
     # A tool can end badly and still have written something useful, and it
     # can end well having written nothing. Both are reported honestly.
     if code != 0 and not written:
         raise RunnerError(_short_error(tail) or f"{tool_id} stopped with code {code}")
+
+    if written and recipe.after:
+        written = recipe.after(written)
     return RunResult(written, tail)
 
 

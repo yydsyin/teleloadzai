@@ -34,6 +34,7 @@ class Job:
     tool: str = "yt-dlp"        # the program that really runs, for the error buttons
     force: bool = False         # rewrite a file that is already there
     skipped: bool = False       # the file was already there and nothing was written
+    limit_minutes: int = 60     # how long a live recording may last
     state: str = WAITING
     percent: str = ""
     speed: str = ""
@@ -66,11 +67,12 @@ class Queue:
 
     def add(self, url: str, mode: str, quality: str, title: str, folder: Path,
             target: Path | None = None, force: bool = False,
-            tool: str = "yt-dlp") -> Job:
+            tool: str = "yt-dlp", limit_minutes: int = 60) -> Job:
         job = Job(
             id=uuid.uuid4().hex[:12], url=url, mode=mode, quality=quality,
             title=title or url, folder=str(target.parent if target else folder),
             target=str(target) if target else "", force=force, tool=tool,
+            limit_minutes=limit_minutes,
         )
         with self._lock:
             self._jobs[job.id] = job
@@ -179,6 +181,7 @@ class Queue:
                         out_dir=target.parent if target else Path(job.folder),
                         out_name=target.stem if target else "",
                         mode=job.mode, quality=job.quality,
+                        limit_minutes=job.limit_minutes, force=job.force,
                     ),
                     on_progress=on_percent, on_start=on_start,
                 )
