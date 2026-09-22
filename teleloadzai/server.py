@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import cookies, dialogs, runners, tools, ytdlp
+from . import cookies, dialogs, login, runners, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import Queue
@@ -233,7 +233,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if path == "/api/cookies":
-                self._json({"cookies": cookies.state(load_settings()["cookies_enabled"])})
+                self._json({
+                    "cookies": cookies.state(load_settings()["cookies_enabled"]),
+                    "login_platforms": login.choices(),
+                    # Why the in-app log-in cannot run, when it cannot. Said,
+                    # not hidden behind a button that does nothing.
+                    "login_blocked": login.unavailable_reason(),
+                })
                 return
 
             if path == "/api/qualities":
@@ -420,10 +426,45 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/cookies/clear":
             removed = cookies.clear()
+            # The log-in window keeps its own browser profile. Forgetting the
+            # cookies while leaving that behind would be a lie: the next
+            # log-in window would open still logged in.
+            wiped = login.forget_browser()       # "", "now" or "later"
             settings = load_settings()
             settings["cookies_enabled"] = False
             save_settings(settings)
-            self._json({"removed": removed, "cookies": cookies.state(False)})
+            self._json({"removed": removed, "browser_wiped": wiped,
+                        "cookies": cookies.state(False)})
+            return
+
+        if path == "/api/login/open":
+            try:
+                self._json(login.open_for((body.get("platform") or "").strip()))
+            except login.LoginError as problem:
+                self._json({"error": str(problem)}, 400)
+            return
+
+        if path == "/api/login/finish":
+            try:
+                kept = login.finish()
+            except login.LoginError as problem:
+                self._json({"error": str(problem)}, 400)
+                return
+            except Exception as problem:
+                # Never a silent failure here: the user has just typed a
+                # password somewhere and is waiting to be told it worked.
+                self._json({"error": cookies.redact(
+                    f"The log-in window could not be read: {problem}")}, 500)
+                return
+            settings = load_settings()
+            if kept:
+                settings["cookies_enabled"] = True
+                save_settings(settings)
+            self._json({"kept": kept, "cookies": cookies.state(bool(kept))})
+            return
+
+        if path == "/api/login/cancel":
+            self._json({"closed": login.close()})
             return
 
         if path == "/api/browse":

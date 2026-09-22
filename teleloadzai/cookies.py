@@ -326,6 +326,56 @@ def import_file(chosen: Path, keep_all: bool = False) -> dict:
     return summary
 
 
+def _key(raw: str) -> tuple[str, str, str]:
+    """What makes two cookie lines the same cookie: site, path and name."""
+    row = raw[len("#HttpOnly_"):] if raw.startswith("#HttpOnly_") else raw
+    parts = row.split("\t")
+    if len(parts) < 7:
+        return (raw, "", "")
+    return (parts[0].lower(), parts[2], parts[5])
+
+
+def merge_lines(fresh: list[str]) -> int:
+    """Add cookie lines to our file, replacing the ones they update.
+
+    Used by the in-app log-in. A merge, not a write: logging in to Instagram
+    must not throw away yesterday's YouTube log-in, which a plain overwrite
+    would do silently.
+
+    The same filter as the import applies -- only sites Teleloadzai can
+    download from. A log-in page can set cookies for a third party it happens
+    to use, and those have no more business here than a bank's.
+
+    Returns how many of the fresh lines were kept.
+    """
+    known = known_domains()
+    keeping: dict[tuple[str, str, str], str] = {}
+
+    if have_file():
+        for _domain, _when, raw in _rows(COOKIE_FILE.read_text(encoding="utf-8").splitlines()):
+            keeping[_key(raw)] = raw
+
+    added = 0
+    for raw in fresh:
+        domain = _key(raw)[0]
+        if _known_match(domain, known) is None:
+            continue
+        keeping[_key(raw)] = raw
+        added += 1
+
+    if not added:
+        return 0
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    COOKIE_FILE.write_text(
+        "# Netscape HTTP Cookie File\n"
+        "# Written by Teleloadzai. Only the sites it can download from.\n"
+        + "\n".join(keeping.values()) + "\n",
+        encoding="utf-8",
+    )
+    return added
+
+
 def clear() -> bool:
     """Forget the cookies. Returns True when a file was really removed."""
     if not COOKIE_FILE.exists():

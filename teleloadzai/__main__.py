@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from . import login
 from .config import APP_NAME, APP_VERSION
 from .server import serve, start_background
 
@@ -37,7 +38,14 @@ def open_window(port: int) -> None:
             width=WINDOW_SIZE[0], height=WINDOW_SIZE[1],
             min_size=WINDOW_MINIMUM,
         )
-        webview.start()          # returns when the user closes the window
+        # A "Forget them" that Windows refused last time happens now, before
+        # WebView2 takes hold of the folder again.
+        login.forget_pending()
+        login.BROWSER_PROFILE.mkdir(parents=True, exist_ok=True)
+        # Every site the log-in window visits keeps its data HERE, inside our
+        # own folder -- never in the user's real browser profile. Removing
+        # Teleloadzai removes it, and "Forget them" can wipe it in one go.
+        webview.start(storage_path=str(login.BROWSER_PROFILE))
     finally:
         httpd.shutdown()
         httpd.server_close()

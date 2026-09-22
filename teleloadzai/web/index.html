@@ -264,7 +264,30 @@
 
       <div id="cookies-summary" class="hint" style="margin:12px 0 0"></div>
 
-      <div class="row" style="flex-wrap:wrap; margin-top:10px">
+      <!-- The easy road: log in inside a Teleloadzai window. We receive only
+           the cookies of that one site, and only at the moment they exist. -->
+      <div class="field" style="margin-top:14px">
+        <div class="hint" style="margin-bottom:8px">
+          <b>Log in here.</b> A window opens on the site. You log in the normal
+          way, then press Done — Teleloadzai takes only that site's cookies.
+        </div>
+        <div class="row" id="login-buttons" style="flex-wrap:wrap"></div>
+        <div class="hint warn-text hidden" id="login-blocked" style="margin-top:8px"></div>
+
+        <div class="card warn hidden" id="login-waiting" style="margin:12px 0 0">
+          <div class="title" id="login-waiting-title">Waiting for you</div>
+          <div class="hint" style="margin:6px 0 10px" id="login-waiting-text"></div>
+          <div class="row" style="flex-wrap:wrap">
+            <button id="login-done">I have logged in</button>
+            <button class="ghost" id="login-cancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="hint" style="margin:14px 0 6px">
+        Or use a file you exported yourself:
+      </div>
+      <div class="row" style="flex-wrap:wrap">
         <button class="ghost" id="cookies-import">Choose my cookies.txt…</button>
         <button class="ghost hidden" id="cookies-forget">Forget them</button>
       </div>
@@ -863,9 +886,62 @@ function renderCookies(state) {
     + `<br>Used by: ${state.used_by.join(", ")}.`;
 }
 
+function renderLogin(platforms, blocked) {
+  const box = $("login-buttons");
+  box.innerHTML = "";
+  // Why it cannot run is SAID. A row of dead buttons would be the dead end
+  // decisions 15 and 34 both forbid.
+  $("login-blocked").textContent = blocked ? "⚠️ Cannot log in here: " + blocked + "." : "";
+  $("login-blocked").classList.toggle("hidden", !blocked);
+  if (blocked) return;
+
+  for (const platform of platforms) {
+    const button = document.createElement("button");
+    button.className = "ghost tiny";
+    button.textContent = platform.name;
+    button.addEventListener("click", () => openLogin(platform));
+    box.appendChild(button);
+  }
+}
+
+async function openLogin(platform) {
+  cookieError("");
+  const result = await api("/api/login/open", { platform: platform.id });
+  if (result.error) { cookieError(result.error); return; }
+  $("login-waiting-title").textContent = "Log in to " + platform.name;
+  $("login-waiting-text").textContent =
+    "A window has opened on " + platform.name + ". Log in there the normal way — "
+    + "password, code by SMS, whatever it asks. When you can see your account, "
+    + "come back here and press the button.";
+  $("login-waiting").classList.remove("hidden");
+}
+
+$("login-done").addEventListener("click", async () => {
+  $("login-done").disabled = true;
+  $("login-waiting-text").textContent = "Taking the cookies…";
+  const result = await api("/api/login/finish", {});
+  $("login-done").disabled = false;
+  $("login-waiting").classList.add("hidden");
+  if (result.error) { cookieError(result.error); return; }
+  if (!result.kept) {
+    cookieError("No cookies came back from that window. It can mean the log-in "
+      + "did not finish. Try again, or import a cookies.txt.");
+    return;
+  }
+  renderCookies(result.cookies);
+  setStatus(result.kept + " cookies saved from the log-in.");
+});
+
+$("login-cancel").addEventListener("click", async () => {
+  await api("/api/login/cancel", {});
+  $("login-waiting").classList.add("hidden");
+  setStatus("");
+});
+
 async function loadCookies() {
   const result = await api("/api/cookies");
   renderCookies(result.cookies);
+  renderLogin(result.login_platforms || [], result.login_blocked);
 }
 
 $("cookies-import").addEventListener("click", async () => {
@@ -893,7 +969,17 @@ $("cookies-forget").addEventListener("click", async () => {
   cookieError("");
   const result = await api("/api/cookies/clear", {});
   renderCookies(result.cookies);
-  setStatus("Cookies forgotten.");
+  // The saved log-ins are a second thing, and Windows keeps that folder busy
+  // while the app runs. Say which of the two really happened — "forgotten"
+  // while the next log-in window would still open logged in would be a lie.
+  if (result.browser_wiped === "later") {
+    setStatus("Cookies forgotten. The saved log-ins are locked by Windows "
+      + "while Teleloadzai runs — they will be deleted the next time you start it.");
+  } else if (result.browser_wiped === "now") {
+    setStatus("Cookies forgotten, and the saved log-ins deleted.");
+  } else {
+    setStatus("Cookies forgotten.");
+  }
 });
 
 (async function start() {
