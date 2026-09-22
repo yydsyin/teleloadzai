@@ -180,8 +180,14 @@ def _rows(lines: list[str]) -> list[tuple[str, float | None, str]]:
     """
     found: list[tuple[str, float | None, str]] = []
     for line in lines:
-        row = line.strip()
-        if not row:
+        # ⚠️ Strip the LINE ENDING only, never the whitespace.
+        # A cookie may have an empty value, and then the line ends with the
+        # tab that separates the name from it. `.strip()` ate that tab, the
+        # line came back with six fields instead of seven, and it was thrown
+        # away in silence. Found 2026-09-22 by the audit: a real YouTube
+        # `PREF` cookie vanished, and the card said 6 where the file had 7.
+        row = line.rstrip("\r\n")
+        if not row.strip():
             continue
         if row.startswith("#"):
             # `#HttpOnly_.example.com` is a real cookie line wearing a comment
@@ -197,7 +203,7 @@ def _rows(lines: list[str]) -> list[tuple[str, float | None, str]]:
             when: float | None = float(parts[4])
         except ValueError:
             when = None
-        found.append((parts[0], when, line.rstrip("\n")))
+        found.append((parts[0], when, line.rstrip("\r\n")))
     return found
 
 

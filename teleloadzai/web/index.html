@@ -240,7 +240,15 @@
     <div class="field">
       <div class="head">
         <span class="hint">Log-in cookies</span>
-        <span class="hint" id="cookies-state">off</span>
+        <!-- A real switch, not a label. Until 2026-09-22 this said "on" or
+             "off" and nothing could change it: the only way to reach "off"
+             was "Forget them", which erases the cookies instead of pausing
+             them. Decision 9 promises the user is in control of this. -->
+        <label class="row hidden" id="cookies-switch-box" style="cursor:pointer; gap:6px">
+          <input type="checkbox" id="cookies-switch" style="width:16px;height:16px;accent-color:var(--accent)">
+          <span class="hint" id="cookies-state">off</span>
+        </label>
+        <span class="hint" id="cookies-state-plain">off</span>
       </div>
 
       <div class="hint" style="margin:8px 0 0; line-height:1.6">
@@ -896,11 +904,17 @@ function renderCookies(state) {
   $("cookies-import").textContent = have
     ? "Replace the file…" : "Choose my cookies.txt…";
 
+  // The switch only exists when there is something to switch. With no
+  // cookies it would be a control that cannot move — the defect it replaces.
+  $("cookies-switch-box").classList.toggle("hidden", !have);
+  $("cookies-state-plain").classList.toggle("hidden", !!have);
+
   if (!have) {
-    $("cookies-state").textContent = "off";
+    $("cookies-state-plain").textContent = "off — none saved";
     $("cookies-summary").textContent = "";
     return;
   }
+  $("cookies-switch").checked = !!state.enabled;
 
   // The file was fine when imported and is not any more. Say it, rather than
   // showing a healthy card over a file that no longer works (decision 34).
@@ -911,7 +925,7 @@ function renderCookies(state) {
     return;
   }
 
-  $("cookies-state").textContent = state.enabled ? "on" : "off";
+  $("cookies-state").textContent = state.enabled ? "on" : "off — paused";
   const sites = state.sites.join(", ")
     + (state.more_sites ? ` and ${state.more_sites} more` : "");
   const when = whenText(state.expires_at);
@@ -991,6 +1005,15 @@ function renderKeepNote() {
     : "Log-ins are kept, like in a browser, so you do not start again every "
       + "time. \"Forget them\" erases them whenever you want.";
 }
+
+$("cookies-switch").addEventListener("change", async () => {
+  // Pause the cookies without losing them. "Forget them" is the other
+  // button and it erases; this one only stops using what is saved.
+  const on = $("cookies-switch").checked;
+  $("cookies-state").textContent = on ? "on" : "off — paused";
+  await api("/api/settings", { cookies_enabled: on });
+  loadCookies();
+});
 
 $("cookies-keep").addEventListener("change", async () => {
   renderKeepNote();
