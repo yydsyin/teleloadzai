@@ -32,6 +32,7 @@ import shutil
 import threading
 import time
 from email.utils import parsedate_to_datetime
+from urllib.parse import urlsplit
 
 from . import cookies
 from .platforms import PLATFORMS
@@ -56,6 +57,11 @@ _LOGIN_URL = {
 }
 
 _lock = threading.Lock()        # one login window at a time, never two
+
+# How long we wait for a page WE asked for to finish loading. pywebview's own
+# limit is 20 seconds and it is not enough for a heavy site, which is how a
+# working window came back as "Main window failed to start".
+LOAD_PATIENCE = 60
 
 
 class LoginError(RuntimeError):
@@ -222,21 +228,59 @@ def finish() -> int:
         raise LoginError("no log-in window is open")
 
     try:
-        home = home_url(platform_id)
-        if home:
-            window.load_url(home)
-        # `get_cookies` waits for the page to load by itself, but the previous
-        # page was already loaded, so the wait can pass before the new one
-        # arrives. A breath here is cheaper than an empty jar.
-        time.sleep(2.5)
+        # Only move if we are NOT already on the site. YouTube finishes its
+        # log-in on accounts.google.com and must be sent home; TikTok finishes
+        # on tiktok.com and must be left alone.
+        #
+        # ⚠️ Re-navigating for nothing is not merely wasteful: `get_cookies`
+        # waits 20 seconds for the new page to say it has loaded, and TikTok
+        # does not make it. The window was fine and the app answered "Main
+        # window failed to start" (2026-09-22). Not moving is the fix; the
+        # message below is for the times we must move and the site is slow.
+        if _needs_moving(window, platform_id):
+            # Wait for OUR navigation to finish, with our own patience.
+            # `get_cookies` waits 20 seconds and no more, and a heavy site
+            # crosses that line: YouTube's home and TikTok's both did, on
+            # different runs (2026-09-22). Clearing the flag first means we
+            # wait for the page we asked for, not for one already loaded.
+            window.events.loaded.clear()
+            window.load_url(home_url(platform_id))
+            if not window.events.loaded.wait(LOAD_PATIENCE):
+                # Not fatal on its own -- the page may still answer. We only
+                # stop pretending the 20-second wait below is enough.
+                time.sleep(2.0)
 
-        jar = window.get_cookies()
+        try:
+            jar = window.get_cookies()
+        except Exception as problem:
+            raise LoginError(
+                "The site took too long to answer, so the cookies could not be "
+                "read. Leave the window open on the site itself, wait for the "
+                "page to finish, and press the button again."
+            ) from problem
+
         fresh = _netscape_lines(jar)
         kept = cookies.merge_lines(fresh) if fresh else 0
     finally:
         close()
 
     return kept
+
+
+def _needs_moving(window, platform_id: str) -> bool:
+    """True when the window is not on the platform's own site yet."""
+    home = home_url(platform_id)
+    if not home:
+        return False
+    try:
+        here = (window.get_current_url() or "").lower()
+    except Exception:
+        return True                  # cannot tell -> the safe move is to go
+    if not here:
+        return True
+    sites = next((p.domains for p in PLATFORMS if p.id == platform_id), ())
+    host = urlsplit(here).hostname or ""
+    return not any(host == d or host.endswith("." + d) for d in sites)
 
 
 # Windows will not let a folder go while WebView2 still holds it, and WebView2
