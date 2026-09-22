@@ -24,11 +24,13 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import cookies, tools
+from . import cookies, tiktokserver, tools
 from .paths import BIN_DIR
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -58,6 +60,9 @@ class Request:
     # `cookies.FILE_CAPABLE` ever receive it -- the others take a cookie only
     # as text on a command line, which hard rule 1 forbids.
     cookie_file: Path | None = None
+    # True when this job may use cookies at all. TikTokDownloader wants them
+    # as a header string, not a file, so it cannot use `cookie_file`.
+    cookie_header: bool = False
 
 
 @dataclass
@@ -222,9 +227,93 @@ RECIPES: dict[str, Recipe] = {
 }
 
 
+def _tiktok(request: Request, on_progress: Callable[[int], None] | None) -> RunResult:
+    """TikTokDownloader: ask its local server where the file is, then fetch it.
+
+    It has no command line, so there is no recipe to build. Its Web API hands
+    back an address, not a file (checked 2026-09-22 against a real Douyin
+    work: 32 fields, `downloads` holding a direct link). Fetching it ourselves
+    is what gives this tool a real percentage instead of the empty bar that
+    decision 33 forbids -- a direct link carries its length.
+
+    The server is started here and released in `finally`, so it is never
+    listening longer than one job needs. That is deliberate: it binds
+    `0.0.0.0` and asks for no token.
+    """
+    douyin = "douyin.com" in request.url or "iesdouyin" in request.url
+    site = "douyin.com" if douyin else "tiktok.com"
+
+    tiktokserver.SERVER.start()
+    try:
+        data = tiktokserver.detail(
+            request.url, douyin,
+            cookies.header_for(site, bool(request.cookie_header)) if request.cookie_header else "",
+        )
+    finally:
+        tiktokserver.SERVER.release()
+
+    address = data.get("downloads") or ""
+    if request.mode == "mp3":
+        address = data.get("music_url") or address
+    if not isinstance(address, str) or not address.startswith("http"):
+        raise RunnerError(
+            "TikTokDownloader found the work but gave no file to download. "
+            "It may be a photo post, or a live stream that has ended.")
+
+    name = request.out_name or _clean_name(data)
+    suffix = ".mp3" if request.mode == "mp3" and data.get("music_url") else ".mp4"
+    target = request.out_dir / (name + suffix)
+    _fetch(address, target, site, on_progress)
+    return RunResult([target], [f"TikTokDownloader: {data.get('desc', '')[:80]}"])
+
+
+def _clean_name(data: dict) -> str:
+    """A file name from what the site says, safe for Windows."""
+    raw = f"{data.get('nickname', '')} {data.get('desc', '')}".strip() or "video"
+    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", raw)[:120].strip() or "video"
+
+
+def _fetch(address: str, target: Path, site: str,
+           on_progress: Callable[[int], None] | None) -> None:
+    """Download a direct link, reporting a real percentage.
+
+    A Referer is required: these CDN links refuse a request that does not look
+    like it came from the site itself.
+    """
+    request = urllib.request.Request(address, headers={
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0 Safari/537.36"),
+        "Referer": f"https://www.{site}/",
+    })
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_suffix(target.suffix + ".part")
+    try:
+        with urllib.request.urlopen(request, timeout=60) as answer:
+            total = int(answer.headers.get("Content-Length") or 0)
+            done = 0
+            with open(partial, "wb") as out:
+                while True:
+                    block = answer.read(256 * 1024)
+                    if not block:
+                        break
+                    out.write(block)
+                    done += len(block)
+                    if on_progress and total:
+                        on_progress(min(100, int(done * 100 / total)))
+        if partial.stat().st_size == 0:
+            raise RunnerError("The download came back empty.")
+        partial.replace(target)
+    except urllib.error.URLError as problem:
+        partial.unlink(missing_ok=True)     # never leave half a file behind
+        raise RunnerError(f"The video could not be downloaded: {problem.reason}") from problem
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
+
+
 def can_run(tool_id: str) -> bool:
     """True when we know how to drive this tool at all."""
-    return tool_id in RECIPES or tool_id == "yt-dlp"
+    return tool_id in RECIPES or tool_id in ("yt-dlp", "tiktokdownloader")
 
 
 # A tool can be installed and still be useless to us today. Offering it and
@@ -232,8 +321,6 @@ def can_run(tool_id: str) -> bool:
 # TikTok link proposed TikTokDownloader, looked ready, and answered "no
 # runner" when pressed (found 2026-09-22 by the audit).
 NOT_READY: dict[str, str] = {
-    "tiktokdownloader":
-        "it has no command line — it needs its own local server, which is not built yet",
     "f2":
         "it needs a cookie in its own settings file, which comes with step 5",
 }
@@ -285,6 +372,10 @@ def run(
     on_start: Callable[[subprocess.Popen], None] | None = None,
 ) -> RunResult:
     """Run one specialist tool and report what it actually wrote."""
+    if tool_id == "tiktokdownloader":
+        # No command line exists for this one; it is driven over HTTP.
+        return _tiktok(request, on_progress)
+
     recipe = RECIPES.get(tool_id)
     if recipe is None:
         raise RunnerError(f"no recipe for {tool_id}")

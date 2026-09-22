@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import cookies, dialogs, login, runners, tools, ytdlp
+from . import cookies, dialogs, login, runners, tiktokserver, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import Queue
@@ -404,7 +404,8 @@ class Handler(BaseHTTPRequestHandler):
                             limit_minutes=record_minutes(),
                             cookie_file=cookies.path_for(tool, on),
                             cookie_note=cookies.unusable_reason(tool, on) or "",
-                            platform=(body.get("platform") or "").strip())
+                            platform=(body.get("platform") or "").strip(),
+                            cookie_header=on and tool in cookies.HEADER_CAPABLE)
             self._json(job.as_dict())
             return
 

@@ -75,6 +75,12 @@ COMMAND_LINE_ONLY = {
         "file, which Teleloadzai does not write yet",
 }
 
+# TikTokDownloader takes the cookie in the BODY of a request to its own local
+# server, not on a command line -- so it is safe to give it one, and it is not
+# in the list above. It needs the cookie as a header string rather than a
+# file, which is what `header_for` is for.
+HEADER_CAPABLE = ("tiktokdownloader",)
+
 _MAX_BYTES = 8 * 1024 * 1024        # a real export is a few kB; 8 MB is absurd
 
 
@@ -436,6 +442,32 @@ def have_file() -> bool:
     return COOKIE_FILE.is_file() and COOKIE_FILE.stat().st_size > 0
 
 
+def header_for(site: str, enabled: bool) -> str:
+    """The cookies of ONE site as `name=value; name=value`, or "".
+
+    For a tool that wants a cookie string instead of a file. Only that site's
+    cookies are returned -- handing TikTokDownloader the whole jar would give
+    it every other log-in for nothing.
+
+    ⚠️ The result IS secret. It goes straight into a request body to
+    127.0.0.1 and nowhere else: never a command line, never a log, never an
+    error message (hard rule 1).
+    """
+    if not enabled or not have_file():
+        return ""
+    site = site.lstrip(".").lower()
+    pairs: list[str] = []
+    for domain, _when, raw in _rows(COOKIE_FILE.read_text(encoding="utf-8").splitlines()):
+        host = domain.lstrip(".").lower()
+        if host != site and not host.endswith("." + site):
+            continue
+        row = raw[len("#HttpOnly_"):] if raw.startswith("#HttpOnly_") else raw
+        parts = row.split("\t")
+        if len(parts) >= 7:
+            pairs.append(f"{parts[5]}={parts[6]}")
+    return "; ".join(pairs)
+
+
 def path_for(tool_id: str, enabled: bool) -> Path | None:
     """The cookie file to give this tool, or None.
 
@@ -461,7 +493,7 @@ def unusable_reason(tool_id: str, enabled: bool) -> str | None:
         return None
     if tool_id in COMMAND_LINE_ONLY:
         return COMMAND_LINE_ONLY[tool_id]
-    if tool_id not in FILE_CAPABLE:
+    if tool_id not in FILE_CAPABLE and tool_id not in HEADER_CAPABLE:
         return f"Teleloadzai cannot give cookies to {tool_id} yet"
     return None
 

@@ -41,6 +41,7 @@ class Job:
     # still fails for not being logged in, and nothing ever says the tool was
     # never given them (decision 34).
     cookie_note: str = ""
+    cookie_header: bool = False   # may this job use cookies as a header?
     platform: str = ""          # which site, so a failure can offer its log-in
     state: str = WAITING
     percent: str = ""
@@ -60,7 +61,9 @@ class Job:
             "eta": self.eta, "files": self.files, "error": self.error,
             # The PATH never leaves this module -- only whether cookies were
             # used, and the reason when they were not.
-            "with_cookies": bool(self.cookie_file),
+            # Either road counts. Saying "no cookies" after a job that used
+            # them as a header would be a small lie the user cannot check.
+            "with_cookies": bool(self.cookie_file) or self.cookie_header,
             "cookie_note": self.cookie_note,
             "platform": self.platform,
             # Did the tool itself blame a missing log-in? Only then may the
@@ -84,7 +87,7 @@ class Queue:
             target: Path | None = None, force: bool = False,
             tool: str = "yt-dlp", limit_minutes: int = 60,
             cookie_file: Path | None = None, cookie_note: str = "",
-            platform: str = "") -> Job:
+            platform: str = "", cookie_header: bool = False) -> Job:
         job = Job(
             id=uuid.uuid4().hex[:12], url=url, mode=mode, quality=quality,
             title=title or url, folder=str(target.parent if target else folder),
@@ -92,6 +95,7 @@ class Queue:
             limit_minutes=limit_minutes,
             cookie_file=str(cookie_file) if cookie_file else "",
             cookie_note=cookie_note, platform=platform,
+            cookie_header=cookie_header,
         )
         with self._lock:
             self._jobs[job.id] = job
@@ -137,11 +141,12 @@ class Queue:
             # fail again for a reason the first attempt had already solved.
             cookie_file = Path(old.cookie_file) if old.cookie_file else None
             cookie_note, platform = old.cookie_note, old.platform
+            cookie_header = old.cookie_header
         return self.add(url, mode, quality, title, Path(folder),
                         Path(target) if target else None, force=force, tool=tool,
                         limit_minutes=limit_minutes,
                         cookie_file=cookie_file, cookie_note=cookie_note,
-                        platform=platform)
+                        platform=platform, cookie_header=cookie_header)
 
     def clear_finished(self) -> int:
         with self._lock:
@@ -211,6 +216,10 @@ class Queue:
                         mode=job.mode, quality=job.quality,
                         limit_minutes=job.limit_minutes, force=job.force,
                         cookie_file=cookie_file,
+                        # TikTokDownloader wants a cookie STRING, not a file,
+                        # so it cannot read `cookie_file`. This says it may
+                        # ask for one.
+                        cookie_header=job.cookie_header,
                     ),
                     on_progress=on_percent, on_start=on_start,
                 )
