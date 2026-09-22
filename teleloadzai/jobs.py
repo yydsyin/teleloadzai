@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import ytdlp
+from . import runners, ytdlp
 
 WAITING, RUNNING, DONE, ERROR, CANCELLED = "waiting", "running", "done", "error", "cancelled"
 ACTIVE_STATES = (WAITING, RUNNING)
@@ -65,11 +65,12 @@ class Queue:
     # -- public ------------------------------------------------------------
 
     def add(self, url: str, mode: str, quality: str, title: str, folder: Path,
-            target: Path | None = None, force: bool = False) -> Job:
+            target: Path | None = None, force: bool = False,
+            tool: str = "yt-dlp") -> Job:
         job = Job(
             id=uuid.uuid4().hex[:12], url=url, mode=mode, quality=quality,
             title=title or url, folder=str(target.parent if target else folder),
-            target=str(target) if target else "", force=force,
+            target=str(target) if target else "", force=force, tool=tool,
         )
         with self._lock:
             self._jobs[job.id] = job
@@ -110,8 +111,9 @@ class Queue:
                 return None
             url, mode, quality = old.url, old.mode, old.quality
             title, folder, target = old.title, old.folder, old.target
+            tool = old.tool
         return self.add(url, mode, quality, title, Path(folder),
-                        Path(target) if target else None, force=force)
+                        Path(target) if target else None, force=force, tool=tool)
 
     def clear_finished(self) -> int:
         with self._lock:
@@ -153,13 +155,34 @@ class Queue:
                 if job.state == CANCELLED:
                     process.terminate()
 
+        def on_percent(percent: int) -> None:
+            """The specialist tools give a bare number, not yt-dlp's three fields."""
+            with self._lock:
+                job.percent = f"{percent}%"
+
         try:
-            result = ytdlp.download(
-                job.url, job.mode, Path(job.folder),
-                on_progress=on_progress, quality=job.quality, on_start=on_start,
-                out_path=Path(job.target) if job.target else None,
-                force=job.force,
-            )
+            if job.tool == "yt-dlp":
+                result = ytdlp.download(
+                    job.url, job.mode, Path(job.folder),
+                    on_progress=on_progress, quality=job.quality, on_start=on_start,
+                    out_path=Path(job.target) if job.target else None,
+                    force=job.force,
+                )
+            else:
+                # A specialist tool cannot be told an exact file name, so it
+                # gets the folder the user chose and names the file itself.
+                target = Path(job.target) if job.target else None
+                result = runners.run(
+                    job.tool,
+                    runners.Request(
+                        url=job.url,
+                        out_dir=target.parent if target else Path(job.folder),
+                        out_name=target.stem if target else "",
+                        mode=job.mode, quality=job.quality,
+                    ),
+                    on_progress=on_percent, on_start=on_start,
+                )
+
             with self._lock:
                 if job.state != CANCELLED:
                     job.files = [str(p) for p in result.files]

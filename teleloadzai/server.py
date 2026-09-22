@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import dialogs, tools, ytdlp
+from . import dialogs, runners, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import Queue
@@ -308,12 +308,20 @@ class Handler(BaseHTTPRequestHandler):
             quality = str(body.get("quality") or "best")
             title = body.get("title") or url
             target = (body.get("target") or "").strip()
+            tool = (body.get("tool") or "yt-dlp").strip()
             allowed = ytdlp.AUDIO_QUALITIES if mode == "mp3" else ytdlp.VIDEO_QUALITIES
             if mode not in ("mp3", "mp4") or quality not in allowed:
                 self._json({"error": "bad mode or quality"}, 400)
                 return
+            # Only a tool we know how to drive, and only one that is here.
+            if not runners.can_run(tool):
+                self._json({"error": f"no runner for {tool}"}, 400)
+                return
+            if tools.installed_path(tool) is None:
+                self._json({"error": f"{tool} is not installed"}, 400)
+                return
             job = QUEUE.add(url, mode, quality, title, download_folder(),
-                            Path(target) if target else None)
+                            Path(target) if target else None, tool=tool)
             self._json(job.as_dict())
             return
 

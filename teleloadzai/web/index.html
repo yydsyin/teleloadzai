@@ -157,6 +157,8 @@
       <button class="choice" data-mode="mp4" aria-pressed="true">MP4 — video</button>
       <span class="hint" style="margin-left:6px">Quality</span>
       <select id="quality"></select>
+      <span class="hint hidden" id="tool-label" style="margin-left:6px">Tool</span>
+      <select id="tool-pick" class="hidden"></select>
     </div>
 
     <div class="hidden" id="need-tool" style="margin-bottom:12px">
@@ -264,9 +266,30 @@ let currentUrl = "";
 let qualityLists = { mp3: ["best"], mp4: ["best"] };
 let polling = false;
 let askWhere = true;
+let currentTools = [];
+let currentPlatform = "";
 
 function updateGoLabel() {
   $("go").textContent = askWhere ? "Add…" : "Add to queue";
+}
+
+/** The chosen tool decides the tag, and whether we must install first. */
+function showChosenTool() {
+  const chosen = currentTools.find((t) => t.id === $("tool-pick").value) || currentTools[0];
+  $("tool").textContent = chosen ? chosen.name + " — " + chosen.why : "";
+
+  // Never answer "not supported" when a tool exists: offer it (decision 6).
+  const missing = chosen && !chosen.installed ? chosen : null;
+  $("need-tool").classList.toggle("hidden", !missing);
+  $("go").disabled = Boolean(missing);
+  if (missing) {
+    const size = missing.size ? ` (${Math.round(missing.size / 1048576)} MB)` : "";
+    const python = missing.needs_python ? " It also needs Python." : "";
+    $("need-tool-text").textContent =
+      `${currentPlatform} is best with ${missing.name}${size}, and it is not installed yet.${python}`;
+    $("need-tool-install").dataset.tool = missing.id;
+    $("need-tool-install").textContent = `Install ${missing.name} and continue`;
+  }
 }
 
 const setStatus = (text) => { $("status").textContent = text || ""; };
@@ -321,21 +344,17 @@ async function read() {
   }
 
   $("platform").textContent = found.platform;
-  const best = found.tools[0];
-  $("tool").textContent = best ? best.name + " — " + best.why : "";
+  currentPlatform = found.platform;
+  currentTools = found.tools || [];
 
-  // Never answer "not supported" when a tool exists: offer it (decision 6).
-  const missing = best && !best.installed ? best : null;
-  $("need-tool").classList.toggle("hidden", !missing);
-  $("go").disabled = Boolean(missing);
-  if (missing) {
-    const size = missing.size ? ` (${Math.round(missing.size / 1048576)} MB)` : "";
-    const python = missing.needs_python ? " It also needs Python." : "";
-    $("need-tool-text").textContent =
-      `${found.platform} is best with ${missing.name}${size}, and it is not installed yet.${python}`;
-    $("need-tool-install").dataset.tool = missing.id;
-    $("need-tool-install").textContent = `Install ${missing.name} and continue`;
-  }
+  // The first one is the Teleloadzai default; the others are offered only
+  // when they exist, so the choice never appears for nothing (decision 13).
+  $("tool-pick").innerHTML = currentTools
+    .map((t) => `<option value="${t.id}">${t.name}</option>`).join("");
+  const several = currentTools.length > 1;
+  $("tool-pick").classList.toggle("hidden", !several);
+  $("tool-label").classList.toggle("hidden", !several);
+  showChosenTool();
 
   setStatus("Asking the site for the title…");
   const info = await api("/api/probe", { url: found.final_url || url });
@@ -642,6 +661,8 @@ $("need-tool-install").addEventListener("click", async () => {
   read();        // read the link again, now that the tool is here
 });
 
+$("tool-pick").addEventListener("change", showChosenTool);
+
 $("read").addEventListener("click", read);
 $("url").addEventListener("keydown", (event) => { if (event.key === "Enter") read(); });
 
@@ -658,6 +679,7 @@ $("go").addEventListener("click", async () => {
 
   const job = await api("/api/download", {
     url: currentUrl, mode, quality: $("quality").value, title, target,
+    tool: $("tool-pick").value || "yt-dlp",
   });
   if (job.error) { setStatus("Error: " + job.error); return; }
   setStatus("");
