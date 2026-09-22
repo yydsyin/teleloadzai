@@ -271,8 +271,19 @@
 
       <div class="hint" style="margin-top:8px; line-height:1.6">
         Export the file from your browser with a "cookies.txt" extension, and
-        pick the format called <b>Netscape</b>. Teleloadzai keeps its own copy,
-        so your file is never changed.
+        pick the format called <b>Netscape</b>. Your file is never changed.
+        <br>
+        <b>Teleloadzai keeps only the sites it can download from</b> and throws
+        the rest away before saving — your bank and your mail never come in.
+      </div>
+
+      <label class="row" style="cursor:pointer; margin-top:8px">
+        <input type="checkbox" id="cookies-keep-all" style="width:16px;height:16px;accent-color:var(--accent)">
+        <span class="hint">Keep every site, even the ones Teleloadzai does not know</span>
+      </label>
+      <div class="hint" style="margin:4px 0 0 24px; line-height:1.6">
+        Only tick this for a site that is missing. It saves the whole file,
+        including anything else you are logged into.
       </div>
 
       <div class="hint hidden" id="cookies-error" style="margin-top:8px"></div>
@@ -862,11 +873,17 @@ $("cookies-import").addEventListener("click", async () => {
   $("cookies-import").disabled = true;
   setStatus("Choose your cookies.txt in the Windows window…");
   try {
-    const result = await api("/api/cookies/import", {});
+    const result = await api("/api/cookies/import", {
+      keep_all: $("cookies-keep-all").checked,
+    });
     if (result.cancelled) { setStatus(""); return; }
     if (result.error) { cookieError(result.error); setStatus(""); return; }
     renderCookies(result.cookies);
-    setStatus(`${result.imported} cookies imported.`);
+    // Say what was thrown away, not only what was kept. It is the proof that
+    // the rest of the browser export never entered the app.
+    setStatus(result.ignored
+      ? `${result.imported} cookies kept. ${result.ignored} from ${result.ignored_sites} other sites were ignored.`
+      : `${result.imported} cookies kept.`);
   } finally {
     $("cookies-import").disabled = false;
   }

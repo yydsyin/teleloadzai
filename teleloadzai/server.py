@@ -401,7 +401,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"cancelled": True})
                 return
             try:
-                summary = cookies.import_file(chosen)
+                # keep_all is the way out for a site our table does not list.
+                # yt-dlp handles far more sites than we name, and refusing
+                # those would be the dead end decision 15 forbids.
+                summary = cookies.import_file(chosen, keep_all=bool(body.get("keep_all")))
             except cookies.CookieFileError as problem:
                 # A refusal the user can act on, never a bare "failed".
                 self._json({"error": cookies.redact(str(problem))}, 400)
@@ -410,6 +413,8 @@ class Handler(BaseHTTPRequestHandler):
             settings["cookies_enabled"] = True      # importing IS the consent
             save_settings(settings)
             self._json({"imported": summary["total"],
+                        "ignored": summary["ignored"],
+                        "ignored_sites": summary["ignored_sites"],
                         "cookies": cookies.state(True)})
             return
 

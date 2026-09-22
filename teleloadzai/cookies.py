@@ -45,7 +45,6 @@ day, does not rewrite. yt-dlp does.)
 from __future__ import annotations
 
 import re
-import shutil
 import time
 from pathlib import Path
 
@@ -141,23 +140,50 @@ def _read_lines(path: Path) -> list[str]:
     return raw.splitlines()
 
 
-def inspect(path: Path) -> dict:
-    """Describe a Netscape cookie file: how many, for which sites, until when.
+def known_domains() -> set[str]:
+    """The sites Teleloadzai can actually download from.
 
-    Raises ``CookieFileError`` with a sentence the user can act on. Never
-    returns, logs or keeps a cookie value.
+    Read from `platforms.py` rather than written again here, so a platform
+    added there is covered without anyone remembering this file.
+
+    ⚠️ `google.com` is deliberately NOT in this list, although YouTube log-in
+    cookies also exist there. Gmail's session lives on `.google.com` too, and
+    keeping that domain would put a mail account inside the very file this
+    filter exists to shrink. yt-dlp's own advice is to export from
+    youtube.com, which carries its own copy. **Not verified with a real
+    Google log-in** -- if YouTube ever needs the google.com cookies, that is a
+    probe to run then, not a guess to make now.
     """
-    lines = _read_lines(path)
+    from .platforms import PLATFORMS      # imported late: platforms is heavier
+    return {domain.lower() for platform in PLATFORMS for domain in platform.domains}
 
-    domains: dict[str, int] = {}
-    total = 0
-    expired = 0
-    soonest_useful: float | None = None
-    now = time.time()
 
+def _known_match(domain: str, known: set[str]) -> str | None:
+    """The site this cookie belongs to, or None when we do not know it.
+
+    Returns the site from `platforms.py`, not the raw domain, so
+    `.www.instagram.com` and `.instagram.com` count as one site instead of
+    appearing twice on the card.
+    """
+    clean = domain.lstrip(".").lower()
+    for site in known:
+        if clean == site or clean.endswith("." + site):
+            return site
+    return None
+
+
+def _rows(lines: list[str]) -> list[tuple[str, float | None, str]]:
+    """Every cookie line, as (domain, expiry, the original line).
+
+    The original line is kept whole so a file we write back is byte-for-byte
+    what the tools already accept -- we are filtering, not reformatting.
+    """
+    found: list[tuple[str, float | None, str]] = []
     for line in lines:
         row = line.strip()
-        if not row or row.startswith("#"):
+        if not row:
+            continue
+        if row.startswith("#"):
             # `#HttpOnly_.example.com` is a real cookie line wearing a comment
             # hat. Skipping it silently would undercount a working file.
             if not row.startswith("#HttpOnly_"):
@@ -167,24 +193,29 @@ def inspect(path: Path) -> dict:
         parts = row.split("\t")
         if len(parts) < 7:
             continue
-
-        domain, _flag, _path, _secure, expiry, _name, _value = parts[:7]
-        total += 1
-        clean_domain = domain.lstrip(".").lower()
-        domains[clean_domain] = domains.get(clean_domain, 0) + 1
-
         try:
-            when = float(expiry)
+            when: float | None = float(parts[4])
         except ValueError:
-            continue
-        if when == 0:
-            continue                     # session cookie: dies with the browser
-        if when < now:
-            expired += 1
-        elif soonest_useful is None or when < soonest_useful:
-            soonest_useful = when
+            when = None
+        found.append((parts[0], when, line.rstrip("\n")))
+    return found
 
-    if total == 0:
+
+def inspect(path: Path, keep_all: bool = False) -> dict:
+    """Describe a Netscape cookie file: how many, for which sites, until when.
+
+    Also splits it in two: the cookies for sites we can download from, and
+    everything else. A browser export usually holds every site you are logged
+    into -- yt-dlp's own FAQ warns not to let such a file fall into the wrong
+    hands -- and there is no reason for a bank or a mailbox to enter this app.
+
+    Raises ``CookieFileError`` with a sentence the user can act on. Never
+    returns, logs or keeps a cookie value.
+    """
+    lines = _read_lines(path)
+    rows = _rows(lines)
+
+    if not rows:
         if any("{" in line for line in lines[:5]):
             raise CookieFileError(
                 "That file is JSON, not the format the download tools read. In "
@@ -196,18 +227,57 @@ def inspect(path: Path) -> dict:
             "\"# Netscape HTTP Cookie File\" and have one cookie per line."
         )
 
-    if expired == total:
+    known = known_domains()
+    now = time.time()
+
+    kept: list[str] = []
+    kept_domains: dict[str, int] = {}
+    dropped_domains: dict[str, int] = {}
+    expired = 0
+    soonest_useful: float | None = None
+
+    for domain, when, raw in rows:
+        clean = domain.lstrip(".").lower()
+        site = _known_match(clean, known)
+        if site is None and not keep_all:
+            dropped_domains[clean] = dropped_domains.get(clean, 0) + 1
+            continue
+
+        kept.append(raw)
+        label = site or clean          # keep_all: show the raw domain
+        kept_domains[label] = kept_domains.get(label, 0) + 1
+        if when is None or when == 0:
+            continue                     # session cookie: dies with the browser
+        if when < now:
+            expired += 1
+        elif soonest_useful is None or when < soonest_useful:
+            soonest_useful = when
+
+    if not kept:
+        others = sorted(dropped_domains)[:4]
         raise CookieFileError(
-            "Every cookie in that file has expired. Log in to the site again in "
-            "your browser, then export a fresh file."
+            "That file has no cookies for a site Teleloadzai can download from"
+            + (f" — it holds {', '.join(others)} and others" if others else "")
+            + ". Log in to the site you want, then export again. If you need a "
+              "site Teleloadzai does not know yet, tick \"keep every site\"."
         )
 
-    top = sorted(domains.items(), key=lambda pair: (-pair[1], pair[0]))
+    if expired == len(kept):
+        raise CookieFileError(
+            "Every usable cookie in that file has expired. Log in to the site "
+            "again in your browser, then export a fresh file."
+        )
+
+    top = sorted(kept_domains.items(), key=lambda pair: (-pair[1], pair[0]))
     return {
-        "total": total,
+        "total": len(kept),
         "expired": expired,
         "sites": [name for name, _count in top],
         "expires_at": soonest_useful,
+        # What never entered the app. Counted, so the card can prove it.
+        "ignored": sum(dropped_domains.values()),
+        "ignored_sites": len(dropped_domains),
+        "lines": kept,
     }
 
 
@@ -215,27 +285,44 @@ def inspect(path: Path) -> dict:
 # what the app does with it
 # --------------------------------------------------------------------------
 
-def import_file(chosen: Path) -> dict:
-    """Check the user's file, then keep our own copy of it.
+def import_file(chosen: Path, keep_all: bool = False) -> dict:
+    """Check the user's file, then write our own SHORTER copy of it.
 
-    The file the user picked is never opened for writing and never handed to a
-    tool: yt-dlp rewrites the jar it is given (measured 2026-09-22), and that
-    is not our file to grow.
+    Two things happen here, and neither is a copy:
+
+    * **The file is filtered.** Only cookies for sites Teleloadzai can
+      download from are written. A browser export usually carries every site
+      you are logged into; none of the rest has any business being here, and
+      dropping it before writing means it never lands on our disk at all.
+    * **We write our own file.** yt-dlp rewrites the jar it is given
+      (measured 2026-09-22: a 2-line probe file came back with 12), so the
+      file the user picked is never handed to a tool and never opened for
+      writing. It is read once and closed.
+
+    ``keep_all`` is the way out for a site we do not know yet -- yt-dlp
+    handles far more sites than our table lists, and refusing those would be
+    the dead end decision 15 forbids. The user asks for it explicitly.
     """
     chosen = Path(chosen)
     if not chosen.is_file():
         raise CookieFileError("That file no longer exists. Choose it again.")
 
-    summary = inspect(chosen)           # raises with a reason if unusable
+    summary = inspect(chosen, keep_all=keep_all)     # raises with a reason
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.copyfile(chosen, COOKIE_FILE)
+        COOKIE_FILE.write_text(
+            "# Netscape HTTP Cookie File\n"
+            "# Written by Teleloadzai. Only the sites it can download from.\n"
+            + "\n".join(summary["lines"]) + "\n",
+            encoding="utf-8",
+        )
     except OSError as problem:
         raise CookieFileError(
-            f"The file could not be copied into Teleloadzai: {problem.strerror}"
+            f"The cookies could not be saved: {problem.strerror}"
         ) from problem
 
+    summary.pop("lines", None)          # never hand cookie lines back upwards
     return summary
 
 
@@ -298,6 +385,8 @@ def state(enabled: bool) -> dict:
         }
 
     saved = COOKIE_FILE.stat().st_mtime
+    # Our own file is already filtered, so this reads it only to count. The
+    # cookie lines themselves stop here and never travel to the page.
     return {
         "enabled": enabled,
         "have_file": True,
