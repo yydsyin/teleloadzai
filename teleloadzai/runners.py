@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import tools
+from . import cookies, tools
 from .paths import BIN_DIR
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -54,6 +54,10 @@ class Request:
     limit_minutes: int = 60
     # The user has asked again for something the tool believes it already has.
     force: bool = False
+    # Teleloadzai's own copy of the cookie file, or None. Only the tools in
+    # `cookies.FILE_CAPABLE` ever receive it -- the others take a cookie only
+    # as text on a command line, which hard rule 1 forbids.
+    cookie_file: Path | None = None
 
 
 @dataclass
@@ -90,7 +94,12 @@ class Recipe:
 
 def _gallery_dl(_exe: Path, r: Request) -> list[str]:
     # -D is the exact folder, no category sub-folders.
-    return [r.url, "-D", str(r.out_dir), "--windows-filenames"]
+    command = [r.url, "-D", str(r.out_dir), "--windows-filenames"]
+    # `-C FILE` reads the same Netscape file yt-dlp does (read from its own
+    # --help, 2026-09-22). This is what opens a private Instagram post.
+    if r.cookie_file:
+        command += ["--cookies", str(r.cookie_file)]
+    return command
 
 
 # Our quality names are not streamlink's. It calls them 1080p60, 720p, worst,
@@ -110,6 +119,11 @@ def _streamlink(exe: Path, r: Request) -> list[str]:
     wanted = "audio_only,worst" if r.mode == "mp3" else _STREAMLINK_QUALITY.get(r.quality, "best")
 
     command = [str(exe), r.url, wanted, "-o", str(r.out_dir / name), "--progress", "force"]
+    # streamlink spells it differently from the other two, and it does NOT
+    # rewrite the file (both checked 2026-09-22). Subscriber-only streams need
+    # it; a public Twitch channel does not.
+    if r.cookie_file:
+        command += ["--http-cookies-file", str(r.cookie_file)]
     if r.limit_minutes > 0:
         # Without this a live stream records until the disk is full.
         command += ["--stream-segmented-duration", f"{r.limit_minutes}m"]
@@ -344,8 +358,14 @@ def run(
 
 
 def _short_error(tail: list[str]) -> str:
+    """The line worth showing, washed of anything that could be a cookie.
+
+    This returns raw output from somebody else's program straight onto the
+    screen. Decision 34 wants those words; hard rule 1 forbids one kind of
+    word inside them. `redact` is what lets both be true (added 2026-09-22).
+    """
     for line in reversed(tail):
         clean = line.strip()
         if any(word in clean.lower() for word in ("error", "失败", "错误", "traceback")):
-            return clean[:200]
-    return tail[-1][:200] if tail else ""
+            return cookies.redact(clean[:200])
+    return cookies.redact(tail[-1][:200]) if tail else ""

@@ -107,6 +107,7 @@
   .err { color: var(--bad); font-size: 13px; margin-top: 6px; word-break: break-word; }
   a { color: var(--accent); }
   .warn { border-left: 3px solid var(--bad); padding-left: 12px; }
+  .warn-text { color: var(--bad); }
 </style>
 </head>
 <body>
@@ -231,6 +232,50 @@
         A Windows "Save as" window opens when you add a link, so you choose the
         folder and the name for that one file.
       </div>
+    </div>
+
+    <!-- Decision 35: a screen that asks for something sensitive explains
+         itself FIRST. What it is, why it is needed, what we do not do with
+         it, and the risk -- before any switch. -->
+    <div class="field">
+      <div class="head">
+        <span class="hint">Log-in cookies</span>
+        <span class="hint" id="cookies-state">off</span>
+      </div>
+
+      <div class="hint" style="margin:8px 0 0; line-height:1.6">
+        Some links only work if the app can prove you are logged in: a private
+        Instagram post, an age-restricted YouTube video, anything on Weibo.
+        <br><br>
+        Your browser already holds that proof. It is called a
+        <b>cookie</b> — a small piece of text your browser saved when you
+        logged in, which says "this is me".
+        <br><br>
+        <b>You never type a password here.</b> The file stays on this PC. It
+        goes straight to the download tool and nowhere else.
+      </div>
+
+      <div class="card warn" style="margin:12px 0 0">
+        <div class="hint" style="line-height:1.6">
+          ⚠️ Downloading a lot while logged in can get that account suspended.
+          If you do this often, use a second account.
+        </div>
+      </div>
+
+      <div id="cookies-summary" class="hint" style="margin:12px 0 0"></div>
+
+      <div class="row" style="flex-wrap:wrap; margin-top:10px">
+        <button class="ghost" id="cookies-import">Choose my cookies.txt…</button>
+        <button class="ghost hidden" id="cookies-forget">Forget them</button>
+      </div>
+
+      <div class="hint" style="margin-top:8px; line-height:1.6">
+        Export the file from your browser with a "cookies.txt" extension, and
+        pick the format called <b>Netscape</b>. Teleloadzai keeps its own copy,
+        so your file is never changed.
+      </div>
+
+      <div class="hint hidden" id="cookies-error" style="margin-top:8px"></div>
     </div>
 
     <div class="field">
@@ -431,6 +476,9 @@ function jobRow(job) {
     </div>
     <div class="bar"><i style="width:${percent}%"></i></div>
     <div class="err ${job.error ? "" : "hidden"}"></div>
+    ${job.cookie_note ? `<div class="hint warn-text" style="margin-top:6px">
+        ⚠️ Running without your cookies: ${job.cookie_note}.
+      </div>` : ""}
     ${job.state === "done" && job.skipped ? `<div class="hint" style="margin-top:6px">
         This file was already there. <b>Nothing was downloaded.</b>
       </div>
@@ -665,6 +713,7 @@ function showSettings(open) {
   $("settings-toggle").setAttribute("aria-expanded", String(open));
   if (open) {
     loadTools();      // versions come from the 24 h cache, so this is instant
+    loadCookies();
     $("settings").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 }
@@ -701,6 +750,7 @@ $("go").addEventListener("click", async () => {
   if (askWhere) {
     setStatus("Choose where to save it in the Windows window…");
     const chosen = await api("/api/save-as", { suggested: title, mode });
+    if (chosen.error) { setStatus("Error: " + chosen.error); return; }
     if (chosen.cancelled || !chosen.path) { setStatus("Cancelled."); return; }
     target = chosen.path;
   }
@@ -721,6 +771,8 @@ $("clear").addEventListener("click", async () => { await api("/api/jobs/clear", 
 $("browse").addEventListener("click", async () => {
   setStatus("Choose a folder in the Windows window…");
   const result = await api("/api/browse", {});
+  // A window that failed to open is not the same as the user cancelling.
+  if (result.error) { setStatus("Error: " + result.error); return; }
   setStatus(result.cancelled ? "" : "Folder saved.");
   if (result.download_folder) $("folder").value = result.download_folder;
 });
@@ -743,6 +795,88 @@ $("ask-where").addEventListener("change", async () => {
   askWhere = $("ask-where").checked;
   updateGoLabel();
   await api("/api/settings", { ask_where: askWhere });
+});
+
+// ---- log-in cookies -------------------------------------------------------
+// Nothing here ever receives a cookie value. The server sends counts, site
+// names and dates; the file itself never leaves the PC (hard rule 1).
+
+function whenText(seconds) {
+  if (!seconds) return "";
+  const days = Math.round((seconds * 1000 - Date.now()) / 86400000);
+  if (days < 0) return "already expired";
+  if (days === 0) return "expires today";
+  if (days === 1) return "expires tomorrow";
+  return `expires in ${days} days`;
+}
+
+function cookieError(message) {
+  const box = $("cookies-error");
+  box.textContent = message || "";
+  box.classList.toggle("hidden", !message);
+}
+
+function renderCookies(state) {
+  const have = state && state.have_file;
+  $("cookies-forget").classList.toggle("hidden", !have);
+  $("cookies-import").textContent = have
+    ? "Replace the file…" : "Choose my cookies.txt…";
+
+  if (!have) {
+    $("cookies-state").textContent = "off";
+    $("cookies-summary").textContent = "";
+    return;
+  }
+
+  // The file was fine when imported and is not any more. Say it, rather than
+  // showing a healthy card over a file that no longer works (decision 34).
+  if (state.broken) {
+    $("cookies-state").textContent = "not usable";
+    $("cookies-summary").innerHTML =
+      `<span class="warn-text">⚠️ ${state.broken}</span>`;
+    return;
+  }
+
+  $("cookies-state").textContent = state.enabled ? "on" : "off";
+  const sites = state.sites.join(", ")
+    + (state.more_sites ? ` and ${state.more_sites} more` : "");
+  const when = whenText(state.expires_at);
+  const stale = state.expired
+    ? (state.expired === 1
+        ? " 1 of them has already expired."
+        : ` ${state.expired} of them have already expired.`)
+    : "";
+  $("cookies-summary").innerHTML =
+    `<b>${state.total} cookies</b> for ${sites}.${stale}`
+    + (when ? `<br>The soonest ${when}.` : "")
+    + `<br>Used by: ${state.used_by.join(", ")}.`;
+}
+
+async function loadCookies() {
+  const result = await api("/api/cookies");
+  renderCookies(result.cookies);
+}
+
+$("cookies-import").addEventListener("click", async () => {
+  cookieError("");
+  $("cookies-import").disabled = true;
+  setStatus("Choose your cookies.txt in the Windows window…");
+  try {
+    const result = await api("/api/cookies/import", {});
+    if (result.cancelled) { setStatus(""); return; }
+    if (result.error) { cookieError(result.error); setStatus(""); return; }
+    renderCookies(result.cookies);
+    setStatus(`${result.imported} cookies imported.`);
+  } finally {
+    $("cookies-import").disabled = false;
+  }
+});
+
+$("cookies-forget").addEventListener("click", async () => {
+  cookieError("");
+  const result = await api("/api/cookies/clear", {});
+  renderCookies(result.cookies);
+  setStatus("Cookies forgotten.");
 });
 
 (async function start() {

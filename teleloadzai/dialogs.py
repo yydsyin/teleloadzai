@@ -47,9 +47,27 @@ if ($dialog.ShowDialog($parent) -eq 'OK') {{ Write-Output $dialog.FileName }}
 $parent.Dispose()
 """
 
+# Same idea as _SAVE_FILE, the other way round: the user points at a file that
+# already exists. CheckFileExists stops him returning a name he typed himself.
+_OPEN_FILE = """
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.InitialDirectory = '{start}'
+$dialog.Filter = '{filter}'
+$dialog.CheckFileExists = $true
+$dialog.Multiselect = $false
+$dialog.Title = '{title}'
+$parent = New-Object System.Windows.Forms.Form
+$parent.TopMost = $true
+if ($dialog.ShowDialog($parent) -eq 'OK') {{ Write-Output $dialog.FileName }}
+$parent.Dispose()
+"""
+
 _FILTERS = {
     "mp3": "MP3 audio (*.mp3)|*.mp3|All files (*.*)|*.*",
     "mp4": "MP4 video (*.mp4)|*.mp4|All files (*.*)|*.*",
+    # A cookie export is almost always literally named cookies.txt.
+    "cookies": "Cookie file (*.txt)|*.txt|All files (*.*)|*.*",
 }
 
 
@@ -65,9 +83,24 @@ def safe_filename(name: str, fallback: str = "download") -> str:
 _FORCE_UTF8 = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n"
 
 
+class DialogError(RuntimeError):
+    """The window could not be opened at all.
+
+    This exists to keep two very different things apart. The user pressing
+    Cancel is an answer -- we return None and nothing is wrong. PowerShell
+    missing, refusing to start, or timing out is a failure, and until
+    2026-09-22 it returned None too: the app behaved exactly as if the user
+    had cancelled, and never said a word. That is the case decision 34 names.
+    """
+
+
 def _run_dialog(script: str) -> str | None:
+    """The chosen path, or None when the user cancelled.
+
+    Raises ``DialogError`` when the window itself failed.
+    """
     if sys.platform != "win32":
-        return None
+        raise DialogError("This window only exists on Windows.")
     try:
         finished = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-STA", "-Command", _FORCE_UTF8 + script],
@@ -78,10 +111,30 @@ def _run_dialog(script: str) -> str | None:
             timeout=300,            # the user may think for a while
             creationflags=_NO_WINDOW,
         )
-    except Exception:
-        return None
+    except subprocess.TimeoutExpired as problem:
+        raise DialogError(
+            "The Windows window stayed open for five minutes with no answer, "
+            "so it was closed. Try again."
+        ) from problem
+    except FileNotFoundError as problem:
+        raise DialogError(
+            "Windows PowerShell could not be started, so the file window "
+            "cannot open. Type the path by hand instead."
+        ) from problem
+    except Exception as problem:
+        raise DialogError(f"The Windows window could not open: {problem}") from problem
+
     chosen = (finished.stdout or "").strip()
-    return chosen or None
+    if chosen:
+        return chosen
+    if finished.returncode != 0:
+        # PowerShell ran and failed -- that is not a cancel.
+        detail = (finished.stderr or "").strip().splitlines()
+        raise DialogError(
+            "The Windows window could not open: "
+            + (detail[-1][:160] if detail else f"PowerShell stopped with code {finished.returncode}")
+        )
+    return None                      # the user pressed Cancel
 
 
 def _quote(text: str) -> str:
@@ -107,6 +160,20 @@ def save_file(suggested_name: str, mode: str, start: Path) -> Path | None:
         start=_quote(start),
         name=_quote(name),
         filter=_quote(_FILTERS.get(mode, _FILTERS["mp4"])),
+    )
+    chosen = _run_dialog(script)
+    return Path(chosen) if chosen else None
+
+
+def open_file(title: str, start: Path, kind: str = "cookies") -> Path | None:
+    """Open the Windows "Open file" dialog. None means the user cancelled.
+
+    Raises ``DialogError`` if the window itself could not open.
+    """
+    script = _OPEN_FILE.format(
+        start=_quote(start),
+        filter=_quote(_FILTERS.get(kind, _FILTERS["cookies"])),
+        title=_quote(title),
     )
     chosen = _run_dialog(script)
     return Path(chosen) if chosen else None

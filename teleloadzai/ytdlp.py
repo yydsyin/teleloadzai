@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from . import cookies
 from .paths import BIN_DIR
 
 # Keeps the black console window from flashing when the GUI runs a tool.
@@ -111,8 +112,25 @@ def _run(command: list[str], timeout: float) -> subprocess.CompletedProcess[str]
     )
 
 
-def probe(url: str, timeout: float = 60.0) -> MediaInfo:
-    """Read the title, duration and thumbnail of a link. Downloads nothing."""
+def _cookie_arguments(cookie_file: Path | None) -> list[str]:
+    """``--cookies FILE``, or nothing at all.
+
+    The path is always the copy Teleloadzai keeps, never the file the user
+    picked: yt-dlp writes the cookie jar back into whatever file it is given
+    (measured 2026-09-22 -- a 2-line probe file came back with 12 lines), and
+    growing somebody's own export behind his back is not ours to do.
+    """
+    if cookie_file is None:
+        return []
+    return ["--cookies", str(cookie_file)]
+
+
+def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> MediaInfo:
+    """Read the title, duration and thumbnail of a link. Downloads nothing.
+
+    The cookies matter here too: without them a private post has no title to
+    read, and the user would see "(no title)" with no idea why.
+    """
     tool = require_ytdlp()
     command = [
         str(tool),
@@ -120,6 +138,7 @@ def probe(url: str, timeout: float = 60.0) -> MediaInfo:
         "--flat-playlist",       # do not open every video of a playlist
         "--no-warnings",
         "--no-colors",
+        *_cookie_arguments(cookie_file),
         url,
     ]
     finished = _run(command, timeout)
@@ -201,6 +220,7 @@ def download(
     on_start: Callable[[subprocess.Popen], None] | None = None,
     out_path: Path | None = None,
     force: bool = False,
+    cookie_file: Path | None = None,
 ) -> DownloadResult:
     """Download one link as MP3 or MP4, reporting progress line by line.
 
@@ -224,6 +244,7 @@ def download(
         "--print", _FILE_TEMPLATE,
         *(["--yes-playlist"] if playlist else ["--no-playlist"]),
         *(["--force-overwrites"] if (out_path is not None or force) else []),
+        *_cookie_arguments(cookie_file),
         *_ffmpeg_arguments(),
         *_output_arguments(mode, out_dir, quality, out_path),
         url,
@@ -272,9 +293,15 @@ def download(
 
 
 def _short_error(text: str) -> str:
-    """Keep the useful line of a yt-dlp error, not the whole dump."""
+    """Keep the useful line of a yt-dlp error, not the whole dump.
+
+    Cleaned before it leaves: this line goes on the screen, and a failure that
+    happens *because of* a cookie is exactly the one that may quote it. Hard
+    rule 1 and decision 34 only hold together if the words are washed first.
+    """
     for line in reversed((text or "").splitlines()):
         clean = line.strip()
         if clean.startswith("ERROR:"):
-            return clean
-    return (text or "").strip().splitlines()[-1] if (text or "").strip() else "unknown error"
+            return cookies.redact(clean)
+    body = (text or "").strip()
+    return cookies.redact(body.splitlines()[-1]) if body else "unknown error"

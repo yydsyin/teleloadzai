@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import dialogs, runners, tools, ytdlp
+from . import cookies, dialogs, runners, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import Queue
@@ -48,6 +48,9 @@ def load_settings() -> dict:
         "setup_done": bool(stored.get("setup_done", False)),
         # A live stream never ends by itself: stop recording after this long.
         "record_minutes": int(stored.get("record_minutes") or 60),
+        # Log-in cookies. OFF by default (decision 9) -- they are as sensitive
+        # as a password, and nothing here turns itself on.
+        "cookies_enabled": bool(stored.get("cookies_enabled", False)),
     }
 
 
@@ -229,6 +232,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(load_settings())
                 return
 
+            if path == "/api/cookies":
+                self._json({"cookies": cookies.state(load_settings()["cookies_enabled"])})
+                return
+
             if path == "/api/qualities":
                 self._json({
                     "mp3": list(ytdlp.AUDIO_QUALITIES),
@@ -277,12 +284,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/probe":
             url = (body.get("url") or "").strip()
             try:
-                info = ytdlp.probe(url)
+                # A private post has no readable title without the cookies,
+                # and the window would show "(no title)" with no reason why.
+                info = ytdlp.probe(
+                    url,
+                    cookie_file=cookies.path_for("yt-dlp", load_settings()["cookies_enabled"]),
+                )
             except ytdlp.ToolMissing as exc:
                 self._json({"error": str(exc), "kind": "tool_missing"})
                 return
             except Exception as exc:
-                self._json({"error": str(exc), "kind": "probe_failed"})
+                self._json({"error": cookies.redact(str(exc)), "kind": "probe_failed"})
                 return
             self._json({
                 "title": info.title, "uploader": info.uploader,
@@ -323,7 +335,12 @@ class Handler(BaseHTTPRequestHandler):
             # The "Save as" window. It runs when the job is ADDED, never when
             # it starts, so a queue left alone never blocks on a dialog.
             mode = body.get("mode") or "mp4"
-            chosen = dialogs.save_file(body.get("suggested") or "", mode, download_folder())
+            try:
+                chosen = dialogs.save_file(body.get("suggested") or "", mode, download_folder())
+            except dialogs.DialogError as problem:
+                # Not a cancel. Until 2026-09-22 these looked identical.
+                self._json({"error": str(problem)}, 500)
+                return
             self._json({"cancelled": True} if chosen is None else {"path": str(chosen)})
             return
 
@@ -345,9 +362,15 @@ class Handler(BaseHTTPRequestHandler):
             if tools.installed_path(tool) is None:
                 self._json({"error": f"{tool} is not installed"}, 400)
                 return
+            # Cookies, when the user has them on AND this tool can take a file.
+            # `note` is the sentence for the case where it cannot -- it travels
+            # with the job so the row can say it instead of failing in silence.
+            on = load_settings()["cookies_enabled"]
             job = QUEUE.add(url, mode, quality, title, download_folder(),
                             Path(target) if target else None, tool=tool,
-                            limit_minutes=record_minutes())
+                            limit_minutes=record_minutes(),
+                            cookie_file=cookies.path_for(tool, on),
+                            cookie_note=cookies.unusable_reason(tool, on) or "")
             self._json(job.as_dict())
             return
 
@@ -367,8 +390,43 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"removed": QUEUE.clear_finished()})
             return
 
+        if path == "/api/cookies/import":
+            # The user points at the cookies.txt his browser extension wrote.
+            try:
+                chosen = dialogs.open_file("Choose your cookies.txt", download_folder())
+            except dialogs.DialogError as problem:
+                self._json({"error": str(problem)}, 500)
+                return
+            if chosen is None:
+                self._json({"cancelled": True})
+                return
+            try:
+                summary = cookies.import_file(chosen)
+            except cookies.CookieFileError as problem:
+                # A refusal the user can act on, never a bare "failed".
+                self._json({"error": cookies.redact(str(problem))}, 400)
+                return
+            settings = load_settings()
+            settings["cookies_enabled"] = True      # importing IS the consent
+            save_settings(settings)
+            self._json({"imported": summary["total"],
+                        "cookies": cookies.state(True)})
+            return
+
+        if path == "/api/cookies/clear":
+            removed = cookies.clear()
+            settings = load_settings()
+            settings["cookies_enabled"] = False
+            save_settings(settings)
+            self._json({"removed": removed, "cookies": cookies.state(False)})
+            return
+
         if path == "/api/browse":
-            chosen = dialogs.pick_folder(download_folder())
+            try:
+                chosen = dialogs.pick_folder(download_folder())
+            except dialogs.DialogError as problem:
+                self._json({"error": str(problem)}, 500)
+                return
             if chosen is None:
                 self._json({"cancelled": True})
                 return
@@ -391,6 +449,10 @@ class Handler(BaseHTTPRequestHandler):
                 settings["setup_done"] = bool(body["setup_done"])
             if "record_minutes" in body:
                 settings["record_minutes"] = body["record_minutes"]
+            if "cookies_enabled" in body:
+                # The switch can only be turned ON when a file is really here,
+                # otherwise the card would claim cookies we do not have.
+                settings["cookies_enabled"] = bool(body["cookies_enabled"]) and cookies.have_file()
             save_settings(settings)
             self._json(load_settings())
             return

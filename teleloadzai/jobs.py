@@ -35,6 +35,12 @@ class Job:
     force: bool = False         # rewrite a file that is already there
     skipped: bool = False       # the file was already there and nothing was written
     limit_minutes: int = 60     # how long a live recording may last
+    cookie_file: str = ""       # our copy of the cookie file, when it applies
+    # Why this job runs WITHOUT the cookies although they are switched on.
+    # Shown, never swallowed: otherwise the user turns cookies on, the download
+    # still fails for not being logged in, and nothing ever says the tool was
+    # never given them (decision 34).
+    cookie_note: str = ""
     state: str = WAITING
     percent: str = ""
     speed: str = ""
@@ -51,6 +57,10 @@ class Job:
             "tool": self.tool, "force": self.force, "skipped": self.skipped,
             "state": self.state, "percent": self.percent, "speed": self.speed,
             "eta": self.eta, "files": self.files, "error": self.error,
+            # The PATH never leaves this module -- only whether cookies were
+            # used, and the reason when they were not.
+            "with_cookies": bool(self.cookie_file),
+            "cookie_note": self.cookie_note,
         }
 
 
@@ -67,12 +77,15 @@ class Queue:
 
     def add(self, url: str, mode: str, quality: str, title: str, folder: Path,
             target: Path | None = None, force: bool = False,
-            tool: str = "yt-dlp", limit_minutes: int = 60) -> Job:
+            tool: str = "yt-dlp", limit_minutes: int = 60,
+            cookie_file: Path | None = None, cookie_note: str = "") -> Job:
         job = Job(
             id=uuid.uuid4().hex[:12], url=url, mode=mode, quality=quality,
             title=title or url, folder=str(target.parent if target else folder),
             target=str(target) if target else "", force=force, tool=tool,
             limit_minutes=limit_minutes,
+            cookie_file=str(cookie_file) if cookie_file else "",
+            cookie_note=cookie_note,
         )
         with self._lock:
             self._jobs[job.id] = job
@@ -113,9 +126,15 @@ class Queue:
                 return None
             url, mode, quality = old.url, old.mode, old.quality
             title, folder, target = old.title, old.folder, old.target
-            tool = old.tool
+            tool, limit_minutes = old.tool, old.limit_minutes
+            # A retry keeps the cookies. Losing them here would make "Retry"
+            # fail again for a reason the first attempt had already solved.
+            cookie_file = Path(old.cookie_file) if old.cookie_file else None
+            cookie_note = old.cookie_note
         return self.add(url, mode, quality, title, Path(folder),
-                        Path(target) if target else None, force=force, tool=tool)
+                        Path(target) if target else None, force=force, tool=tool,
+                        limit_minutes=limit_minutes,
+                        cookie_file=cookie_file, cookie_note=cookie_note)
 
     def clear_finished(self) -> int:
         with self._lock:
@@ -162,13 +181,15 @@ class Queue:
             with self._lock:
                 job.percent = f"{percent}%"
 
+        cookie_file = Path(job.cookie_file) if job.cookie_file else None
+
         try:
             if job.tool == "yt-dlp":
                 result = ytdlp.download(
                     job.url, job.mode, Path(job.folder),
                     on_progress=on_progress, quality=job.quality, on_start=on_start,
                     out_path=Path(job.target) if job.target else None,
-                    force=job.force,
+                    force=job.force, cookie_file=cookie_file,
                 )
             else:
                 # A specialist tool cannot be told an exact file name, so it
@@ -182,6 +203,7 @@ class Queue:
                         out_name=target.stem if target else "",
                         mode=job.mode, quality=job.quality,
                         limit_minutes=job.limit_minutes, force=job.force,
+                        cookie_file=cookie_file,
                     ),
                     on_progress=on_percent, on_start=on_start,
                 )

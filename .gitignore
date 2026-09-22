@@ -2,6 +2,11 @@
 bin/
 # settings, caches, update notes
 data/
+# Log-in cookies. `data/` already covers this (checked with git check-ignore
+# on 2026-09-22), and it is written again on its own line because a cookie is
+# a password: if data/ is ever narrowed, this must not be what leaks.
+data/cookies.txt
+cookies.txt
 # anything the user downloads
 downloads/
 *.log
