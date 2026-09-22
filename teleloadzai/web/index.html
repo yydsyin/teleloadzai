@@ -59,6 +59,16 @@
   .hint { color: var(--soft); font-size: 13px; }
   .hidden { display: none !important; }
 
+  /* Which SCREEN is on. Two different questions were being answered by one
+     mechanism, and they kept fighting:
+       .hidden       -- is this card relevant right now?  (a result, an error)
+       data-showing  -- which screen is the user on?      (main, or settings)
+     A card is drawn only when BOTH say yes, and neither has to know about
+     the other. Added 2026-09-22: Settings used to be a card wedged under the
+     link box, and there was nowhere to say "this one replaces the others". */
+  .wrap[data-showing="main"]     [data-view="settings"] { display: none !important; }
+  .wrap[data-showing="settings"] [data-view="main"]     { display: none !important; }
+
   .preview { display: flex; gap: 14px; align-items: flex-start; }
   .thumb {
     width: 132px; height: 76px; flex: none; object-fit: cover;
@@ -111,7 +121,7 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" data-showing="main">
 
   <div class="topbar">
     <div>
@@ -121,7 +131,12 @@
     <button class="ghost" id="settings-toggle" aria-expanded="false">Settings</button>
   </div>
 
-  <div class="card hidden" id="welcome">
+  <!-- Every message the app says, on every screen. It used to live inside
+       the link card, which meant a message sent while Settings was open
+       went to something nobody could see. -->
+  <div class="hint hidden" id="status" style="margin:-10px 0 18px"></div>
+
+  <div class="card hidden" data-view="main" id="welcome">
     <div class="section-title">Welcome</div>
     <div class="hint" style="margin:6px 0 14px">
       <b>yt-dlp</b> and <b>FFmpeg</b> are the base — they already cover most sites.
@@ -135,15 +150,14 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" data-view="main">
     <div class="row">
       <input type="text" id="url" placeholder="https://..." autocomplete="off" spellcheck="false">
       <button id="read">Read</button>
     </div>
-    <div class="hint" id="status" style="margin-top:10px"></div>
   </div>
 
-  <div class="card hidden" id="result">
+  <div class="card hidden" data-view="main" id="result">
     <div class="preview">
       <img class="thumb hidden" id="thumb" alt="">
       <div style="min-width:0">
@@ -173,12 +187,12 @@
     <button id="go">Add to queue</button>
   </div>
 
-  <div class="card hidden warn" id="unsupported">
+  <div class="card hidden warn" data-view="main" id="unsupported">
     <div class="title" id="unsupported-title"></div>
     <div class="hint" id="unsupported-note" style="margin-top:6px"></div>
   </div>
 
-  <div class="card hidden" id="jobs-card">
+  <div class="card hidden" data-view="main" id="jobs-card">
     <div class="head">
       <span class="hint" id="queue-info">Downloads</span>
       <button class="ghost tiny" id="clear">Clear finished</button>
@@ -186,7 +200,7 @@
     <div id="jobs"></div>
   </div>
 
-  <div class="card hidden" id="settings">
+  <div class="card" data-view="settings" id="settings">
     <div class="head">
       <span class="section-title">Settings</span>
       <button class="ghost tiny" id="settings-close">Close</button>
@@ -412,7 +426,12 @@ function showChosenTool() {
   }
 }
 
-const setStatus = (text) => { $("status").textContent = text || ""; };
+const setStatus = (text) => {
+  // The line lives in the topbar now, so it is read on any screen. It hides
+  // itself when empty instead of leaving a blank gap under the title.
+  $("status").textContent = text || "";
+  $("status").classList.toggle("hidden", !text);
+};
 
 function qualityLabel(value) {
   if (value === "best") return "Best";
@@ -789,19 +808,30 @@ $("python-install").addEventListener("click", async () => {
   loadTools();
 });
 
-function showSettings(open) {
-  $("settings").classList.toggle("hidden", !open);
-  $("settings-toggle").setAttribute("aria-expanded", String(open));
-  if (open) {
+// The ONE place that decides which screen is on. Nothing else may show or
+// hide a top-level card: that rule is the whole point of the change. A card
+// still hides ITSELF with .hidden when it has nothing to say -- the two
+// questions stay separate (see the CSS note on data-showing).
+function showView(name) {
+  const wrap = document.querySelector(".wrap");
+  wrap.dataset.showing = name;
+  $("settings-toggle").textContent = name === "settings" ? "Back" : "Settings";
+  $("settings-toggle").setAttribute("aria-expanded", String(name === "settings"));
+  if (name === "settings") {
     loadTools();      // versions come from the 24 h cache, so this is instant
     loadCookies();
-    $("settings").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
+
+// Kept as a name because the rest of the page already says it, and a rename
+// is the kind of change that leaves six callers behind (see 2.2).
+const showSettings = (open) => showView(open ? "settings" : "main");
+
 $("settings-toggle").addEventListener("click", () => {
-  showSettings($("settings").classList.contains("hidden"));
+  showView(document.querySelector(".wrap").dataset.showing === "settings" ? "main" : "settings");
 });
-$("settings-close").addEventListener("click", () => showSettings(false));
+$("settings-close").addEventListener("click", () => showView("main"));
 
 $("need-tool-install").addEventListener("click", async () => {
   const id = $("need-tool-install").dataset.tool;
