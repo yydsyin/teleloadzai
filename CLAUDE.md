@@ -190,8 +190,8 @@ Re-verify this table before trusting it. Tools die fast in this field.
 | 4a | **Tool Manager engine** (`tools.py`): registry of 8 tools, version check cached 24 h, install (exe / zip / pip), remove, status | ✅ done 2026-09-20 |
 | 4b | **Tools page** in Settings + the Python screen (winget) | ✅ done 2026-09-20 |
 | 4c | First-launch screen + install on demand + `[Update]` / `[Retry]` on a failed download | ✅ done 2026-09-20 |
-| 4d | **Run the other tools.** Today `jobs.py` always calls yt-dlp. Installing XHS-Downloader or TikTokDownloader changes nothing yet: each needs its own runner (its own command line and output parsing). | ⬅ next |
-| 5 | Cookies (OFF by default) | |
+| 4d | **Run the other tools** (`runners.py`): one engine, five recipes, folder-watching instead of parsing each tool's output. The window offers only tools we can actually drive. | ✅ done 2026-09-22. Proven against real links: **gallery-dl, N_m3u8DL-RE, XHS-Downloader, streamlink**. ⚠️ **f2 has never run once** — it needs cookies. |
+| 5 | Cookies (OFF by default). Unlocks f2 (Kuaishou, Weibo), Instagram and Facebook private posts, YouTube age-restricted — and 4e after it. | ⬅ next |
 | 4e | 🚨 **TikTokDownloader, by its local server.** It has **no command line**: verified 2026-09-21, `--help` opens a language menu (*"请选择语言 / Please Select Language"*). Its own door is a local server on `127.0.0.1:5555`, which is a different mechanism — start the program, keep it alive, talk HTTP, stop it. It also said `配置文件 cookie 参数未设置`, so it can do nothing without cookies. **Placed after step 5 on purpose. The user asked explicitly that this not be dropped.** | |
 | 6 | Build `Teleloadzai-setup.exe` + `Teleloadzai.zip`, publish on GitHub | |
 
