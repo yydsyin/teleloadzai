@@ -100,9 +100,16 @@ PLATFORMS: tuple[Platform, ...] = (
              ("douyin.com", "iesdouyin.com"),
              (ToolOption("tiktokdownloader", "no watermark"),
               ToolOption("f2", "batch, a whole profile"))),
+    # ⚠️ No tool. f2 was listed here from 2026-09-20 to 2026-09-22 and cannot
+    # do this site at all: `python -m f2 ks --help` answers "the ks app was
+    # not found", and Kuaishou is absent from f2's own list of apps. An empty
+    # tools tuple makes `is_supported` False, so the window says so instead of
+    # offering a button that fails.
     Platform("kuaishou", "Kuaishou",
              ("kuaishou.com", "gifshow.com"),
-             (ToolOption("f2", "the only tool that follows this site"),)),
+             (),
+             note="No tool follows Kuaishou today. f2 does not support it, "
+                  "whatever its documentation suggests (checked 2026-09-22)."),
     Platform("xiaohongshu", "Xiaohongshu",
              ("xiaohongshu.com", "xhslink.com"),
              (ToolOption("xhs-downloader", "video and photos, no watermark"),)),

@@ -309,6 +309,17 @@
         including anything else you are logged into.
       </div>
 
+      <div class="field" style="margin-top:14px">
+        <div class="row">
+          <span class="hint">When I close __APP_NAME__</span>
+          <select id="cookies-keep">
+            <option value="keep">stay logged in</option>
+            <option value="once">forget everything</option>
+          </select>
+        </div>
+        <div class="hint" id="cookies-keep-note" style="margin-top:6px; line-height:1.6"></div>
+      </div>
+
       <div class="hint hidden" id="cookies-error" style="margin-top:8px"></div>
     </div>
 
@@ -366,6 +377,9 @@ let polling = false;
 let askWhere = true;
 let currentTools = [];
 let currentPlatform = "";
+// The NAME is what the user reads; the ID is what the server matches on.
+// Mixing them up would offer a log-in for a platform that does not exist.
+let currentPlatformId = "";
 
 function updateGoLabel() {
   $("go").textContent = askWhere ? "Add…" : "Add to queue";
@@ -443,6 +457,7 @@ async function read() {
 
   $("platform").textContent = found.platform;
   currentPlatform = found.platform;
+  currentPlatformId = found.platform_id || "";
   currentTools = found.tools || [];
 
   // The first one is the Teleloadzai default; the others are offered only
@@ -483,6 +498,17 @@ async function read() {
   $("result").classList.remove("hidden");
 }
 
+// The name to put on a "Log in to …" button for a failed job, or "" when
+// there is nothing to offer: no platform, no log-in page for it, or the
+// in-app window cannot run here anyway.
+let loginablePlatforms = {};
+let loginIsBlocked = "";
+
+function loginOffer(job) {
+  if (loginIsBlocked || !job.platform) return "";
+  return loginablePlatforms[job.platform] || "";
+}
+
 function jobRow(job) {
   const row = document.createElement("div");
   // "already there" is not a success: it must not look green.
@@ -519,12 +545,17 @@ function jobRow(job) {
       <div class="row" style="margin-top:6px">
         <button class="ghost tiny" data-force="${job.id}">Download again</button>
       </div>` : ""}
-    ${job.state === "error" ? `<div class="row" style="margin-top:8px">
+    ${job.state === "error" ? `<div class="row" style="margin-top:8px; flex-wrap:wrap">
+        ${loginOffer(job) ? `<button class="tiny" data-login="${job.platform}">Log in to ${loginOffer(job)}</button>` : ""}
         <button class="ghost tiny" data-update="${job.tool}">Update ${job.tool}</button>
         <button class="ghost tiny" data-retry="${job.id}">Retry</button>
       </div>
       <div class="hint" style="margin-top:6px">
-        An old tool is the cause most of the time. Try updating first.
+        ${job.needs_login
+          ? `<b>${job.tool} says you need to be logged in for this one.</b> Log in, then press Retry.`
+          : loginOffer(job)
+            ? "An old tool is the cause most of the time. If updating does not help, this link may need an account."
+            : "An old tool is the cause most of the time. Try updating first."}
       </div>` : ""}`;
 
   // Show the name the user chose in the "Save as" window, when there is one.
@@ -540,6 +571,14 @@ function jobRow(job) {
     await installTool(update.dataset.update);
     await waitForInstall(update.dataset.update);
     update.textContent = "updated — press Retry";
+  });
+
+  const loginButton = row.querySelector("[data-login]");
+  if (loginButton) loginButton.addEventListener("click", () => {
+    const id = loginButton.dataset.login;
+    // The same window as in Settings, opened from where the problem is.
+    showSettings(true);
+    openLogin({ id, name: loginablePlatforms[id] || id });
   });
 
   const force = row.querySelector("[data-force]");
@@ -792,6 +831,7 @@ $("go").addEventListener("click", async () => {
   const job = await api("/api/download", {
     url: currentUrl, mode, quality: $("quality").value, title, target,
     tool: $("tool-pick").value || "yt-dlp",
+    platform: currentPlatformId,
   });
   if (job.error) { setStatus("Error: " + job.error); return; }
   setStatus("");
@@ -889,6 +929,11 @@ function renderCookies(state) {
 function renderLogin(platforms, blocked) {
   const box = $("login-buttons");
   box.innerHTML = "";
+  // Remembered so a FAILED job can offer the right log-in without asking
+  // the server again. This is the moment the user actually needs it.
+  loginIsBlocked = blocked || "";
+  loginablePlatforms = {};
+  for (const p of platforms) loginablePlatforms[p.id] = p.name;
   // Why it cannot run is SAID. A row of dead buttons would be the dead end
   // decisions 15 and 34 both forbid.
   $("login-blocked").textContent = blocked ? "⚠️ Cannot log in here: " + blocked + "." : "";
@@ -936,6 +981,20 @@ $("login-cancel").addEventListener("click", async () => {
   await api("/api/login/cancel", {});
   $("login-waiting").classList.add("hidden");
   setStatus("");
+});
+
+function renderKeepNote() {
+  $("cookies-keep-note").textContent = $("cookies-keep").value === "once"
+    ? "Every log-in is erased when you close the app — the cookies and the "
+      + "browsing kept by the log-in window. You log in again next time. "
+      + "Choose this on a shared computer."
+    : "Log-ins are kept, like in a browser, so you do not start again every "
+      + "time. \"Forget them\" erases them whenever you want.";
+}
+
+$("cookies-keep").addEventListener("change", async () => {
+  renderKeepNote();
+  await api("/api/settings", { cookies_keep: $("cookies-keep").value });
 });
 
 async function loadCookies() {
@@ -990,6 +1049,12 @@ $("cookies-forget").addEventListener("click", async () => {
   $("parallel").value = String(settings.max_parallel || 2);
   $("record-minutes").value = String(settings.record_minutes ?? 60);
   askWhere = settings.ask_where !== false;
+  $("cookies-keep").value = settings.cookies_keep === "once" ? "once" : "keep";
+  renderKeepNote();
+  // Loaded at startup, not only when Settings is opened: a download can fail
+  // before the user has ever been in there, and the failure must already know
+  // which log-in to offer.
+  loadCookies();
   $("ask-where").checked = askWhere;
   updateGoLabel();
 

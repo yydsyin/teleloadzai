@@ -51,12 +51,39 @@ def load_settings() -> dict:
         # Log-in cookies. OFF by default (decision 9) -- they are as sensitive
         # as a password, and nothing here turns itself on.
         "cookies_enabled": bool(stored.get("cookies_enabled", False)),
+        # "keep"  -- stay logged in, like a browser. The useful default once
+        #            the user has taken the trouble to log in at all.
+        # "once"  -- forget everything when Teleloadzai closes: the cookies
+        #            AND the log-in window's profile. For a shared PC.
+        "cookies_keep": "once" if stored.get("cookies_keep") == "once" else "keep",
     }
 
 
 def save_settings(settings: dict) -> None:
     ensure_dirs()
     SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+
+
+def forget_if_once() -> bool:
+    """On the way out, honour "forget when I close Teleloadzai".
+
+    Called when the app shuts down. "Once" is worth nothing if it only means
+    a label in the settings: the cookie file AND the log-in window's browser
+    profile both have to go, or the next start opens still logged in.
+
+    Returns True when something was really removed.
+    """
+    if load_settings()["cookies_keep"] != "once":
+        return False
+    gone = cookies.clear()
+    # This runs after the window engine has stopped, which is the one moment
+    # Windows lets the profile folder go (it stays locked while the app runs).
+    if login.forget_browser() in ("now", "later"):
+        gone = True
+    settings = load_settings()
+    settings["cookies_enabled"] = False
+    save_settings(settings)
+    return gone
 
 
 def download_folder() -> Path:
@@ -376,7 +403,8 @@ class Handler(BaseHTTPRequestHandler):
                             Path(target) if target else None, tool=tool,
                             limit_minutes=record_minutes(),
                             cookie_file=cookies.path_for(tool, on),
-                            cookie_note=cookies.unusable_reason(tool, on) or "")
+                            cookie_note=cookies.unusable_reason(tool, on) or "",
+                            platform=(body.get("platform") or "").strip())
             self._json(job.as_dict())
             return
 
@@ -495,6 +523,8 @@ class Handler(BaseHTTPRequestHandler):
                 settings["setup_done"] = bool(body["setup_done"])
             if "record_minutes" in body:
                 settings["record_minutes"] = body["record_minutes"]
+            if body.get("cookies_keep") in ("keep", "once"):
+                settings["cookies_keep"] = body["cookies_keep"]
             if "cookies_enabled" in body:
                 # The switch can only be turned ON when a file is really here,
                 # otherwise the card would claim cookies we do not have.

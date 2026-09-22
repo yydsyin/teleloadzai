@@ -109,7 +109,8 @@ SPECS: tuple[ToolSpec, ...] = (
              requires=("Python",)),
 
     ToolSpec("f2", "f2", "Johnserf-Seed/f2", "pip",
-             what_for="Kuaishou and Weibo.",
+             # NOT Kuaishou: it has no `ks` app, checked 2026-09-22.
+             what_for="Weibo.",
              pip_name="f2", module="f2", needs_python=True,
              requires=("Python",)),
 )

@@ -15,7 +15,7 @@ import sys
 
 from . import login
 from .config import APP_NAME, APP_VERSION
-from .server import serve, start_background
+from .server import forget_if_once, serve, start_background
 
 WINDOW_SIZE = (860, 900)
 WINDOW_MINIMUM = (520, 560)
@@ -47,6 +47,12 @@ def open_window(port: int) -> None:
         # Teleloadzai removes it, and "Forget them" can wipe it in one go.
         webview.start(storage_path=str(login.BROWSER_PROFILE))
     finally:
+        # "Forget when I close Teleloadzai" happens HERE, after the window
+        # engine has stopped -- the one moment Windows releases the profile.
+        try:
+            forget_if_once()
+        except Exception as problem:            # never block the shutdown
+            print(f"Could not forget the log-ins: {problem}")
         httpd.shutdown()
         httpd.server_close()
 
@@ -59,6 +65,17 @@ def main() -> int:
     parser.add_argument("--no-browser", action="store_true",
                         help="only run the server, open nothing")
     args = parser.parse_args()
+
+    # "Forget when I close" also has to survive NOT being closed properly.
+    # A crash, Task Manager, or a PC switched off at the wall all skip the
+    # shutdown path, and the cookies would then outlive the session they were
+    # promised to. Wiping here as well means the promise costs one extra
+    # start, never a leak. (Found 2026-09-22 by killing the app and finding
+    # data/cookies.txt still there.)
+    try:
+        forget_if_once()
+    except Exception as problem:
+        print(f"Could not forget the log-ins from the last run: {problem}")
 
     if args.no_browser:
         serve(port=args.port, open_browser=False)

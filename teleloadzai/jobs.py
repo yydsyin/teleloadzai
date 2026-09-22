@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import runners, ytdlp
+from . import cookies, runners, ytdlp
 
 WAITING, RUNNING, DONE, ERROR, CANCELLED = "waiting", "running", "done", "error", "cancelled"
 ACTIVE_STATES = (WAITING, RUNNING)
@@ -41,6 +41,7 @@ class Job:
     # still fails for not being logged in, and nothing ever says the tool was
     # never given them (decision 34).
     cookie_note: str = ""
+    platform: str = ""          # which site, so a failure can offer its log-in
     state: str = WAITING
     percent: str = ""
     speed: str = ""
@@ -61,6 +62,10 @@ class Job:
             # used, and the reason when they were not.
             "with_cookies": bool(self.cookie_file),
             "cookie_note": self.cookie_note,
+            "platform": self.platform,
+            # Did the tool itself blame a missing log-in? Only then may the
+            # page say an account is needed rather than merely offer one.
+            "needs_login": bool(self.error) and cookies.needs_login(self.error),
         }
 
 
@@ -78,14 +83,15 @@ class Queue:
     def add(self, url: str, mode: str, quality: str, title: str, folder: Path,
             target: Path | None = None, force: bool = False,
             tool: str = "yt-dlp", limit_minutes: int = 60,
-            cookie_file: Path | None = None, cookie_note: str = "") -> Job:
+            cookie_file: Path | None = None, cookie_note: str = "",
+            platform: str = "") -> Job:
         job = Job(
             id=uuid.uuid4().hex[:12], url=url, mode=mode, quality=quality,
             title=title or url, folder=str(target.parent if target else folder),
             target=str(target) if target else "", force=force, tool=tool,
             limit_minutes=limit_minutes,
             cookie_file=str(cookie_file) if cookie_file else "",
-            cookie_note=cookie_note,
+            cookie_note=cookie_note, platform=platform,
         )
         with self._lock:
             self._jobs[job.id] = job
@@ -130,11 +136,12 @@ class Queue:
             # A retry keeps the cookies. Losing them here would make "Retry"
             # fail again for a reason the first attempt had already solved.
             cookie_file = Path(old.cookie_file) if old.cookie_file else None
-            cookie_note = old.cookie_note
+            cookie_note, platform = old.cookie_note, old.platform
         return self.add(url, mode, quality, title, Path(folder),
                         Path(target) if target else None, force=force, tool=tool,
                         limit_minutes=limit_minutes,
-                        cookie_file=cookie_file, cookie_note=cookie_note)
+                        cookie_file=cookie_file, cookie_note=cookie_note,
+                        platform=platform)
 
     def clear_finished(self) -> int:
         with self._lock:

@@ -156,10 +156,19 @@ def _n_m3u8dl_re(exe: Path, r: Request) -> list[str]:
 
 
 def _f2(_exe: Path, r: Request) -> list[str]:
-    # f2 has one sub-command per site, and it needs a config file with a
-    # cookie for almost everything. Until step 5 this will mostly refuse.
-    site = "ks" if "kuaishou" in r.url or "gifshow" in r.url else "wb"
-    return [site, "-u", r.url, "-p", str(r.out_dir)]
+    """f2 has one sub-command per site, and it needs a cookie for most of them.
+
+    ⚠️ It has **no Kuaishou**. This line used to build `ks`, which was never
+    checked against the program. Asked on 2026-09-22:
+
+        $ python -m f2 ks --help
+        Error: 没有找到 ks 应用          ("the ks app was not found")
+
+    Its own help lists eleven apps and Kuaishou is not among them, and the
+    installed package ships five: bark, douyin, tiktok, twitter, weibo. So
+    `wb` is the only one of ours that exists here.
+    """
+    return ["wb", "-u", r.url, "-p", str(r.out_dir)]
 
 
 def _repackage_to_mp4(files: list[Path]) -> list[Path]:

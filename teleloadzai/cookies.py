@@ -326,6 +326,48 @@ def import_file(chosen: Path, keep_all: bool = False) -> dict:
     return summary
 
 
+# Phrases that mean "this failed because you are not logged in".
+#
+# ✅ SEEN, 2026-09-22, from yt-dlp 2026.08.19 on a private Instagram post:
+#     "Check if this post is accessible in your browser without being
+#      logged-in. If it is not, then use --cookies-from-browser or --cookies
+#      for the authentication."
+#
+# ⚠️ The rest are the usual wordings and are **not verified here**. They are
+# safe to be wrong about in one direction only: a false match offers a log-in
+# the user can ignore, it never blocks a download.
+#
+# ⚠️ And the important negative, also seen: a **private YouTube video** says
+# only "This video is unavailable" -- word for word what a **deleted** video
+# says. There is nothing to match. That is why a failed download offers the
+# log-in as a WAY OUT (decision 15) and only *claims* an account is needed
+# when the tool itself said so.
+_LOGIN_WORDS = (
+    "--cookies",                    # seen
+    "for the authentication",       # seen
+    "sign in to confirm",
+    "log in",
+    "login required",
+    "logged-in",
+    "private video",
+    "members-only",
+    "requires authentication",
+    "http error 401",
+    "unauthorized",
+)
+
+
+def needs_login(error: str) -> bool:
+    """True when the tool itself said the failure is a log-in problem.
+
+    Deliberately narrow. Guessing "you must be logged in" at a video that was
+    simply deleted sends the user to type a password for nothing, which is a
+    worse answer than saying we do not know.
+    """
+    low = (error or "").lower()
+    return any(word in low for word in _LOGIN_WORDS)
+
+
 def _key(raw: str) -> tuple[str, str, str]:
     """What makes two cookie lines the same cookie: site, path and name."""
     row = raw[len("#HttpOnly_"):] if raw.startswith("#HttpOnly_") else raw
