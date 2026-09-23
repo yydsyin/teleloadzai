@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import cookies, tiktokserver, tools
+from . import cookies, explain, tiktokserver, tools
 from .paths import BIN_DIR
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -467,7 +467,10 @@ def run(
     # A tool can end badly and still have written something useful, and it
     # can end well having written nothing. Both are reported honestly.
     if code != 0 and not written:
-        raise RunnerError(_short_error(tail) or f"{tool_id} stopped with code {code}")
+        said = _short_error(tail)
+        if said:
+            raise explain.from_tool(RunnerError(said))      # its words (decision 38)
+        raise RunnerError(f"{tool_id} stopped with code {code}")
 
     if written and recipe.after:
         written = recipe.after(written)

@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import cookies, runners, ytdlp
+from . import cookies, explain, runners, ytdlp
 
 WAITING, RUNNING, DONE, ERROR, CANCELLED = "waiting", "running", "done", "error", "cancelled"
 ACTIVE_STATES = (WAITING, RUNNING)
@@ -49,6 +49,7 @@ class Job:
     eta: str = ""
     files: list[str] = field(default_factory=list)
     error: str = ""
+    error_from_tool: bool = False   # is `error` the tool's own words? (decision 38)
     process: subprocess.Popen | None = field(default=None, repr=False)
 
     def as_dict(self) -> dict:
@@ -69,6 +70,10 @@ class Job:
             # Did the tool itself blame a missing log-in? Only then may the
             # page say an account is needed rather than merely offer one.
             "needs_login": bool(self.error) and cookies.needs_login(self.error),
+            # What the error means -- only for errors we have really met
+            # (decision 38). {"known": False} makes the page say so honestly.
+            "explain": explain.explain(self.error, self.tool),
+            "error_from_tool": self.error_from_tool,
         }
 
 
@@ -237,6 +242,7 @@ class Queue:
                 if job.state != CANCELLED:      # a cancel is not a failure
                     job.state = ERROR
                     job.error = str(exc)
+                    job.error_from_tool = explain.said_by_tool(exc)
         finally:
             with self._lock:
                 job.process = None

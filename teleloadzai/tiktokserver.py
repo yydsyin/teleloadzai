@@ -48,7 +48,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import tools
+from . import explain, tools
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -147,14 +147,19 @@ class _Server:
             if exe is None:
                 raise TikTokServerError("TikTokDownloader is not installed")
 
-            # Something else may already hold 5555 -- the user's own copy, or
-            # ours left behind by a crash. Saying so beats a silent failure.
+            # Something else may already hold 5555, and TikTokDownloader
+            # cannot move: the port is a constant in its code
+            # (`SERVER_PORT = 5555`, src/custom/static.py, read 2026-09-23).
+            # Name the holder -- "the port is busy" alone leaves the user
+            # nothing to act on.
             with socket.socket() as probe:
                 probe.settimeout(1.0)
                 if probe.connect_ex((HOST, PORT)) == 0:
+                    holder = port_holder(PORT)
                     raise TikTokServerError(
-                        f"Port {PORT} is already in use. TikTokDownloader may "
-                        "already be open — close it and try again."
+                        f"Port {PORT}, which TikTokDownloader must use, is taken by "
+                        + (holder if holder else "another program")
+                        + ". Close it and try again, or use another tool."
                     )
 
             self._process = subprocess.Popen(
@@ -215,6 +220,54 @@ class _Server:
 SERVER = _Server()
 
 
+# Programs we have actually met on this port, with what they are. Only seen
+# ones (decision 38): any other holder is named by its file name and nothing
+# is guessed about it.
+_KNOWN_HOLDERS = {
+    # 2026-09-23, on the developer's PC: D:\Program Files\Tencent\Androws\
+    # ...\AndrowsBox\ABoxHeadless.exe, child of ABoxSVC.exe. 5555 is the port
+    # Android's debug bridge uses, which is why an Android tool sits on it.
+    "aboxheadless.exe": "Tencent Androws (it runs Android apps on Windows)",
+}
+
+
+def port_holder(port: int) -> str:
+    """The name of the program listening on this port, or "".
+
+    `netstat` and `tasklist` print in the language of Windows -- the state
+    column says LISTENING here, but not on every PC -- so a listening line is
+    recognised by its shape instead: our port on the local side, and an empty
+    remote side (`0.0.0.0:0` or `[::]:0`).
+    """
+    try:
+        table = subprocess.run(
+            ["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True,
+            errors="replace", timeout=15, creationflags=_NO_WINDOW).stdout
+    except Exception:
+        return ""
+    pid = ""
+    for line in table.splitlines():
+        cols = line.split()
+        if (len(cols) >= 5 and cols[1].endswith(f":{port}")
+                and cols[2] in ("0.0.0.0:0", "[::]:0")):
+            pid = cols[-1]
+            break
+    if not pid.isdigit():
+        return ""
+    try:
+        row = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, errors="replace", timeout=15,
+            creationflags=_NO_WINDOW).stdout.strip()
+    except Exception:
+        return ""
+    name = row.split('","')[0].strip('"') if row.startswith('"') else ""
+    if not name:
+        return ""
+    known = _KNOWN_HOLDERS.get(name.lower())
+    return f"{name} — {known}" if known else name
+
+
 # --------------------------------------------------------------------------
 # talking to it
 # --------------------------------------------------------------------------
@@ -269,16 +322,12 @@ def detail(url: str, douyin: bool, cookie: str) -> dict:
                    {"detail_id": video_id(url, douyin), "cookie": cookie or ""})
     data = answer.get("data")
     if not isinstance(data, dict):
-        raise TikTokServerError(
-            (answer.get("message") or "TikTokDownloader could not read that video")
-            + _hint(site, bool(cookie)))
+        # Its own words, nothing added. What they mean is explain.py's job,
+        # and only for causes we have seen (decision 38). This used to add
+        # "the cookies may have expired, or the site is refusing this
+        # network" -- a guess, written as if it were known.
+        said = answer.get("message")
+        problem = TikTokServerError("TikTokDownloader: " + (said or "no answer about this video"))
+        raise explain.from_tool(problem) if said else problem
     return data
 
-
-def _hint(site: str, had_cookie: bool) -> str:
-    """Why it probably failed, in words the user can act on (decision 34)."""
-    if not had_cookie:
-        return (f". {site.capitalize()} needs cookies for this — turn on log-in "
-                "cookies in Settings and log in to that site.")
-    return (". The cookies may have expired, or the site is refusing this "
-            "network. Log in again, then try once more.")

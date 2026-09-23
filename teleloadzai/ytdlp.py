@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import cookies
+from . import cookies, explain
 from .paths import BIN_DIR
 
 # Keeps the black console window from flashing when the GUI runs a tool.
@@ -143,7 +143,7 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
     ]
     finished = _run(command, timeout)
     if finished.returncode != 0:
-        raise DownloadFailed(_short_error(finished.stderr))
+        raise _tool_said(finished.stderr)
 
     data = json.loads(finished.stdout)
     entries = data.get("entries")
@@ -284,12 +284,23 @@ def download(
             del tail[:-40]          # keep only the last 40 lines
 
     if process.wait() != 0:
-        raise DownloadFailed(_short_error("\n".join(tail)))
+        raise _tool_said("\n".join(tail))
 
     # yt-dlp leaves an existing file alone and says nothing useful about it.
     # The only reliable proof is the file's own date.
     skipped = [f for f in files if f.exists() and f.stat().st_mtime < started_at]
     return DownloadResult(files, tail, skipped)
+
+
+def _tool_said(text: str) -> DownloadFailed:
+    """yt-dlp's own words as an error, marked as such (decision 38).
+
+    When it printed nothing, the text is our "unknown error" and is NOT
+    marked: the page must not present our placeholder as yt-dlp's words.
+    """
+    said = _short_error(text)
+    problem = DownloadFailed(said)
+    return explain.from_tool(problem) if (text or "").strip() else problem
 
 
 def _short_error(text: str) -> str:

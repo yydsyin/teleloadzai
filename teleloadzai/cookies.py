@@ -345,9 +345,11 @@ def import_file(chosen: Path, keep_all: bool = False) -> dict:
 #      logged-in. If it is not, then use --cookies-from-browser or --cookies
 #      for the authentication."
 #
-# ⚠️ The rest are the usual wordings and are **not verified here**. They are
-# safe to be wrong about in one direction only: a false match offers a log-in
-# the user can ignore, it never blocks a download.
+# ⚠️ Nothing else is on the list. Until 2026-09-23 nine usual wordings were
+# here too, never seen, on the idea that a false match only offers a log-in
+# the user can ignore. That was wrong: a match makes the page say "<tool>
+# says you need to be logged in" -- a claim about what the tool said
+# (decision 38). A phrase joins only when it has really been seen.
 #
 # ⚠️ And the important negative, also seen: a **private YouTube video** says
 # only "This video is unavailable" -- word for word what a **deleted** video
@@ -355,17 +357,13 @@ def import_file(chosen: Path, keep_all: bool = False) -> dict:
 # log-in as a WAY OUT (decision 15) and only *claims* an account is needed
 # when the tool itself said so.
 _LOGIN_WORDS = (
-    "--cookies",                    # seen
-    "for the authentication",       # seen
-    "sign in to confirm",
-    "log in",
-    "login required",
-    "logged-in",
-    "private video",
-    "members-only",
-    "requires authentication",
-    "http error 401",
-    "unauthorized",
+    # ONLY what was seen. The page turns a match into "<tool> says you need
+    # to be logged in" -- a statement about what the tool said -- so a phrase
+    # we have not seen would make the app put words in the tool's mouth
+    # (decision 38). Nine unseen phrases were removed on 2026-09-23; "log in"
+    # alone would have matched "failed to log in to the proxy".
+    "--cookies",                    # seen 2026-09-22, private Instagram post
+    "for the authentication",       # same message
 )
 
 

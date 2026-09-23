@@ -16,12 +16,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import cookies, dialogs, login, runners, tiktokserver, tools, ytdlp
+from . import cookies, dialogs, explain, login, runners, tiktokserver, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import Queue
 from .paths import DATA_DIR, DEFAULT_DOWNLOAD_DIR, WEB_DIR, ensure_dirs
-from .platforms import tool_name
+from .platforms import PLATFORMS, tool_name
 
 SETTINGS_FILE = DATA_DIR / "settings.json"
 TOKEN = secrets.token_urlsafe(24)
@@ -84,6 +84,51 @@ def forget_if_once() -> bool:
     settings["cookies_enabled"] = False
     save_settings(settings)
     return gone
+
+
+def queue_download(url: str, mode: str, quality: str, title: str, target: str,
+                   tool: str, platform: str) -> tuple[dict, int]:
+    """Check a download request and put it in the queue. Returns (json, status)."""
+    allowed = ytdlp.AUDIO_QUALITIES if mode == "mp3" else ytdlp.VIDEO_QUALITIES
+    if mode not in ("mp3", "mp4") or quality not in allowed:
+        return {"error": "bad mode or quality"}, 400
+    # Only a tool we know how to drive, and only one that is here.
+    if not runners.can_run(tool):
+        return {"error": f"no runner for {tool}"}, 400
+    if tools.installed_path(tool) is None:
+        return {"error": f"{tool} is not installed"}, 400
+    # Cookies, when the user has them on AND this tool can take them. `note`
+    # is the sentence for the case where it cannot -- it travels with the job
+    # so the row can say it instead of failing in silence.
+    on = load_settings()["cookies_enabled"]
+    job = QUEUE.add(url, mode, quality, title or url, download_folder(),
+                    Path(target) if target else None, tool=tool,
+                    limit_minutes=record_minutes(),
+                    cookie_file=cookies.path_for(tool, on),
+                    cookie_note=cookies.unusable_reason(tool, on) or "",
+                    platform=platform,
+                    cookie_header=on and tool in cookies.HEADER_CAPABLE)
+    return job.as_dict(), 200
+
+
+def other_tool(job: dict) -> dict | None:
+    """The next tool worth trying on a failed job, or None.
+
+    Only a tool the platform lists, that we can drive, and that is installed
+    -- offering one that cannot run would be the dead end decision 15
+    forbids, dressed up as a way out.
+    """
+    if job.get("state") != "error" or not job.get("platform"):
+        return None
+    platform = next((p for p in PLATFORMS if p.id == job["platform"]), None)
+    if platform is None:
+        return None
+    for option in platform.tools:
+        tid = option.tool_id
+        if (tid != job.get("tool") and runners.unavailable_reason(tid) is None
+                and tools.installed_path(tid) is not None):
+            return {"id": tid, "name": tool_name(tid)}
+    return None
 
 
 def download_folder() -> Path:
@@ -277,7 +322,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if path == "/api/jobs":
-                self._json({"jobs": QUEUE.all()})
+                jobs = QUEUE.all()
+                for job in jobs:
+                    job["other_tool"] = other_tool(job)
+                self._json({"jobs": jobs})
                 return
 
             if path == "/api/tools":
@@ -327,7 +375,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(exc), "kind": "tool_missing"})
                 return
             except Exception as exc:
-                self._json({"error": cookies.redact(str(exc)), "kind": "probe_failed"})
+                said = cookies.redact(str(exc))
+                self._json({"error": said, "kind": "probe_failed",
+                            "explain": explain.explain(said, "yt-dlp"),
+                            "from_tool": explain.said_by_tool(exc)})
                 return
             self._json({
                 "title": info.title, "uploader": info.uploader,
@@ -378,35 +429,34 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/download":
-            url = (body.get("url") or "").strip()
-            mode = body.get("mode") or "mp4"
-            quality = str(body.get("quality") or "best")
-            title = body.get("title") or url
-            target = (body.get("target") or "").strip()
-            tool = (body.get("tool") or "yt-dlp").strip()
-            allowed = ytdlp.AUDIO_QUALITIES if mode == "mp3" else ytdlp.VIDEO_QUALITIES
-            if mode not in ("mp3", "mp4") or quality not in allowed:
-                self._json({"error": "bad mode or quality"}, 400)
+            answer, status = queue_download(
+                url=(body.get("url") or "").strip(),
+                mode=body.get("mode") or "mp4",
+                quality=str(body.get("quality") or "best"),
+                title=body.get("title") or "",
+                target=(body.get("target") or "").strip(),
+                tool=(body.get("tool") or "yt-dlp").strip(),
+                platform=(body.get("platform") or "").strip(),
+            )
+            self._json(answer, status)
+            return
+
+        if path.startswith("/api/job/") and path.endswith("/switch"):
+            # "Try with <another tool>" on a failed job (decision 15). It goes
+            # through queue_download like a new download, because the cookie
+            # road depends on the tool: yt-dlp takes a FILE, TikTokDownloader
+            # a header. Copying the old job's cookie fields would hand the new
+            # tool the wrong kind.
+            old = QUEUE.get(path[len("/api/job/"):-len("/switch")])
+            if old is None:
+                self._json({"error": "that download no longer exists"}, 404)
                 return
-            # Only a tool we know how to drive, and only one that is here.
-            if not runners.can_run(tool):
-                self._json({"error": f"no runner for {tool}"}, 400)
-                return
-            if tools.installed_path(tool) is None:
-                self._json({"error": f"{tool} is not installed"}, 400)
-                return
-            # Cookies, when the user has them on AND this tool can take a file.
-            # `note` is the sentence for the case where it cannot -- it travels
-            # with the job so the row can say it instead of failing in silence.
-            on = load_settings()["cookies_enabled"]
-            job = QUEUE.add(url, mode, quality, title, download_folder(),
-                            Path(target) if target else None, tool=tool,
-                            limit_minutes=record_minutes(),
-                            cookie_file=cookies.path_for(tool, on),
-                            cookie_note=cookies.unusable_reason(tool, on) or "",
-                            platform=(body.get("platform") or "").strip(),
-                            cookie_header=on and tool in cookies.HEADER_CAPABLE)
-            self._json(job.as_dict())
+            answer, status = queue_download(
+                url=old.url, mode=old.mode, quality=old.quality, title=old.title,
+                target=old.target, tool=(body.get("tool") or "").strip(),
+                platform=old.platform,
+            )
+            self._json(answer, status)
             return
 
         if path.startswith("/api/job/") and path.endswith("/cancel"):

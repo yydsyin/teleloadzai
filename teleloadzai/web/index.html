@@ -508,8 +508,16 @@ async function read() {
   setStatus("Asking the site for the title…");
   const info = await api("/api/probe", { url: found.final_url || url });
   if (info.error) {
-    $("title").textContent = "(could not read the title)";
-    $("meta").textContent = info.error;
+    // Known error -> its plain meaning. Unknown -> the tool's words, said to
+    // be the tool's words. The download may still work with another tool, so
+    // this is information, not a verdict (decision 38).
+    const ex = info.explain || {};
+    $("title").textContent = ex.known ? ex.title : "(could not read the title)";
+    $("meta").textContent = ex.known
+      ? ex.next_step
+      : info.from_tool
+        ? "yt-dlp could not read this link. Its own words: " + info.error
+        : info.error;
     $("thumb").classList.add("hidden");
   } else {
     $("title").textContent = info.title;
@@ -534,6 +542,30 @@ let loginIsBlocked = "";
 function loginOffer(job) {
   if (loginIsBlocked || !job.platform) return "";
   return loginablePlatforms[job.platform] || "";
+}
+
+// What to say under a failed job (decision 38). Three cases, never mixed:
+// an error we have really met gets its plain meaning; a log-in the tool
+// itself asked for is said as the tool's words; anything else is admitted to
+// be unknown. Nothing here may guess a cause. "Try updating" stays, said as
+// advice (decision 8) -- the old "an old tool is the cause most of the time"
+// was a number nobody had measured.
+function errorExplanation(job) {
+  const ex = job.explain || {};
+  if (ex.known) return `<b>${ex.title}</b> ${ex.next_step}`;
+  if (job.needs_login) {
+    return `<b>${job.tool} says you need to be logged in for this one.</b> Log in, then press Retry.`;
+  }
+  const otherTool = job.other_tool ? ` You can also try another tool.` : "";
+  if (!job.error_from_tool) {
+    // The red line is a sentence Teleloadzai wrote itself: it already says
+    // what happened. Calling it the tool's words would be false.
+    return otherTool.trim();
+  }
+  return `<b>Teleloadzai does not recognise this error.</b> The red line above is exactly `
+    + `what ${job.tool} said. Updating it is the first thing to try.`
+    + otherTool
+    + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
 }
 
 function jobRow(job) {
@@ -574,16 +606,11 @@ function jobRow(job) {
       </div>` : ""}
     ${job.state === "error" ? `<div class="row" style="margin-top:8px; flex-wrap:wrap">
         ${loginOffer(job) ? `<button class="tiny" data-login="${job.platform}">Log in to ${loginOffer(job)}</button>` : ""}
+        ${job.other_tool ? `<button class="ghost tiny" data-switch="${job.id}" data-tool="${job.other_tool.id}">Try with ${job.other_tool.name}</button>` : ""}
         <button class="ghost tiny" data-update="${job.tool}">Update ${job.tool}</button>
         <button class="ghost tiny" data-retry="${job.id}">Retry</button>
       </div>
-      <div class="hint" style="margin-top:6px">
-        ${job.needs_login
-          ? `<b>${job.tool} says you need to be logged in for this one.</b> Log in, then press Retry.`
-          : loginOffer(job)
-            ? "An old tool is the cause most of the time. If updating does not help, this link may need an account."
-            : "An old tool is the cause most of the time. Try updating first."}
-      </div>` : ""}`;
+      <div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>` : ""}`;
 
   // Show the name the user chose in the "Save as" window, when there is one.
   const shown = job.target ? job.target.split("\\").pop() : job.title;
@@ -606,6 +633,15 @@ function jobRow(job) {
     // The same window as in Settings, opened from where the problem is.
     showSettings(true);
     openLogin({ id, name: loginablePlatforms[id] || id });
+  });
+
+  const switchButton = row.querySelector("[data-switch]");
+  if (switchButton) switchButton.addEventListener("click", async () => {
+    switchButton.disabled = true;
+    const answer = await api("/api/job/" + switchButton.dataset.switch + "/switch",
+                            { tool: switchButton.dataset.tool });
+    if (answer.error) { setStatus("Error: " + answer.error); switchButton.disabled = false; return; }
+    refresh();
   });
 
   const force = row.querySelector("[data-force]");
