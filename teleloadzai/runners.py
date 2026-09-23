@@ -329,6 +329,10 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None) -> RunR
     douyin = "douyin.com" in request.url or "iesdouyin" in request.url
     site = "douyin.com" if douyin else "tiktok.com"
 
+    # The cheap check first: a folder that cannot be created used to be
+    # found only after the server had started and answered (57 s, 2026-09-23).
+    make_folder(request.out_dir)
+
     # One site's cookies only, and only when this job may use cookies at all.
     cookie = cookies.header_for(site, True) if request.cookie_header else ""
 

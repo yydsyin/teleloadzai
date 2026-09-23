@@ -82,14 +82,16 @@ KNOWN: tuple[Known, ...] = (
         words=("failed to retrieve data",),
         tools=("tiktokdownloader",),
         title="TikTokDownloader could not read this video.",
-        next_step=("We have seen this in two cases: no cookies for the "
-                   "site — log in to it in Settings — or a video the site "
-                   "does not show on your connection — try another video."),
-        seen=("2026-09-22: /douyin/detail without a cookie failed this "
-              "way, and worked with one. /tiktok/detail on a NASA video "
-              "failed this way WITH a cookie; that video gave code 10204 in "
-              "a normal browser."),
+        next_step=("We have seen this in three cases: no cookies for the "
+                   "site — log in to it in Settings; a video the site does "
+                   "not show on your connection; and a video that does not "
+                   "exist. Check the link, or try another video."),
+        seen=("2026-09-22: /douyin/detail without a cookie failed this way, "
+              "and worked with one. 2026-09-23, WITH cookies: a NASA video "
+              "that gives code 10204 in a normal browser, and an id that "
+              "does not exist -- same words for both."),
     ),
+
     # ---- found by step 5b, 2026-09-23: inputs broken ON PURPOSE, so the
     # ---- cause of each message is known because we made it.
     Known(
@@ -201,6 +203,15 @@ KNOWN: tuple[Known, ...] = (
         seen=("Proxy pointed at a closed port: 'SocketException (10061)', in "
               "the language of Windows. Matched on the code, not the words, "
               "because the words change with the language of Windows."),
+    ),
+    Known(
+        words=("did not start", "over proxy"),
+        tools=("tiktokdownloader",),
+        title="TikTokDownloader could not start: it could not reach the internet through the proxy set on this PC.",
+        next_step="If you use a VPN or a proxy program, check that it is running.",
+        seen=("Proxy pointed at a closed port: at startup it printed 'curl: "
+              "(7) Failed to connect to 127.0.0.1:9 over proxy' and never "
+              "reached its menu."),
     ),
 
 )

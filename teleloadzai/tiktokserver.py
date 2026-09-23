@@ -79,6 +79,11 @@ class _Server:
         self._lock = threading.RLock()
         self._process: subprocess.Popen | None = None
         self._users = 0                     # how many jobs are using it now
+        # The last lines it printed while starting. When it cannot start, the
+        # reason is in there -- with the proxy cut it printed "curl: (7) Failed
+        # to connect ... over proxy" and waited forever (2026-09-23), and we
+        # only said "did not open port 5555 within 120 seconds".
+        self._said: list[str] = []
 
     # -- starting and stopping ---------------------------------------------
 
@@ -100,6 +105,11 @@ class _Server:
             if not chunk:
                 return
             seen += chunk
+            if chunk == "\n":
+                last = seen.rstrip().rsplit("\n", 1)[-1].strip()
+                if last:
+                    self._said.append(last)
+                    del self._said[:-30]
             low = seen.lower()
             if _READY in low:
                 return
@@ -132,9 +142,20 @@ class _Server:
                     return
             time.sleep(0.4)
         raise TikTokServerError(
-            f"TikTokDownloader did not open port {PORT} within "
-            f"{int(_START_TIMEOUT)} seconds."
+            f"TikTokDownloader did not start within {int(_START_TIMEOUT)} seconds."
+            + self._last_words()
         )
+
+    def _last_words(self) -> str:
+        """Its most useful recent line, washed of secrets -- or nothing."""
+        from . import cookies
+        for line in reversed(self._said):
+            low = line.lower()
+            if line.startswith(("File ", "Traceback")):
+                continue
+            if any(w in low for w in ("error", "failed", "exception", "失败")):
+                return " Its last words: " + cookies.redact(line[:220])
+        return ""
 
     def start(self) -> None:
         """Make sure the server is running, and count one more user."""
@@ -162,6 +183,7 @@ class _Server:
                         + ". Close it and try again, or use another tool."
                     )
 
+            self._said = []
             self._process = subprocess.Popen(
                 [str(exe)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
