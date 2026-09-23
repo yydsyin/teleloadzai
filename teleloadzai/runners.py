@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -243,12 +244,12 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None) -> RunR
     douyin = "douyin.com" in request.url or "iesdouyin" in request.url
     site = "douyin.com" if douyin else "tiktok.com"
 
+    # One site's cookies only, and only when this job may use cookies at all.
+    cookie = cookies.header_for(site, True) if request.cookie_header else ""
+
     tiktokserver.SERVER.start()
     try:
-        data = tiktokserver.detail(
-            request.url, douyin,
-            cookies.header_for(site, bool(request.cookie_header)) if request.cookie_header else "",
-        )
+        data = tiktokserver.detail(request.url, douyin, cookie)
     finally:
         tiktokserver.SERVER.release()
 
@@ -263,7 +264,7 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None) -> RunR
     name = request.out_name or _clean_name(data)
     suffix = ".mp3" if request.mode == "mp3" and data.get("music_url") else ".mp4"
     target = request.out_dir / (name + suffix)
-    _fetch(address, target, site, on_progress)
+    _fetch(address, target, site, on_progress, cookie)
     return RunResult([target], [f"TikTokDownloader: {data.get('desc', '')[:80]}"])
 
 
@@ -274,17 +275,33 @@ def _clean_name(data: dict) -> str:
 
 
 def _fetch(address: str, target: Path, site: str,
-           on_progress: Callable[[int], None] | None) -> None:
+           on_progress: Callable[[int], None] | None, cookie: str = "") -> None:
     """Download a direct link, reporting a real percentage.
 
-    A Referer is required: these CDN links refuse a request that does not look
-    like it came from the site itself.
+    What the file servers demand, measured 2026-09-23 on a real TikTok video
+    (a 1 KB range request each time):
+
+        User-Agent + Referer             -> 403
+        User-Agent + cookies             -> 403
+        User-Agent + Referer + cookies   -> 206 video/mp4
+
+    Douyin's server was content with the Referer alone; TikTok's wants both,
+    exactly as a browser sends them.
+
+    ⚠️ The cookie is sent ONLY when the file's server belongs to the same site
+    (`v16-webapp-prime.tiktok.com` belongs to `tiktok.com`). A link handed to
+    us can point anywhere, and a session cookie sent to a stranger's server is
+    the account given away (hard rule 1).
     """
-    request = urllib.request.Request(address, headers={
+    headers = {
         "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0 Safari/537.36"),
         "Referer": f"https://www.{site}/",
-    })
+    }
+    host = (urllib.parse.urlsplit(address).hostname or "").lower()
+    if cookie and (host == site or host.endswith("." + site)):
+        headers["Cookie"] = cookie
+    request = urllib.request.Request(address, headers=headers)
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(target.suffix + ".part")
     try:
