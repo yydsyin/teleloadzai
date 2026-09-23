@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import cookies, explain
-from .paths import BIN_DIR
+from .paths import BIN_DIR, make_folder
 
 # Keeps the black console window from flashing when the GUI runs a tool.
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -136,6 +136,12 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
         str(tool),
         "--dump-single-json",
         "--flat-playlist",       # do not open every video of a playlist
+        # yt-dlp writes in the code page Windows gives old programs. On this
+        # PC that is GBK (Chinese) while Windows itself speaks French, so a
+        # French error came through as "n¡¯a pu ¨ºtre"
+        # and we showed "n??a pu ??tre". Proven 2026-09-23: PYTHONUTF8 and
+        # PYTHONIOENCODING change nothing; yt-dlp's own option does.
+        "--encoding", "utf-8",
         "--no-warnings",
         "--no-colors",
         *_cookie_arguments(cookie_file),
@@ -233,12 +239,18 @@ def download(
     did not happen.
     """
     tool = require_ytdlp()
-    out_dir.mkdir(parents=True, exist_ok=True)
+    make_folder(out_dir)
 
     command = [
         str(tool),
         "--newline",
         "--no-colors",
+        # yt-dlp writes in the code page Windows gives old programs. On this
+        # PC that is GBK (Chinese) while Windows itself speaks French, so a
+        # French error came through as "n¡¯a pu ¨ºtre"
+        # and we showed "n??a pu ??tre". Proven 2026-09-23: PYTHONUTF8 and
+        # PYTHONIOENCODING change nothing; yt-dlp's own option does.
+        "--encoding", "utf-8",
         "--no-warnings",
         "--progress", "--progress-template", _PROGRESS_TEMPLATE,
         "--print", _FILE_TEMPLATE,

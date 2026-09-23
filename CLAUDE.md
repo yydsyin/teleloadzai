@@ -22,6 +22,10 @@ One desktop interface that groups the best video/audio download tools behind a s
 | `platforms.py` + `detect.py` | the brain: link -> platform -> tool |
 | `ytdlp.py` | runs yt-dlp |
 | `runners.py` | runs every other tool: one engine, one recipe each. Also says which tools are **not usable yet**, so the window never offers one it cannot drive. |
+| `tiktokserver.py` | drives TikTokDownloader, which has no command line: starts its local server (port 5555) only while a job needs it, answers its menu by reading it, asks where the file is |
+| `cookies.py` | the cookie file: import it (filtered to our sites), describe it without ever showing a value, give it to the tools that can take it safely, wash secrets out of error text (`redact`) |
+| `login.py` | the in-app log-in window (decision 36): opens the site, takes that one site's cookies, forgets them for real |
+| `explain.py` | what an error MEANS, only for errors really met, each with its evidence (decision 38). Also marks which error texts are the tool's own words |
 | `tools.py` | the Tool Manager: install, update, versions |
 | `jobs.py` | the download queue |
 | `dialogs.py` | the Windows "Save as" and folder windows |

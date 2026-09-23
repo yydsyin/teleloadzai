@@ -58,12 +58,16 @@ KNOWN: tuple[Known, ...] = (
     Known(
         words=("for the authentication",),
         tools=("yt-dlp",),
-        title="This post can only be seen when logged in.",
-        next_step="Log in to the site, then press Retry.",
-        seen=("2026-09-22, a private Instagram post: yt-dlp answered "
-              "'...use --cookies-from-browser or --cookies for the "
-              "authentication'. The advice to log in is yt-dlp's own. "
-              "NOT yet seen: the retry succeeding with a real account."),
+        title="Instagram gave nothing for this post without a log-in.",
+        next_step=("It may be private, or it may not exist: we have seen "
+                   "this answer for a post that does not exist. If you can "
+                   "see it in your browser while logged in, log in to "
+                   "Instagram here, then press Retry."),
+        seen=("2026-09-22: post C1234567890 -- an id I INVENTED, so a post "
+              "that does not exist. Until 2026-09-23 this entry called it 'a "
+              "private post' and claimed a log-in was needed; that was never "
+              "seen. The advice to log in is yt-dlp's own. A real private "
+              "post has not been tested."),
     ),
     Known(
         words=("http error 403",),
@@ -86,6 +90,119 @@ KNOWN: tuple[Known, ...] = (
               "failed this way WITH a cookie; that video gave code 10204 in "
               "a normal browser."),
     ),
+    # ---- found by step 5b, 2026-09-23: inputs broken ON PURPOSE, so the
+    # ---- cause of each message is known because we made it.
+    Known(
+        words=("unsupported url",),
+        tools=("yt-dlp", "gallery-dl"),
+        title="This tool found nothing it can download on this page.",
+        next_step=("Check that the link opens the video or the post itself, "
+                   "not a home page, a profile or a search."),
+        seen=("https://example.com/ -- a page that exists and has no video. "
+              "yt-dlp: 'ERROR: Unsupported URL'; gallery-dl: 'Unsupported URL'."),
+    ),
+    Known(
+        words=("unable to download webpage", "http error 404"),
+        tools=("yt-dlp",),
+        title="The site says this page does not exist (error 404).",
+        next_step="Check the link: it may be mistyped, or the page was removed.",
+        seen="https://example.com/some-page -- a page that does not exist.",
+    ),
+    Known(
+        words=("unable to connect to proxy",),
+        tools=("yt-dlp", "streamlink"),
+        title="Your PC sends programs through a proxy, and that proxy does not answer.",
+        next_step="If you use a VPN or a proxy program, check that it is running.",
+        seen=("Proxy set to a closed port (127.0.0.1:9): yt-dlp and "
+              "streamlink both said 'Unable to connect to proxy'. ⚠️ This "
+              "is a BROKEN PROXY, not a missing internet connection -- true "
+              "'no internet' was not reproduced, so nothing here claims it."),
+    ),
+    Known(
+        words=("notfounderror",),
+        tools=("gallery-dl",),
+        title="The site says this item could not be found.",
+        next_step="The link may be wrong, or the item was deleted.",
+        seen=("Pinterest pin 999999999999999999, which does not exist: "
+              "'NotFoundError: Requested pin could not be found'."),
+    ),
+    Known(
+        words=("http redirect to login page",),
+        tools=("gallery-dl",),
+        title="Instagram sent gallery-dl to its log-in page.",
+        next_step=("The post may be private, or it may not exist: we have "
+                   "seen this answer for a post that does not exist. If you "
+                   "can see it while logged in, log in to Instagram here, "
+                   "then press Retry."),
+        seen="Instagram post C1234567890, an invented id that does not exist.",
+    ),
+    Known(
+        words=("no plugin can handle url",),
+        tools=("streamlink",),
+        title="Streamlink cannot read this page.",
+        next_step=("Streamlink records live streams. Check that the link "
+                   "opens a live channel, for example on Twitch."),
+        seen="https://example.com/: 'error: No plugin can handle URL'.",
+    ),
+    Known(
+        words=("no playable streams found",),
+        tools=("streamlink",),
+        title="There is no live stream at this link right now.",
+        next_step=("We have seen this for channels that are offline and for "
+                   "a channel that does not exist. Check the name, or try "
+                   "again when the channel is live."),
+        seen=("Same words for twitch.tv/twitch, /nasa, /riotgames (exist, "
+              "offline at the time) and for a channel name that does not "
+              "exist. So the message cannot tell the two apart."),
+    ),
+    Known(
+        words=("提取小红书作品链接失败",),
+        tools=("xhs-downloader",),
+        title="XHS-Downloader found no Xiaohongshu note in this link.",
+        next_step="Check that the link opens a note on xiaohongshu.com.",
+        seen=("https://example.com/: '提取小红书作品链接失败' (could not "
+              "extract a Xiaohongshu link), exit code 0."),
+    ),
+    Known(
+        words=("获取数据失败",),
+        tools=("xhs-downloader",),
+        title="XHS-Downloader could not get this note.",
+        next_step=("We have seen this in two cases: the note does not exist, "
+                   "and no internet connection. Check the link and your "
+                   "connection."),
+        seen=("'<id> 获取数据失败' (could not get the data) for a note id "
+              "that does not exist, AND for a real note with the proxy "
+              "pointed at a closed port. Same words, two causes."),
+    ),
+    Known(
+        words=("does not indicate success: 404",),
+        tools=("n-m3u8dl-re",),
+        title="The server says this stream does not exist (error 404).",
+        next_step="Check the link: it may be mistyped, or no longer there.",
+        seen=("https://example.com/nothing-here.m3u8: 'Response status code "
+              "does not indicate success: 404 (Not Found)', after 10 tries."),
+    ),
+    Known(
+        words=("input not supported",),
+        tools=("n-m3u8dl-re",),
+        title="N_m3u8DL-RE cannot read this link.",
+        next_step=("It reads stream playlists — links ending in .m3u8 or "
+                   ".mpd. Check that the link is one."),
+        seen="https://example.com/, a web page: 'Unhandled exception: ...: Input not supported'.",
+    ),
+    Known(
+        words=("(10061)",),
+        tools=("n-m3u8dl-re",),
+        title="The connection was refused (Windows code 10061).",
+        next_step=("The computer it tried to reach did not accept the "
+                   "connection. We have seen this when a proxy was set on "
+                   "this PC and was not running: if you use a VPN or a proxy "
+                   "program, check that it is running."),
+        seen=("Proxy pointed at a closed port: 'SocketException (10061)', in "
+              "the language of Windows. Matched on the code, not the words, "
+              "because the words change with the language of Windows."),
+    ),
+
 )
 
 

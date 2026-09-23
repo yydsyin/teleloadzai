@@ -362,7 +362,9 @@ _LOGIN_WORDS = (
     # we have not seen would make the app put words in the tool's mouth
     # (decision 38). Nine unseen phrases were removed on 2026-09-23; "log in"
     # alone would have matched "failed to log in to the proxy".
-    "--cookies",                    # seen 2026-09-22, private Instagram post
+    "--cookies",                    # seen 2026-09-22, Instagram post C1234567890
+                                    # -- an invented id, so a post that does not
+                                    # exist. "Log in" is yt-dlp's own advice.
     "for the authentication",       # same message
 )
 

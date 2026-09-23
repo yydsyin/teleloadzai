@@ -30,3 +30,25 @@ DEFAULT_DOWNLOAD_DIR = Path.home() / "Downloads"
 def ensure_dirs() -> None:
     for folder in (BIN_DIR, DATA_DIR):
         folder.mkdir(parents=True, exist_ok=True)
+
+
+class FolderError(RuntimeError):
+    """A folder we need could not be created, said in plain words."""
+
+
+def make_folder(folder: Path) -> None:
+    """Create a folder, or say plainly why it cannot be.
+
+    Until 2026-09-23 a failure here reached the user as Windows' own text:
+    "[WinError 183] Impossible de créer un fichier déjà existant" -- a code
+    number, in the language of Windows, about a folder he never named. The
+    cause is known exactly (creating it is our own step), so the sentence is
+    ours; Windows' reason stays at the end, as its own words.
+    """
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as problem:
+        raise FolderError(
+            f"Teleloadzai could not create the download folder {folder}. "
+            "Choose another folder in Settings. "
+            f"(Windows says: {problem.strerror or problem})") from problem

@@ -577,7 +577,10 @@ function jobRow(job) {
     || (job.state === "done" ? 100 : 0);
 
   let right = "";
-  if (job.state === "done") right = job.skipped ? "already there" : "done";
+  // "already there" only when it is checked (yt-dlp compares the file's
+  // date). A tool's own skip is just "skipped": XHS-Downloader skips notes
+  // from its history even when the file is in no folder you chose.
+  if (job.state === "done") right = job.skipped ? (job.skip_reason ? "skipped" : "already there") : "done";
   else if (job.state === "error") right = "failed";
   else if (job.state === "cancelled") right = "cancelled";
   else if (job.state === "waiting") right = "waiting";
@@ -599,7 +602,8 @@ function jobRow(job) {
         ⚠️ Running without your cookies: ${job.cookie_note}.
       </div>` : ""}
     ${job.state === "done" && job.skipped ? `<div class="hint" style="margin-top:6px">
-        This file was already there. <b>Nothing was downloaded.</b>
+        ${job.skip_reason ? job.skip_reason + " <b>Nothing was downloaded.</b>"
+          : "This file was already there. <b>Nothing was downloaded.</b>"}
       </div>
       <div class="row" style="margin-top:6px">
         <button class="ghost tiny" data-force="${job.id}">Download again</button>

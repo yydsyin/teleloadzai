@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import cookies, explain, tiktokserver, tools
-from .paths import BIN_DIR
+from .paths import BIN_DIR, make_folder
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -70,6 +70,9 @@ class Request:
 class RunResult:
     files: list[Path] = field(default_factory=list)
     log_tail: list[str] = field(default_factory=list)
+    # When nothing was written: the tool's OWN reason for skipping, in plain
+    # words. Never inferred from "no new file" alone (decision 38).
+    skip_reason: str = ""
 
     @property
     def nothing_downloaded(self) -> bool:
@@ -92,6 +95,24 @@ class Recipe:
     # XHS-Downloader skipped a note it had already seen, wrote only its own
     # database, and that alone looked like a download (2026-09-22).
     ignore: tuple[str, ...] = ()
+    # Reads the tool's output and returns why it skipped, or "" if it did
+    # not. Without this, "no new file" is an ERROR, never "already there":
+    # XHS-Downloader failed three different ways -- wrong link, missing
+    # note, no network -- ended with exit code 0 and no file, and the app
+    # said "This file was already there" (found by step 5b, 2026-09-23).
+    skipped: Callable[[list[str]], str] | None = None
+    # How the tool writes its text. "" = UTF-8. "oem" = the code page Windows
+    # gives console programs -- 936 (Chinese) on the developer's PC, while
+    # Windows itself speaks French. N_m3u8DL-RE (.NET) writes that way, so a
+    # French error arrived as "n��a pu ��tre" (seen 2026-09-23; decoding with
+    # the OEM code page gave the clean text).
+    encoding: str = ""
+    # Files the tool SAYS it wrote, read from its output. Needed because
+    # watching the folder cannot see an identical overwrite: gallery-dl's
+    # "Download again" rewrote the same file with the same size and the
+    # server's date, the folder looked unchanged, and the app reported an
+    # error made of a hidden path (2026-09-23).
+    reported: Callable[[list[str], Path], list[Path]] | None = None
 
 
 # --------------------------------------------------------------------------
@@ -105,6 +126,11 @@ def _gallery_dl(_exe: Path, r: Request) -> list[str]:
     # --help, 2026-09-22). This is what opens a private Instagram post.
     if r.cookie_file:
         command += ["--cookies", str(r.cookie_file)]
+    # "Download again" on a skipped job. Without this the button asked
+    # gallery-dl to skip the same file a second time -- a dead button
+    # (found by step 5b, 2026-09-23). `--no-skip` read from its own --help.
+    if r.force:
+        command += ["--no-skip"]
     return command
 
 
@@ -218,11 +244,70 @@ def _repackage_to_mp4(files: list[Path]) -> list[Path]:
     return final
 
 
+def _encoding(kind: str) -> str:
+    """The Python codec for a recipe's `encoding` field."""
+    if kind == "oem" and sys.platform == "win32":
+        import ctypes
+        return f"cp{ctypes.windll.kernel32.GetOEMCP()}"
+    return "utf-8"
+
+
+def _gallery_dl_reported(tail: list[str], out_dir: Path) -> list[Path]:
+    """gallery-dl prints the path of every file it downloads, one per line,
+    and `# <path>` for one it skipped (both seen 2026-09-23). A printed path
+    that exists inside the download folder is a file it wrote.
+
+    Only the last 40 lines are kept, so on a very large gallery re-downloaded
+    in place this counts the last 40 -- enough to report a success, not an
+    exact total.
+    """
+    base = out_dir.resolve()
+    found: list[Path] = []
+    for line in tail:
+        text = line.strip()
+        if not text or text.startswith(("#", "[")):
+            continue
+        path = Path(text)
+        try:
+            if path.is_file() and path.resolve().is_relative_to(base):
+                found.append(path)
+        except (OSError, ValueError):
+            continue
+    return found
+
+
+def _gallery_dl_skipped(tail: list[str]) -> str:
+    """gallery-dl prints `# <path>` for a file it did not download because it
+    is already there -- and the file IS there (seen 2026-09-23: second run on
+    the same image, same folder, 1 file, exit code 0)."""
+    if any(line.startswith("# ") for line in tail):
+        return "The file is already in this folder, so gallery-dl did not download it again."
+    return ""
+
+
+def _xhs_skipped(tail: list[str]) -> str:
+    """XHS-Downloader's summary line says how many it skipped and why.
+
+    Seen 2026-09-23: "作品 <id> 存在下载记录，跳过处理" ("this note has a
+    download record, skipped") then "共处理 1 个作品，成功 0 个，失败 0 个，
+    跳过 1 个". ⚠️ Its skip does NOT mean the file is in this folder: it
+    skipped into a brand-new empty folder, because it keeps its own history
+    of every note it ever downloaded. Saying "already there" would be false.
+    """
+    if any("存在下载记录" in line for line in tail):
+        return ("XHS-Downloader skipped this note: it keeps a history of every "
+                "note it has downloaded, and this one is in it. The file may be "
+                "in another folder. Press \"Download again\" to get it here.")
+    return ""
+
+
 RECIPES: dict[str, Recipe] = {
-    "gallery-dl": Recipe("gallery-dl", _gallery_dl, module="gallery_dl"),
+    "gallery-dl": Recipe("gallery-dl", _gallery_dl, module="gallery_dl",
+                         skipped=_gallery_dl_skipped, reported=_gallery_dl_reported),
     "streamlink": Recipe("streamlink", _streamlink, after=_repackage_to_mp4),
-    "xhs-downloader": Recipe("xhs-downloader", _xhs, ignore=("*.db",)),
-    "n-m3u8dl-re": Recipe("n-m3u8dl-re", _n_m3u8dl_re),
+    "xhs-downloader": Recipe("xhs-downloader", _xhs, ignore=("*.db",),
+                             skipped=_xhs_skipped),
+    "n-m3u8dl-re": Recipe("n-m3u8dl-re", _n_m3u8dl_re, encoding="oem"),
     "f2": Recipe("f2", _f2, module="f2",
                  note="f2 needs a cookie in its own config file for most sites."),
 }
@@ -302,7 +387,7 @@ def _fetch(address: str, target: Path, site: str,
     if cookie and (host == site or host.endswith("." + site)):
         headers["Cookie"] = cookie
     request = urllib.request.Request(address, headers=headers)
-    target.parent.mkdir(parents=True, exist_ok=True)
+    make_folder(target.parent)
     partial = target.with_suffix(target.suffix + ".part")
     try:
         with urllib.request.urlopen(request, timeout=60) as answer:
@@ -408,7 +493,7 @@ def run(
             raise RunnerError(f"{tool_id} is not installed")
         exe, head = found, []
 
-    request.out_dir.mkdir(parents=True, exist_ok=True)
+    make_folder(request.out_dir)
     before = _snapshot(request.out_dir)
 
     command = head + recipe.build(exe, request)
@@ -420,7 +505,7 @@ def run(
         stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL,        # never wait for a human
         text=True,
-        encoding="utf-8",
+        encoding=_encoding(recipe.encoding),
         errors="replace",
         bufsize=1,
         env=_child_environment(recipe.module),
@@ -446,8 +531,13 @@ def run(
                     on_progress(min(100, int(float(found_percent.group(1).replace(",", ".")))))
                 except ValueError:
                     pass
-        tail.append(line)
-        del tail[:-40]
+        # A crash report is never the reason, and it is long: N_m3u8DL-RE
+        # printed 64 lines when the network failed, the last 40 were all
+        # stack frames, and the one line that said what happened (line 14)
+        # was dropped before anyone read it (2026-09-23).
+        if not line.strip().startswith(("at ", "--- End of")):
+            tail.append(line)
+            del tail[:-40]
 
     code = process.wait()
 
@@ -472,7 +562,21 @@ def run(
             raise explain.from_tool(RunnerError(said))      # its words (decision 38)
         raise RunnerError(f"{tool_id} stopped with code {code}")
 
-    if written and recipe.after:
+    if recipe.reported:
+        said_written = recipe.reported(tail, request.out_dir)
+        written = sorted(set(written) | set(said_written))
+
+    if not written:
+        reason = recipe.skipped(tail) if recipe.skipped else ""
+        if reason:
+            return RunResult([], tail, skip_reason=reason)
+        said = _short_error(tail)
+        if said:
+            raise explain.from_tool(RunnerError(said))      # its words (decision 38)
+        raise RunnerError(f"{tool_id} finished without downloading anything, "
+                          "and said nothing about why.")
+
+    if recipe.after:
         written = recipe.after(written)
     return RunResult(written, tail)
 
@@ -484,8 +588,15 @@ def _short_error(tail: list[str]) -> str:
     screen. Decision 34 wants those words; hard rule 1 forbids one kind of
     word inside them. `redact` is what lets both be true (added 2026-09-22).
     """
-    for line in reversed(tail):
-        clean = line.strip()
-        if any(word in clean.lower() for word in ("error", "失败", "错误", "traceback")):
-            return cookies.redact(clean[:200])
-    return cookies.redact(tail[-1][:200]) if tail else ""
+    # Lines that are never the reason, seen in step 5b (2026-09-23):
+    #   "at ...InvokeAsync>d__0.MoveNext() + 0x1aa"  -- N_m3u8DL-RE's crash
+    #       report; its real reason ("... 404 (Not Found)") comes before.
+    #   "共处理 1 个作品，成功 0 个，失败 1 个..."    -- XHS-Downloader's summary;
+    #       it contains 失败 (failed) but the reason is the line above it.
+    useful = [l.strip() for l in tail
+              if l.strip() and not l.strip().startswith(("at ", "--- End of", "共处理"))]
+    for clean in reversed(useful):
+        if any(word in clean.lower()
+               for word in ("error", "exception", "失败", "错误", "traceback")):
+            return cookies.redact(clean.lstrip("-> ")[:200])
+    return cookies.redact(useful[-1][:200]) if useful else ""

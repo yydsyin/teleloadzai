@@ -33,7 +33,11 @@ class Job:
     target: str = ""            # exact file chosen in the "Save as" window
     tool: str = "yt-dlp"        # the program that really runs, for the error buttons
     force: bool = False         # rewrite a file that is already there
-    skipped: bool = False       # the file was already there and nothing was written
+    skipped: bool = False       # nothing was written, and the tool said why
+    # The tool's own reason for skipping, when it gave one. yt-dlp's skip is
+    # checked by the file's date and needs none; XHS-Downloader's is NOT
+    # "already there" -- it skips anything in its own history (decision 38).
+    skip_reason: str = ""
     limit_minutes: int = 60     # how long a live recording may last
     cookie_file: str = ""       # our copy of the cookie file, when it applies
     # Why this job runs WITHOUT the cookies although they are switched on.
@@ -58,6 +62,7 @@ class Job:
             "id": self.id, "url": self.url, "mode": self.mode, "quality": self.quality,
             "title": self.title, "folder": self.folder, "target": self.target,
             "tool": self.tool, "force": self.force, "skipped": self.skipped,
+            "skip_reason": self.skip_reason,
             "state": self.state, "percent": self.percent, "speed": self.speed,
             "eta": self.eta, "files": self.files, "error": self.error,
             # The PATH never leaves this module -- only whether cookies were
@@ -235,6 +240,7 @@ class Queue:
                     # Say the truth: the file was already there and nothing
                     # was written. "Done" would be a lie the user cannot see.
                     job.skipped = result.nothing_downloaded
+                    job.skip_reason = getattr(result, "skip_reason", "")
                     job.state = DONE
                     job.percent = "100%"
         except Exception as exc:
