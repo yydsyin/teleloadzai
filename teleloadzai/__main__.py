@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import login, tiktokserver
+from . import login, toolservers
 from .config import APP_NAME, APP_VERSION
 from .server import forget_if_once, serve, start_background
 
@@ -49,11 +49,13 @@ def open_window(port: int) -> None:
     finally:
         # "Forget when I close Teleloadzai" happens HERE, after the window
         # engine has stopped -- the one moment Windows releases the profile.
-        # TikTokDownloader's server must not outlive us. It binds 0.0.0.0 and
-        # asks for no token, so one left running is a door open on the
-        # network -- exactly what decision 21 forbids for our own.
-        if tiktokserver.SERVER.stop_now():
-            print("TikTokDownloader's server stopped.")
+        # TikTokDownloader's and KS-Downloader's servers must not outlive us.
+        # Both bind 0.0.0.0 and ask for no token, so one left running is a
+        # door open on the network -- exactly what decision 21 forbids for
+        # our own.
+        for server in toolservers.ALL:
+            if server.stop_now():
+                print(f"{server.name}'s server stopped.")
         try:
             forget_if_once()
         except Exception as problem:            # never block the shutdown

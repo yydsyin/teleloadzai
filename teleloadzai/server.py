@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import cookies, dialogs, explain, login, runners, tiktokserver, tools, ytdlp
+from . import cookies, dialogs, explain, login, runners, toolservers, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import Queue
@@ -56,7 +56,46 @@ def load_settings() -> dict:
         # "once"  -- forget everything when Teleloadzai closes: the cookies
         #            AND the log-in window's profile. For a shared PC.
         "cookies_keep": "once" if stored.get("cookies_keep") == "once" else "keep",
+        # The user's own default tool per site, {platform id: tool id}
+        # (decision 13, first level). Only sites where he changed it.
+        "tool_choice": {k: v for k, v in (stored.get("tool_choice") or {}).items()
+                        if isinstance(k, str) and isinstance(v, str)},
     }
+
+
+def usable_tools(platform) -> list:
+    """The tools we can drive for this site, the user's choice first.
+
+    Order is the whole mechanism: the first one is what the download page
+    picks. A saved choice that is no longer usable (removed from the table,
+    or blocked) is ignored rather than obeyed into a dead end.
+    """
+    offered = [o for o in platform.tools if runners.unavailable_reason(o.tool_id) is None]
+    chosen = load_settings()["tool_choice"].get(platform.id)
+    return sorted(offered, key=lambda o: o.tool_id != chosen)
+
+
+def tool_choices() -> list[dict]:
+    """The sites where there is a real choice: more than one usable tool."""
+    rows = []
+    for platform in PLATFORMS:
+        offered = usable_tools(platform)
+        if len(offered) < 2:
+            continue
+        # The default the user really gets: our first USABLE tool. Weibo's
+        # first is f2, which cannot run yet, so "(default)" was drawn on no
+        # row at all (seen on screen 2026-09-24).
+        usable_default = next(o.tool_id for o in platform.tools
+                              if runners.unavailable_reason(o.tool_id) is None)
+        rows.append({
+            "id": platform.id, "name": platform.name,
+            "chosen": offered[0].tool_id,
+            "default": usable_default,
+            "tools": [{"id": o.tool_id, "name": tool_name(o.tool_id), "why": o.why}
+                      for o in platform.tools
+                      if runners.unavailable_reason(o.tool_id) is None],
+        })
+    return rows
 
 
 def save_settings(settings: dict) -> None:
@@ -86,9 +125,33 @@ def forget_if_once() -> bool:
     return gone
 
 
+def _login_saved(kept: int) -> None:
+    """A log-in window saved cookies by itself: switch them on.
+
+    The same rule as the "I have logged in" button and the file import --
+    logging in IS the consent. Without this, a window that finished on its
+    own would leave the switch off, and the next download would run without
+    the cookies the user has just logged in for.
+    """
+    settings = load_settings()
+    settings["cookies_enabled"] = True
+    save_settings(settings)
+
+
+login.on_saved = _login_saved
+
+
 def queue_download(url: str, mode: str, quality: str, title: str, target: str,
-                   tool: str, platform: str) -> tuple[dict, int]:
-    """Check a download request and put it in the queue. Returns (json, status)."""
+                   tool: str, platform: str, force: bool = False,
+                   replace: str = "") -> tuple[dict, int]:
+    """Check a download request and put it in the queue. Returns (json, status).
+
+    ``replace`` is the id of a finished job this one takes the place of --
+    Retry, "Download again", "Try with another tool". The cookies are decided
+    NOW, from the current settings, never copied from the old attempt: a job
+    that failed with cookies off, followed by a log-in, must retry WITH them
+    (found 2026-09-23 -- the old Retry copied the failed attempt's choice).
+    """
     allowed = ytdlp.AUDIO_QUALITIES if mode == "mp3" else ytdlp.VIDEO_QUALITIES
     if mode not in ("mp3", "mp4") or quality not in allowed:
         return {"error": "bad mode or quality"}, 400
@@ -102,12 +165,15 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
     # so the row can say it instead of failing in silence.
     on = load_settings()["cookies_enabled"]
     job = QUEUE.add(url, mode, quality, title or url, download_folder(),
-                    Path(target) if target else None, tool=tool,
+                    Path(target) if target else None, force=force, tool=tool,
                     limit_minutes=record_minutes(),
                     cookie_file=cookies.path_for(tool, on),
                     cookie_note=cookies.unusable_reason(tool, on) or "",
                     platform=platform,
-                    cookie_header=on and tool in cookies.HEADER_CAPABLE)
+                    cookie_header=on and tool in cookies.HEADER_CAPABLE,
+                    replace=replace)
+    if job is None:
+        return {"error": "that download is still running, or no longer exists"}, 409
     return job.as_dict(), 200
 
 
@@ -204,7 +270,8 @@ def install_progress() -> dict:
 
 def detection_json(result: Detection) -> dict:
     platform = result.platform
-    offered = [o for o in platform.tools if runners.unavailable_reason(o.tool_id) is None]
+    # The user's saved choice first: the page picks the first one.
+    offered = usable_tools(platform)
     blocked = [
         {"name": tool_name(o.tool_id), "why": runners.unavailable_reason(o.tool_id)}
         for o in platform.tools if runners.unavailable_reason(o.tool_id) is not None
@@ -312,6 +379,10 @@ class Handler(BaseHTTPRequestHandler):
                     # not hidden behind a button that does nothing.
                     "login_blocked": login.unavailable_reason(),
                 })
+                return
+
+            if path == "/api/tool-choices":
+                self._json({"sites": tool_choices()})
                 return
 
             if path == "/api/qualities":
@@ -454,7 +525,7 @@ class Handler(BaseHTTPRequestHandler):
             answer, status = queue_download(
                 url=old.url, mode=old.mode, quality=old.quality, title=old.title,
                 target=old.target, tool=(body.get("tool") or "").strip(),
-                platform=old.platform,
+                platform=old.platform, replace=old.id,
             )
             self._json(answer, status)
             return
@@ -465,10 +536,18 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path.startswith("/api/job/") and path.endswith("/retry"):
-            job_id = path[len("/api/job/"):-len("/retry")]
-            again = QUEUE.retry(job_id, force=bool(body.get("force")))
-            self._json(again.as_dict() if again else {"error": "cannot retry"},
-                       200 if again else 400)
+            # Retry and "Download again" take the failed row's place instead
+            # of stacking a new row under it (asked 2026-09-23).
+            old = QUEUE.get(path[len("/api/job/"):-len("/retry")])
+            if old is None:
+                self._json({"error": "that download no longer exists"}, 404)
+                return
+            answer, status = queue_download(
+                url=old.url, mode=old.mode, quality=old.quality, title=old.title,
+                target=old.target, tool=old.tool, platform=old.platform,
+                force=bool(body.get("force")), replace=old.id,
+            )
+            self._json(answer, status)
             return
 
         if path == "/api/jobs/clear":
@@ -542,6 +621,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"kept": kept, "cookies": cookies.state(bool(kept))})
             return
 
+        if path == "/api/login/state":
+            # Polled by the page while a log-in window is open, so it can say
+            # how it ended -- finished by itself, or closed by the user.
+            self._json(login.state())
+            return
+
         if path == "/api/login/cancel":
             self._json({"closed": login.close()})
             return
@@ -576,6 +661,20 @@ class Handler(BaseHTTPRequestHandler):
                 settings["record_minutes"] = body["record_minutes"]
             if body.get("cookies_keep") in ("keep", "once"):
                 settings["cookies_keep"] = body["cookies_keep"]
+            if isinstance(body.get("tool_choice"), dict):
+                # One site at a time from the page. Only a tool that site
+                # really lists; choosing the default removes the entry, so
+                # a later change of our default still reaches this user.
+                for pid, tid in body["tool_choice"].items():
+                    platform = next((p for p in PLATFORMS if p.id == pid), None)
+                    if platform is None or tid not in [o.tool_id for o in platform.tools]:
+                        continue
+                    usable_default = next((o.tool_id for o in platform.tools
+                                           if runners.unavailable_reason(o.tool_id) is None), None)
+                    if tid == usable_default:
+                        settings["tool_choice"].pop(pid, None)
+                    else:
+                        settings["tool_choice"][pid] = tid
             if "cookies_enabled" in body:
                 # The switch can only be turned ON when a file is really here,
                 # otherwise the card would claim cookies we do not have.

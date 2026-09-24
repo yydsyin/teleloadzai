@@ -28,10 +28,12 @@ cookies afterwards, the same thing the browser would keep anyway.
 
 from __future__ import annotations
 
+import re
 import shutil
 import threading
 import time
 from email.utils import parsedate_to_datetime
+from typing import Callable
 from urllib.parse import urlsplit
 
 from . import cookies
@@ -54,6 +56,76 @@ _LOGIN_URL = {
     "bilibili": "https://passport.bilibili.com/login",
     "weibo": "https://passport.weibo.com/sso/signin",
     "twitch": "https://www.twitch.tv/login",
+    # Added 2026-09-23 so the window opens ON the log-in, not on a front page
+    # where the user has to hunt for the button. Each one probed that day
+    # (plain request, where it lands, its title) and kept only with evidence
+    # that it IS a log-in page:
+    #   tiktok       title "Log in | TikTok"
+    #   xiaohongshu  its own /explore redirected there
+    #   vimeo        title "Log in to Vimeo"
+    #   rumble       lands on auth.rumble.com, "Rumble Auth", and its address
+    #                carries redirect_uri=https://rumble.com/ -- it sends the
+    #                user back to the site once logged in
+    #   soundcloud   title "... sign-in ..."
+    #   bandcamp     title "Log in | Bandcamp"
+    #   mixcloud     title "Login | Mixcloud"
+    #   archive      /account/login redirected there by the site itself
+    # A plain request was NOT enough for the next six: Pinterest, Dailymotion
+    # and Odysee answer 200 even for a page that does not exist (control run
+    # the same day). So they were opened in WebView2 itself, our window's
+    # engine, and kept on what was drawn:
+    #   pinterest    title "Pinterest Login", a password box on screen
+    #   dailymotion  title "Connexion - Dailymotion"
+    #   odysee       the "Se connecter" form (email first, no password yet)
+    #   ted          the address TED's own "SIGN IN" button points to
+    #   niconico     lands on /spa/login/, title "ログイン", a password box
+    # Douyin keeps its front page on purpose: the log-in QR code is already
+    # drawn there, and sso.douyin.com just sends the window back to it.
+    # TED and Niconico live on another sub-domain; `_needs_moving` takes the
+    # window back to the main site before reading, so nothing is missed.
+    # ⚠️ Kuaishou is NOT here any more. Its passport page was, for an hour:
+    # the user scanned the QR code, logged in, and the page never went back
+    # to the site, so the window waited for nothing (2026-09-23). The site's
+    # own log-in is a pop-up on www.kuaishou.com -- see _PRESS_LOGIN.
+    "tiktok": "https://www.tiktok.com/login",
+    "pinterest": "https://www.pinterest.com/login/",
+    "dailymotion": "https://www.dailymotion.com/signin",
+    "odysee": "https://odysee.com/$/signin",
+    "ted": "https://auth.ted.com/users/new?context=ted.www%2Fnav",
+    "niconico": "https://account.nicovideo.jp/login",
+    "xiaohongshu": "https://www.xiaohongshu.com/login",
+    "vimeo": "https://vimeo.com/log_in",
+    "rumble": "https://rumble.com/login.php",
+    "soundcloud": "https://soundcloud.com/signin",
+    "bandcamp": "https://bandcamp.com/login",
+    "mixcloud": "https://www.mixcloud.com/login/",
+    "archive": "https://archive.org/account/login",
+}
+
+# Sites whose log-in is a pop-up on the front page: we press the site's own
+# button, so the user sees the log-in straight away. If the site renames it,
+# nothing breaks -- the user sees the front page and its log-in panel.
+_PRESS_LOGIN = {
+    # (the button, the pop-up it opens). Seen 2026-09-23 in WebView2: the
+    # side panel "登录即可享受" holds a "立即登录" button (class
+    # `sidebar-login-b...`); clicking it draws `login-modal ... modal-dialog`
+    # with the QR code, address unchanged.
+    # ⚠️ A click the moment the page says "loaded" can do nothing -- the page
+    # is not drawn yet. Seen the same day: pressed once, pop-up not there. So
+    # the pop-up is CHECKED, and the button pressed again until it shows.
+    "kuaishou": ("document.querySelector('[class*=sidebar-login]')",
+                 "document.querySelector('[class*=login-modal]')"),
+}
+_PRESS_TRIES = 8
+
+# The cookies that exist only once logged in. Where the address never
+# changes after a log-in (a pop-up, a QR code), their arrival is the only
+# sign the user is in. ONLY names seen on a real log-in (decision 38).
+_SESSION_COOKIES = {
+    # 2026-09-23, the user's own QR log-in: `userId` and
+    # `kuaishou.web.api_st` on .kuaishou.com. Neither was among the 9
+    # cookies of a visit without an account, recorded the same afternoon.
+    "kuaishou": ("userId", "kuaishou.web.api_st"),
 }
 
 _lock = threading.Lock()        # one login window at a time, never two
@@ -206,8 +278,163 @@ def open_for(platform_id: str) -> dict:
             f"Log in to {name}", url, width=980, height=760,
         )
         _open_for = platform_id
+        window = _window
 
+    # Closing the window by hand used to take NOTHING and say nothing, and
+    # left a dead handle that refused the next log-in ("already open"). Seen
+    # 2026-09-23: the user logged in to Kuaishou, closed the window, and no
+    # cookie file existed afterwards. The watcher below is the answer.
+    closed = threading.Event()
+    window.events.closed += closed.set
+    threading.Thread(target=_watch, args=(window, platform_id, url, closed),
+                     daemon=True).start()
     return {"platform": platform_id, "url": url}
+
+
+# --------------------------------------------------------------------------
+# the watcher: finish by itself, and never lose a log-in to a closed window
+# --------------------------------------------------------------------------
+
+WATCH_EVERY = 1.5               # seconds between two looks at the window
+
+# What the last log-in ended with, for the main window to say it. Only
+# counts and words -- never a cookie.
+_result: dict = {}
+_result_number = 0
+
+# Set by the server: what to do once cookies are saved (turn the switch on).
+# A plain hook, because the server imports this module and not the reverse.
+on_saved: Callable[[int], None] | None = None
+
+
+def _report(platform_id: str, kept: int, how: str, error: str = "") -> None:
+    global _result_number
+    _result_number += 1
+    _result.clear()
+    _result.update(number=_result_number, platform=platform_id, kept=kept,
+                   how=how, error=error)
+    if kept and on_saved is not None:
+        try:
+            on_saved(kept)
+        except Exception:
+            pass                # the cookies ARE saved; the switch is second
+
+
+def state() -> dict:
+    """Is a log-in window open, and how did the last one end."""
+    with _lock:
+        is_open, platform_id = _window is not None, _open_for
+    return {"open": is_open, "platform": platform_id, "result": dict(_result)}
+
+
+def _left_login_page(here: str, start: str) -> bool:
+    """True once the window has moved past the page it was opened on.
+
+    `/login/phone-or-email` still counts as the log-in page of `/login`: a
+    site that walks the user through several steps must not be closed on
+    the second one.
+    """
+    now, then = urlsplit(here), urlsplit(start)
+    # A page that still calls itself a log-in is not past it. Sites move
+    # their own log-in page on arrival: x.com/login -> x.com/i/flow/login,
+    # archive.org/account/login -> archive.org/login. Both windows closed
+    # by themselves before anyone logged in (all-sites test, 2026-09-24).
+    # The query counts too: X's third stop, 7 s after opening, was
+    # x.com/i/jf/onboarding/web?mode=login -- the word only after the "?".
+    if _LOGIN_WORDS.search(now.path) or _LOGIN_WORDS.search(now.query):
+        return False
+    if (now.hostname or "") != (then.hostname or ""):
+        return True
+    path, start_path = now.path.rstrip("/"), then.path.rstrip("/")
+    return not (path == start_path or path.startswith(start_path + "/"))
+
+
+# In the path of every log-in address we open on a site's main host (/login,
+# /signin, /log_in, /$/signin, /accounts/login/ ...), checked 2026-09-24.
+_LOGIN_WORDS = re.compile(r"log[-_]?in|sign[-_]?in", re.IGNORECASE)
+
+
+def _watch(window, platform_id: str, start: str, closed: threading.Event) -> None:
+    """Look at the log-in window every moment it is open.
+
+    Two jobs:
+
+    * **Finish by itself**, on one of two signs. Either the window has left
+      the log-in page and landed on the platform's own address; or, for a
+      site whose log-in is a pop-up that never changes the address, a cookie
+      that only exists once logged in has appeared (`_SESSION_COOKIES`,
+      names seen on a real log-in). Then: take the cookies, close the window.
+      ⚠️ "Left the page" is not used when the log-in page IS the front page
+      (Douyin's QR code): it would fire the moment the user clicks a video,
+      before logging in. Closing the window finishes those.
+    * **Keep what it has.** While the window is on ANY address of the site,
+      its cookies are copied in memory -- never on another site such as
+      accounts.google.com (decision 36). If the user closes the window, that
+      copy is saved: closing is how most people say "done".
+    * **Press the site's own log-in button** where the log-in is a pop-up
+      (`_PRESS_LOGIN`), once, so the user lands on it instead of hunting.
+    """
+    global _window, _open_for
+    latest: list[str] = []
+    automatic = login_url(platform_id) != home_url(platform_id)
+    press = _PRESS_LOGIN.get(platform_id)
+    tries = 0
+    session = _SESSION_COOKIES.get(platform_id, ())
+    domains = next((p.domains for p in PLATFORMS if p.id == platform_id), ())
+
+    while True:
+        with _lock:
+            if _window is not window:
+                return          # finished, or cancelled, by someone else
+
+        if closed.is_set():
+            with _lock:
+                mine = _window is window
+                if mine:
+                    _window, _open_for = None, ""
+            if mine:
+                kept = cookies.merge_lines(latest) if latest else 0
+                _report(platform_id, kept, "closed")
+            return
+
+        try:
+            here = window.get_current_url() or ""
+        except Exception:
+            here = ""
+        host = urlsplit(here).hostname or ""
+        # ANY address of the site, passport.* included: the copy is what a
+        # closed window leaves us, and a log-in that ends on a sub-domain
+        # must not be lost. Another site (accounts.google.com) never counts.
+        on_site = any(host == d or host.endswith("." + d) for d in domains)
+        if on_site and press:
+            button, popup = press
+            try:
+                shown = window.evaluate_js(
+                    f"(() => {{ const p = {popup}; if (p) {{ const r = p.getBoundingClientRect(); "
+                    "if (r.width > 0 && r.height > 0) return true; } "
+                    f"const b = {button}; if (b) b.click(); return false; }})()")
+                tries += 1      # only a look that really ran counts
+            except Exception:
+                shown = False   # a page still loading; the next look will do
+            if shown or tries >= _PRESS_TRIES:
+                press = None    # open -- or the site changed; the user sees its page
+        if on_site:
+            try:
+                latest = _netscape_lines(window.get_cookies() or [])
+            except Exception:
+                pass            # a page still loading; the next look will do
+            logged_in = any(f"\t{name}\t" in line for name in session for line in latest)
+            if (logged_in or (automatic and not _needs_moving(window, platform_id)
+                              and _left_login_page(here, start))) and not closed.is_set():
+                try:
+                    kept = finish()
+                except Exception as problem:
+                    _report(platform_id, 0, "auto", cookies.redact(str(problem)))
+                    return
+                _report(platform_id, kept, "auto")
+                return
+
+        closed.wait(WATCH_EVERY)
 
 
 def finish() -> int:
@@ -268,7 +495,15 @@ def finish() -> int:
 
 
 def _needs_moving(window, platform_id: str) -> bool:
-    """True when the window is not on the platform's own site yet."""
+    """True when the window is not on the platform's MAIN address yet.
+
+    Not "somewhere on the site": WebView2 gives the cookies of the page the
+    window is on (`GetCookiesAsync(self.url)`, read in pywebview's own code
+    2026-09-23), so a log-in finished on passport.kuaishou.com would miss the
+    cookies that live only on www.kuaishou.com. `www.` is ignored, so a site
+    that drops it (vimeo.com) is not moved for nothing -- a needless move
+    costs a page load, and TikTok's did not load within 20 s (2026-09-22).
+    """
     home = home_url(platform_id)
     if not home:
         return False
@@ -278,9 +513,14 @@ def _needs_moving(window, platform_id: str) -> bool:
         return True                  # cannot tell -> the safe move is to go
     if not here:
         return True
-    sites = next((p.domains for p in PLATFORMS if p.id == platform_id), ())
+
     host = urlsplit(here).hostname or ""
-    return not any(host == d or host.endswith("." + d) for d in sites)
+    host = host[4:] if host.startswith("www.") else host
+    # Any of the platform's own addresses, exactly: X finishes its log-in on
+    # x.com while our table lists twitter.com first (caught by the check of
+    # 2026-09-23). A sub-domain such as passport.* is still moved.
+    sites = next((p.domains for p in PLATFORMS if p.id == platform_id), ())
+    return host not in sites
 
 
 # Windows will not let a folder go while WebView2 still holds it, and WebView2

@@ -36,6 +36,7 @@ _TOOL_LIST = (
     Tool("streamlink", "Streamlink", "streamlink/streamlink", "python"),
     Tool("tiktokdownloader", "TikTokDownloader", "JoeanAmier/TikTokDownloader", "python"),
     Tool("xhs-downloader", "XHS-Downloader", "JoeanAmier/XHS-Downloader", "python"),
+    Tool("ks-downloader", "KS-Downloader", "JoeanAmier/KS-Downloader", "exe"),
     Tool("f2", "f2", "Johnserf-Seed/f2", "python"),
     Tool("n-m3u8dl-re", "N_m3u8DL-RE", "nilaoda/N_m3u8DL-RE", "exe"),
 )
@@ -100,16 +101,13 @@ PLATFORMS: tuple[Platform, ...] = (
              ("douyin.com", "iesdouyin.com"),
              (ToolOption("tiktokdownloader", "no watermark"),
               ToolOption("f2", "batch, a whole profile"))),
-    # ⚠️ No tool. f2 was listed here from 2026-09-20 to 2026-09-22 and cannot
-    # do this site at all: `python -m f2 ks --help` answers "the ks app was
-    # not found", and Kuaishou is absent from f2's own list of apps. An empty
-    # tools tuple makes `is_supported` False, so the window says so instead of
-    # offering a button that fails.
+    # One tool, and the only one that works (decision 39). Tested 2026-09-23
+    # on the same video: KS-Downloader downloaded it; yt-dlp ("Unsupported
+    # URL"), lux and you-get failed. f2, listed here until 2026-09-22, has no
+    # Kuaishou at all ("the ks app was not found").
     Platform("kuaishou", "Kuaishou",
              ("kuaishou.com", "gifshow.com"),
-             (),
-             note="No tool follows Kuaishou today. f2 does not support it, "
-                  "whatever its documentation suggests (checked 2026-09-22)."),
+             (ToolOption("ks-downloader", "the only tool that works on Kuaishou today"),)),
     Platform("xiaohongshu", "Xiaohongshu",
              ("xiaohongshu.com", "xhslink.com"),
              (ToolOption("xhs-downloader", "video and photos, no watermark"),)),

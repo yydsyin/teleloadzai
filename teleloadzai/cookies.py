@@ -78,8 +78,9 @@ COMMAND_LINE_ONLY = {
 # TikTokDownloader takes the cookie in the BODY of a request to its own local
 # server, not on a command line -- so it is safe to give it one, and it is not
 # in the list above. It needs the cookie as a header string rather than a
-# file, which is what `header_for` is for.
-HEADER_CAPABLE = ("tiktokdownloader",)
+# file, which is what `header_for` is for. KS-Downloader (2026-09-23) is the
+# same: `/detail/` has a `cookies` field, read from its own /openapi.json.
+HEADER_CAPABLE = ("tiktokdownloader", "ks-downloader")
 
 _MAX_BYTES = 8 * 1024 * 1024        # a real export is a few kB; 8 MB is absurd
 

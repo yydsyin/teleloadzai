@@ -224,6 +224,19 @@
       </div>
     </div>
 
+    <!-- Decision 13, first level: the user's own default tool per site.
+         Only the sites with a real choice are listed; a site with one tool
+         has nothing to choose. The download page still lets him switch for
+         one download. -->
+    <div class="field">
+      <div class="hint" style="margin-bottom:8px">Tool for each site</div>
+      <div id="tool-choices" class="hint">Loading…</div>
+      <div class="hint" style="margin-top:6px">
+        The tool used when you paste a link from that site. You can still pick
+        another one for a single download.
+      </div>
+    </div>
+
     <div class="field">
       <div class="hint" style="margin-bottom:8px">Default folder</div>
       <div class="row">
@@ -291,7 +304,8 @@
       <div class="field" style="margin-top:14px">
         <div class="hint" style="margin-bottom:8px">
           <b>Log in here.</b> A window opens on the site. You log in the normal
-          way, then press Done — Teleloadzai takes only that site's cookies.
+          way; the window closes by itself once you are in, and Teleloadzai
+          takes only that site's cookies.
         </div>
         <div class="row" id="login-buttons" style="flex-wrap:wrap"></div>
         <div class="hint warn-text hidden" id="login-blocked" style="margin-top:8px"></div>
@@ -634,8 +648,9 @@ function jobRow(job) {
   const loginButton = row.querySelector("[data-login]");
   if (loginButton) loginButton.addEventListener("click", () => {
     const id = loginButton.dataset.login;
-    // The same window as in Settings, opened from where the problem is.
-    showSettings(true);
+    // The same window as in Settings, opened from where the problem is --
+    // and the user STAYS here. This used to jump to Settings, because the
+    // only "done" button lived there; the window now finishes by itself.
     openLogin({ id, name: loginablePlatforms[id] || id });
   });
 
@@ -860,8 +875,40 @@ function showView(name) {
   if (name === "settings") {
     loadTools();      // versions come from the 24 h cache, so this is instant
     loadCookies();
+    loadToolChoices();
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function loadToolChoices() {
+  const box = $("tool-choices");
+  const data = await api("/api/tool-choices");
+  const sites = data.sites || [];
+  box.textContent = sites.length ? "" : "No site has more than one usable tool yet.";
+  for (const site of sites) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.style.margin = "4px 0";
+    const label = document.createElement("span");
+    label.textContent = site.name;
+    label.style.minWidth = "110px";
+    const pick = document.createElement("select");
+    for (const tool of site.tools) {
+      const option = document.createElement("option");
+      option.value = tool.id;
+      // Our default is named as such, so going back to it is obvious.
+      option.textContent = tool.name + " — " + tool.why
+        + (tool.id === site.default ? " (default)" : "");
+      option.selected = tool.id === site.chosen;
+      pick.appendChild(option);
+    }
+    pick.addEventListener("change", async () => {
+      await api("/api/settings", { tool_choice: { [site.id]: pick.value } });
+      setStatus(site.name + " links will now use " + pick.selectedOptions[0].text.split(" — ")[0] + ".");
+    });
+    row.append(label, pick);
+    box.appendChild(row);
+  }
 }
 
 // Kept as a name because the rest of the page already says it, and a rename
@@ -1040,9 +1087,60 @@ async function openLogin(platform) {
   $("login-waiting-title").textContent = "Log in to " + platform.name;
   $("login-waiting-text").textContent =
     "A window has opened on " + platform.name + ". Log in there the normal way — "
-    + "password, code by SMS, whatever it asks. When you can see your account, "
-    + "come back here and press the button.";
+    + "password, code by SMS, whatever it asks. It closes by itself once you "
+    + "are in. You can also just close it when you are done.";
   $("login-waiting").classList.remove("hidden");
+  // Said in the status line too, which every screen shows: the button on a
+  // failed download opens this window without leaving the download page.
+  setStatus("A window has opened on " + platform.name
+    + ". Log in there — it closes by itself once you are in.");
+  watchLogin(platform.name);
+}
+
+// How the log-in window ended, said once, wherever the user is. Without this
+// a window closed by hand ended in silence (decision 34) -- and took nothing.
+let loginSeen = 0;
+let loginWatching = false;
+
+async function watchLogin(name) {
+  if (loginWatching) return;
+  loginWatching = true;
+  try {
+    // Start from the outcome already known, or a second log-in in the same
+    // session would announce the FIRST one's result.
+    const before = await api("/api/login/state", {});
+    loginSeen = (before.result || {}).number || 0;
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const state = await api("/api/login/state", {});
+      const result = state.result || {};
+      if (result.number && result.number !== loginSeen) {
+        loginSeen = result.number;
+        $("login-waiting").classList.add("hidden");
+        setStatus(loginMessage(result, name));
+        loadCookies();          // the card, the switch, and who can log in
+        return;
+      }
+      if (!state.open) return;  // finished by the button, or cancelled
+    }
+  } finally {
+    loginWatching = false;
+  }
+}
+
+function loginMessage(result, name) {
+  if (result.error) return "The cookies could not be taken: " + result.error;
+  if (result.kept) {
+    const saved = result.kept === 1 ? "1 cookie" : result.kept + " cookies";
+    return (result.how === "auto" ? "Logged in to " + name + ": " : "Window closed: ")
+      + saved + " saved. If a download failed, press Retry on it.";
+  }
+  // Closed before a single copy was taken: another site's page (Google for
+  // YouTube), or the site's own page still loading. Which one is not known
+  // here, so it is not claimed (seen 2026-09-23: "before it reached
+  // Kuaishou" was said of a window that WAS on kuaishou.com, still loading).
+  return "The window was closed before Teleloadzai could take anything from "
+    + name + ". Nothing was saved. Try again, and close it only once you are logged in.";
 }
 
 $("login-done").addEventListener("click", async () => {

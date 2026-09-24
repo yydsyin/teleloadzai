@@ -93,6 +93,15 @@ SPECS: tuple[ToolSpec, ...] = (
              exe_name="DouK-Downloader.exe", asset_keywords=("Windows",),
              version_args=()),
 
+    # The same author's Kuaishou tool, driven the same way (by its server).
+    # Its program is called `main.exe`; the release has an ARM64 twin, hence
+    # "x64" (file names read from the 1.6 release, 2026-09-23). Never started
+    # for a version: without `api` it opens its own menu.
+    ToolSpec("ks-downloader", "KS-Downloader", "JoeanAmier/KS-Downloader", "zip",
+             what_for="Kuaishou.",
+             exe_name="main.exe", asset_keywords=("Windows", "X64"),
+             version_args=()),
+
     # Ships two programs; the plain one is the command-line one. Without
     # exe_name we picked XHS-Downloader-GUI.exe, the graphical one.
     ToolSpec("xhs-downloader", "XHS-Downloader", "JoeanAmier/XHS-Downloader", "zip",

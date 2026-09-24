@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import cookies, explain, tiktokserver, tools
+from . import cookies, explain, toolservers, tools
 from .paths import BIN_DIR, make_folder
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -39,6 +39,11 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # Most tools print a percentage somewhere. Those that do not simply show
 # "working" -- we do not invent a number we cannot measure.
 _PERCENT = re.compile(r"(\d{1,3}(?:[.,]\d+)?)\s?%")
+
+# What we say we are to a site's own servers: file servers refuse a request
+# that does not look like a browser's.
+_BROWSER = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0 Safari/537.36")
 
 
 class RunnerError(RuntimeError):
@@ -336,11 +341,11 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None) -> RunR
     # One site's cookies only, and only when this job may use cookies at all.
     cookie = cookies.header_for(site, True) if request.cookie_header else ""
 
-    tiktokserver.SERVER.start()
+    toolservers.TIKTOK.start()
     try:
-        data = tiktokserver.detail(request.url, douyin, cookie)
+        data = toolservers.detail(request.url, douyin, cookie)
     finally:
-        tiktokserver.SERVER.release()
+        toolservers.TIKTOK.release()
 
     address = data.get("downloads") or ""
     if request.mode == "mp3":
@@ -353,8 +358,121 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None) -> RunR
     name = request.out_name or _clean_name(data)
     suffix = ".mp3" if request.mode == "mp3" and data.get("music_url") else ".mp4"
     target = request.out_dir / (name + suffix)
+    if not douyin:
+        cookie = _with_page_cookies(request.url, cookie)
     _fetch(address, target, site, on_progress, cookie)
     return RunResult([target], [f"TikTokDownloader: {data.get('desc', '')[:80]}"])
+
+
+def _kuaishou(request: Request, on_progress: Callable[[int], None] | None) -> RunResult:
+    """KS-Downloader: the same road as TikTokDownloader, on port 5557.
+
+    Proven 2026-09-23 on a real video: 2.43 MB, 960x720, 10.0 s, decoded
+    clean by ffmpeg, with no cookie. yt-dlp ("Unsupported URL"), lux and
+    you-get (both broken on today's page) all failed on the same link --
+    which is why this is the only Kuaishou tool (decision 39).
+    """
+    make_folder(request.out_dir)
+
+    # Kuaishou's cookies only, and only when this job may use cookies at all.
+    cookie = cookies.header_for("kuaishou.com", True) if request.cookie_header else ""
+
+    toolservers.KS.start()
+    try:
+        data = toolservers.ks_detail(request.url, cookie)
+    finally:
+        toolservers.KS.release()
+
+    address = data.get("download")
+    if not isinstance(address, str) or not address.startswith("http"):
+        # Its own label for the post, not our guess about why (decision 38).
+        kind = data.get("photoType") or "unknown"
+        raise RunnerError(
+            f"KS-Downloader found the post (type: {kind}) but gave no single "
+            "video file to download.")
+
+    name = request.out_name or _clean_name(
+        {"nickname": data.get("name", ""), "desc": data.get("caption", "")})
+    if request.mode == "mp3":
+        # The video is only a step, so it gets a name of its own. Fetched as
+        # `<name>.mp4` it overwrote -- then deleted -- the user's own MP4 of
+        # the same post (seen 2026-09-23: MP4, then MP3, left only the MP3).
+        video = request.out_dir / (name + ".teleloadzai-audio.mp4")
+        _fetch(address, video, "kuaishou.com", on_progress)
+        target = _to_mp3(video, request.out_dir / (name + ".mp3"))
+    else:
+        target = request.out_dir / (name + ".mp4")
+        _fetch(address, target, "kuaishou.com", on_progress)
+    return RunResult([target], [f"KS-Downloader: {str(data.get('caption', ''))[:80]}"])
+
+
+def _to_mp3(video: Path, target: Path) -> Path:
+    """Keep only the sound of a downloaded video, as an MP3.
+
+    Kuaishou has no separate music link to ask for, so MP3 means "the sound
+    of this video". ``video`` is a temporary file of ours and is removed once
+    the MP3 exists; if FFmpeg is missing or fails, the user is told and keeps
+    the video.
+    """
+    ffmpeg = tools.installed_path("ffmpeg")
+    if ffmpeg is None:
+        raise RunnerError(
+            f"The video was downloaded ({video.name}), but FFmpeg is not "
+            "installed, so it could not be turned into an MP3.")
+    done = subprocess.run(
+        [str(ffmpeg), "-y", "-i", str(video), "-vn", "-c:a", "libmp3lame",
+         "-q:a", "0", str(target)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        stdin=subprocess.DEVNULL, timeout=1800, creationflags=_NO_WINDOW,
+    )
+    if done.returncode != 0 or not target.is_file() or target.stat().st_size == 0:
+        target.unlink(missing_ok=True)
+        raise RunnerError(
+            f"The video was downloaded ({video.name}), but turning it into an "
+            "MP3 failed. The video is kept.")
+    video.unlink(missing_ok=True)
+    return target
+
+
+def _with_page_cookies(page: str, cookie: str) -> str:
+    """Add the cookies TikTok hands out with the video's own page.
+
+    Its file server wants `tt_chain_token`, measured 2026-09-24 with a 1 KB
+    request: the video-page cookies -> 206; the same minus `tt_chain_token`
+    -> 403. A log-in window closed on tiktok.com/login never gets that cookie,
+    and a plain request for the video page does (seen twice the same day).
+    So we do what a browser does: open the page, then fetch the file.
+
+    ⚠️ The page must be asked WITH the cookies we hold. The token belongs to
+    the visit that made it: measured the same day, held cookies + a token
+    from an unrelated visit -> 403; held cookies + a token from a visit that
+    carried them -> 206. The page goes to tiktok.com itself -- the same site
+    those cookies came from.
+
+    Only names we do not already hold are added -- a logged-in cookie is
+    never replaced by a visitor's. Nothing here is written to disk; it lives
+    for this one download (hard rule 1). If the page cannot be read, the held
+    cookies go out unchanged and the fetch says what went wrong.
+    """
+    import http.cookiejar
+    host = (urllib.parse.urlsplit(page).hostname or "").lower()
+    if not (host == "tiktok.com" or host.endswith(".tiktok.com")):
+        return cookie           # never send TikTok's cookies anywhere else
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    headers = {"User-Agent": _BROWSER}
+    if cookie:
+        headers["Cookie"] = cookie
+    try:
+        with opener.open(urllib.request.Request(page, headers=headers), timeout=30) as answer:
+            answer.read(1)
+    except Exception:
+        return cookie
+    held = {part.split("=", 1)[0].strip() for part in cookie.split(";") if "=" in part}
+    extra = [f"{c.name}={c.value}" for c in jar
+             if c.name not in held and (c.domain.lstrip(".") == "tiktok.com"
+                                        or c.domain.endswith(".tiktok.com"))]
+    return "; ".join(p for p in [cookie.strip("; ")] + extra if p)
 
 
 def _clean_name(data: dict) -> str:
@@ -383,8 +501,7 @@ def _fetch(address: str, target: Path, site: str,
     the account given away (hard rule 1).
     """
     headers = {
-        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0 Safari/537.36"),
+        "User-Agent": _BROWSER,
         "Referer": f"https://www.{site}/",
     }
     host = (urllib.parse.urlsplit(address).hostname or "").lower()
@@ -419,7 +536,7 @@ def _fetch(address: str, target: Path, site: str,
 
 def can_run(tool_id: str) -> bool:
     """True when we know how to drive this tool at all."""
-    return tool_id in RECIPES or tool_id in ("yt-dlp", "tiktokdownloader")
+    return tool_id in RECIPES or tool_id in ("yt-dlp", "tiktokdownloader", "ks-downloader")
 
 
 # A tool can be installed and still be useless to us today. Offering it and
@@ -481,6 +598,8 @@ def run(
     if tool_id == "tiktokdownloader":
         # No command line exists for this one; it is driven over HTTP.
         return _tiktok(request, on_progress)
+    if tool_id == "ks-downloader":
+        return _kuaishou(request, on_progress)
 
     recipe = RECIPES.get(tool_id)
     if recipe is None:

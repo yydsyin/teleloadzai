@@ -97,9 +97,14 @@ class Queue:
             target: Path | None = None, force: bool = False,
             tool: str = "yt-dlp", limit_minutes: int = 60,
             cookie_file: Path | None = None, cookie_note: str = "",
-            platform: str = "", cookie_header: bool = False) -> Job:
+            platform: str = "", cookie_header: bool = False,
+            replace: str = "") -> Job | None:
+        """Queue a download. With ``replace``, it takes the place of that
+        finished job -- same id, same spot in the list -- instead of adding a
+        row: a Retry used to leave the failed row behind, one more each time.
+        Returns None when ``replace`` is unknown or still running."""
         job = Job(
-            id=uuid.uuid4().hex[:12], url=url, mode=mode, quality=quality,
+            id=replace or uuid.uuid4().hex[:12], url=url, mode=mode, quality=quality,
             title=title or url, folder=str(target.parent if target else folder),
             target=str(target) if target else "", force=force, tool=tool,
             limit_minutes=limit_minutes,
@@ -108,8 +113,14 @@ class Queue:
             cookie_header=cookie_header,
         )
         with self._lock:
-            self._jobs[job.id] = job
-            self._order.append(job.id)
+            if replace:
+                old = self._jobs.get(replace)
+                if old is None or old.state in ACTIVE_STATES:
+                    return None
+                self._jobs[replace] = job           # its place in _order stays
+            else:
+                self._jobs[job.id] = job
+                self._order.append(job.id)
         self._pump()
         return job
 
@@ -134,29 +145,10 @@ class Queue:
         self._pump()
         return True
 
-    def retry(self, job_id: str, force: bool = False) -> Job | None:
-        """Queue the same download again, with the same name and quality.
-
-        ``force`` is what "Download again" uses: the file is already there,
-        the user has now said in so many words that it must be rewritten.
-        """
-        with self._lock:
-            old = self._jobs.get(job_id)
-            if old is None or old.state in ACTIVE_STATES:
-                return None
-            url, mode, quality = old.url, old.mode, old.quality
-            title, folder, target = old.title, old.folder, old.target
-            tool, limit_minutes = old.tool, old.limit_minutes
-            # A retry keeps the cookies. Losing them here would make "Retry"
-            # fail again for a reason the first attempt had already solved.
-            cookie_file = Path(old.cookie_file) if old.cookie_file else None
-            cookie_note, platform = old.cookie_note, old.platform
-            cookie_header = old.cookie_header
-        return self.add(url, mode, quality, title, Path(folder),
-                        Path(target) if target else None, force=force, tool=tool,
-                        limit_minutes=limit_minutes,
-                        cookie_file=cookie_file, cookie_note=cookie_note,
-                        platform=platform, cookie_header=cookie_header)
+    # Retry lives in server.py now (`queue_download(..., replace=)`): it must
+    # decide the cookies from the CURRENT settings, which this module does not
+    # read. Copying the failed attempt's choice made a Retry after a log-in
+    # run without the log-in (found 2026-09-23).
 
     def clear_finished(self) -> int:
         with self._lock:

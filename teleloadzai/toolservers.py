@@ -1,9 +1,22 @@
-"""Drive TikTokDownloader, which has no command line.
+"""Drive the tools whose only door is a local server: TikTokDownloader, and
+KS-Downloader (Kuaishou, same author) since 2026-09-23.
 
-Every other tool takes flags and prints progress. This one is a menu you talk
-to, and its only machine-readable door is a local HTTP server. Verified
-2026-09-21 and again 2026-09-22: `--help` opens a language menu, so there is
-nothing to pass on a command line at all.
+`_Server` is the machine both share -- start per job, stop after, name who
+holds the port, keep the tool's last words. Only what differs (port, how to
+start it, what it asks) is per tool. The file was `tiktokserver.py` until
+2026-09-23: one copy of the machine instead of two, so a fix cannot land in
+one and be forgotten in the other.
+
+**KS-Downloader**, read from the program itself 2026-09-23: `main.exe api`
+starts the server straight away on port 5557, with no menu to answer; its
+`/openapi.json` lists `/share` and `/detail/`, and `/detail/` takes
+``{"text": url}`` and returns the post with a direct `download` link. It also
+binds `0.0.0.0` -- the same danger as below, the same answer.
+
+Every other tool takes flags and prints progress. TikTokDownloader is a menu
+you talk to, and its only machine-readable door is a local HTTP server.
+Verified 2026-09-21 and again 2026-09-22: `--help` opens a language menu, so
+there is nothing to pass on a command line at all.
 
 **What the server really is.** Menu option 7, "Web API Mode", starts a FastAPI
 application on port 5555 with 19 endpoints, read from its own
@@ -53,11 +66,9 @@ from . import explain, tools
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 HOST = "127.0.0.1"
-PORT = 5555
-BASE = f"http://{HOST}:{PORT}"
 
-# What it asks, and what we answer. Matched on everything printed so far, so a
-# prompt that arrives without a newline still counts.
+# What TikTokDownloader asks, and what we answer. Matched on everything
+# printed so far, so a prompt that arrives without a newline still counts.
 _PROMPTS: tuple[tuple[str, str], ...] = (
     ("please select language", "2"),        # 2 = English
     ("(yes/no)", "YES"),                    # the disclaimer, asked once ever
@@ -68,14 +79,22 @@ _READY = "uvicorn running"
 _START_TIMEOUT = 120.0                      # it unpacks itself on a cold start
 
 
-class TikTokServerError(RuntimeError):
+class ToolServerError(RuntimeError):
     """The server could not be started or answered badly, with the reason."""
 
 
 class _Server:
     """The running program, started on demand and stopped when nobody needs it."""
 
-    def __init__(self) -> None:
+    def __init__(self, tool_id: str, name: str, port: int,
+                 args: tuple[str, ...] = (),
+                 prompts: tuple[tuple[str, str], ...] = ()) -> None:
+        self.tool_id = tool_id
+        self.name = name
+        self.port = port                    # fixed in the tool's own code
+        self.base = f"http://{HOST}:{port}"
+        self._args = args
+        self._prompts = prompts
         self._lock = threading.RLock()
         self._process: subprocess.Popen | None = None
         self._users = 0                     # how many jobs are using it now
@@ -113,7 +132,7 @@ class _Server:
             low = seen.lower()
             if _READY in low:
                 return
-            for needle, reply in _PROMPTS:
+            for needle, reply in self._prompts:
                 if needle in low and needle not in answered:
                     answered.add(needle)
                     try:
@@ -121,8 +140,8 @@ class _Server:
                         process.stdin.write(reply + "\n")
                         process.stdin.flush()
                     except OSError as problem:
-                        raise TikTokServerError(
-                            f"TikTokDownloader stopped listening while starting: {problem}"
+                        raise ToolServerError(
+                            f"{self.name} stopped listening while starting: {problem}"
                         ) from problem
                     seen = ""               # do not answer the same prompt twice
                     break
@@ -132,17 +151,21 @@ class _Server:
     def _wait_for_port(self, deadline: float) -> None:
         while time.time() < deadline:
             if not self._alive():
-                raise TikTokServerError(
-                    "TikTokDownloader closed itself while starting. Open it once "
-                    "by hand to accept its disclaimer, then try again."
+                # The disclaimer advice is TikTokDownloader's own case; for
+                # another tool we know nothing more than that it stopped.
+                advice = (" Open it once by hand to accept its disclaimer, then "
+                          "try again." if self._prompts else "")
+                raise ToolServerError(
+                    f"{self.name} closed itself while starting." + advice
+                    + self._last_words()
                 )
             with socket.socket() as probe:
                 probe.settimeout(1.0)
-                if probe.connect_ex((HOST, PORT)) == 0:
+                if probe.connect_ex((HOST, self.port)) == 0:
                     return
             time.sleep(0.4)
-        raise TikTokServerError(
-            f"TikTokDownloader did not start within {int(_START_TIMEOUT)} seconds."
+        raise ToolServerError(
+            f"{self.name} did not start within {int(_START_TIMEOUT)} seconds."
             + self._last_words()
         )
 
@@ -164,28 +187,28 @@ class _Server:
                 self._users += 1
                 return
 
-            exe = tools.installed_path("tiktokdownloader")
+            exe = tools.installed_path(self.tool_id)
             if exe is None:
-                raise TikTokServerError("TikTokDownloader is not installed")
+                raise ToolServerError(f"{self.name} is not installed")
 
-            # Something else may already hold 5555, and TikTokDownloader
-            # cannot move: the port is a constant in its code
+            # Something else may already hold the port, and the tool cannot
+            # move: TikTokDownloader's is a constant in its code
             # (`SERVER_PORT = 5555`, src/custom/static.py, read 2026-09-23).
             # Name the holder -- "the port is busy" alone leaves the user
             # nothing to act on.
             with socket.socket() as probe:
                 probe.settimeout(1.0)
-                if probe.connect_ex((HOST, PORT)) == 0:
-                    holder = port_holder(PORT)
-                    raise TikTokServerError(
-                        f"Port {PORT}, which TikTokDownloader must use, is taken by "
+                if probe.connect_ex((HOST, self.port)) == 0:
+                    holder = port_holder(self.port)
+                    raise ToolServerError(
+                        f"Port {self.port}, which {self.name} must use, is taken by "
                         + (holder if holder else "another program")
                         + ". Close it and try again, or use another tool."
                     )
 
             self._said = []
             self._process = subprocess.Popen(
-                [str(exe)],
+                [str(exe), *self._args],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace", bufsize=1,
@@ -239,7 +262,9 @@ class _Server:
             return self._alive()
 
 
-SERVER = _Server()
+TIKTOK = _Server("tiktokdownloader", "TikTokDownloader", 5555, prompts=_PROMPTS)
+KS = _Server("ks-downloader", "KS-Downloader", 5557, args=("api",))
+ALL = (TIKTOK, KS)
 
 
 # Programs we have actually met on this port, with what they are. Only seen
@@ -294,19 +319,20 @@ def port_holder(port: int) -> str:
 # talking to it
 # --------------------------------------------------------------------------
 
-def _post(path: str, body: dict, timeout: float = 90.0) -> dict:
+def _post(path: str, body: dict, timeout: float = 90.0,
+          server: _Server = TIKTOK) -> dict:
     data = json.dumps(body).encode("utf-8")
     request = urllib.request.Request(
-        BASE + path, data=data, headers={"Content-Type": "application/json"})
+        server.base + path, data=data, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as answer:
             return json.loads(answer.read().decode("utf-8"))
     except urllib.error.URLError as problem:
-        raise TikTokServerError(
-            f"TikTokDownloader did not answer: {problem.reason}") from problem
+        raise ToolServerError(
+            f"{server.name} did not answer: {problem.reason}") from problem
     except json.JSONDecodeError as problem:
-        raise TikTokServerError(
-            "TikTokDownloader answered something that is not JSON") from problem
+        raise ToolServerError(
+            f"{server.name} answered something that is not JSON") from problem
 
 
 _ID_IN_URL = re.compile(r"/video/(\d{6,})")
@@ -326,7 +352,7 @@ def video_id(url: str, douyin: bool) -> str:
     full = answer.get("url") or ""
     found = _ID_IN_URL.search(full)
     if not found:
-        raise TikTokServerError(
+        raise ToolServerError(
             "No video could be found in that link. Copy the address of the "
             "video itself, not of a profile or a search.")
     return found.group(1)
@@ -349,7 +375,33 @@ def detail(url: str, douyin: bool, cookie: str) -> dict:
         # "the cookies may have expired, or the site is refusing this
         # network" -- a guess, written as if it were known.
         said = answer.get("message")
-        problem = TikTokServerError("TikTokDownloader: " + (said or "no answer about this video"))
+        problem = ToolServerError("TikTokDownloader: " + (said or "no answer about this video"))
+        raise explain.from_tool(problem) if said else problem
+    return data
+
+
+def ks_detail(url: str, cookie: str = "") -> dict:
+    """Ask KS-Downloader for one Kuaishou post.
+
+    Seen 2026-09-23 on a real video, with no cookie at all: "Successfully
+    fetched posts data!", `photoType` "Video", `caption`, `name` (the author)
+    and `download`, a direct link on kwaicdn.com. It accepts the full link as
+    copied, `?authorId=...` included.
+
+    ⚠️ That worked ONCE. Half an hour later the same link failed ("Failed to
+    retrieve posts data", 3 of 3), and Kuaishou's own front page answered any
+    program with `{"result":2}` -- while it still opened in a real browser. So
+    the cookie is passed, like TikTokDownloader's, in the request body to
+    127.0.0.1 (hard rule 1). PROVISIONAL until its effect is seen.
+    """
+    body = {"text": url}
+    if cookie:
+        body["cookies"] = cookie
+    answer = _post("/detail/", body, server=KS)
+    data = answer.get("data")
+    if not isinstance(data, dict):
+        said = answer.get("message")
+        problem = ToolServerError("KS-Downloader: " + (said or "no answer about this post"))
         raise explain.from_tool(problem) if said else problem
     return data
 
