@@ -347,20 +347,28 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None) -> RunR
     finally:
         toolservers.TIKTOK.release()
 
+    # MP3 is the sound of THIS video, as with yt-dlp and Kuaishou. It used to
+    # be `music_url` -- the post's background music, another recording --
+    # and, when a post had none, the video itself saved as .mp4: asked for an
+    # MP3, the user got a 27 MB video (seen 2026-09-24).
     address = data.get("downloads") or ""
-    if request.mode == "mp3":
-        address = data.get("music_url") or address
     if not isinstance(address, str) or not address.startswith("http"):
         raise RunnerError(
             "TikTokDownloader found the work but gave no file to download. "
             "It may be a photo post, or a live stream that has ended.")
 
     name = request.out_name or _clean_name(data)
-    suffix = ".mp3" if request.mode == "mp3" and data.get("music_url") else ".mp4"
-    target = request.out_dir / (name + suffix)
     if not douyin:
         cookie = _with_page_cookies(request.url, cookie)
-    _fetch(address, target, site, on_progress, cookie)
+    if request.mode == "mp3":
+        # The video is only a step: its own name, so the user's MP4 of the
+        # same post is never overwritten, then deleted (the Kuaishou bug).
+        video = request.out_dir / (name + ".teleloadzai-audio.mp4")
+        _fetch(address, video, site, on_progress, cookie)
+        target = _to_mp3(video, request.out_dir / (name + ".mp3"))
+    else:
+        target = request.out_dir / (name + ".mp4")
+        _fetch(address, target, site, on_progress, cookie)
     return RunResult([target], [f"TikTokDownloader: {data.get('desc', '')[:80]}"])
 
 
