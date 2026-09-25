@@ -695,8 +695,22 @@ function jobProgress(job) {
   else if (job.state === "error") right = "failed";
   else if (job.state === "cancelled") right = "cancelled";
   else if (job.state === "waiting") right = "waiting";
-  else right = [job.percent, job.speed, job.eta && "eta " + job.eta].filter(Boolean).join("  ");
+  // Running, and the tool has given no percentage yet -- or never gives one
+  // (XHS-Downloader). The time it has been working is the one true thing to
+  // show; a silent 0% bar looks exactly like a crash (decision 33).
+  else if (!job.percent) right = "Working… " + formatElapsed(job.elapsed || 0);
+  // yt-dlp says "NA" when it does not know the time left (seen at 100%,
+  // 2026-09-25). An unknown is not shown -- never a guessed one either.
+  else {
+    const eta = job.eta && !/^(NA|N\/A|Unknown)$/i.test(job.eta.trim()) ? "eta " + job.eta : "";
+    right = [job.percent, job.speed, eta].filter(Boolean).join("  ");
+  }
   return { percent, right };
+}
+
+function formatElapsed(seconds) {
+  if (seconds < 60) return seconds + " s";
+  return Math.floor(seconds / 60) + " min " + String(seconds % 60).padStart(2, "0") + " s";
 }
 
 /** Everything that changes the SHAPE of a row. Same shape -> update in place. */

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import subprocess
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,6 +55,11 @@ class Job:
     files: list[str] = field(default_factory=list)
     error: str = ""
     error_from_tool: bool = False   # is `error` the tool's own words? (decision 38)
+    # When the job started running. Until a tool prints a percentage there is
+    # nothing else true to show, and a silent 0% bar looks frozen (decision
+    # 33). Seen 2026-09-25: 12 to 18 s of nothing at the start of every
+    # yt-dlp download.
+    started: float = 0.0
     process: subprocess.Popen | None = field(default=None, repr=False)
 
     def as_dict(self) -> dict:
@@ -79,6 +85,10 @@ class Job:
             # (decision 38). {"known": False} makes the page say so honestly.
             "explain": explain.explain(self.error, self.tool),
             "error_from_tool": self.error_from_tool,
+            # Seconds since it started, measured here: the page and this
+            # server share a clock, but the server is the one that knows.
+            "elapsed": int(time.time() - self.started)
+                       if self.state == RUNNING and self.started else 0,
         }
 
 
@@ -172,6 +182,7 @@ class Queue:
                 job = self._jobs[job_id]
                 if job.state == WAITING:
                     job.state = RUNNING
+                    job.started = time.time()
                     starting.append(job)
                     free -= 1
 
