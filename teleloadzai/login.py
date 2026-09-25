@@ -368,10 +368,15 @@ def open_for(platform_id: str) -> dict:
     window.events.closed += closed.set
     threading.Thread(target=_watch, args=(window, platform_id, url, closed),
                      daemon=True).start()
-    return {"platform": platform_id, "url": url}
+    return {"platform": platform_id, "url": url,
+            "popups_in_browser": popups_go_to_browser}
 
 
 _popups_kept = False
+# True when the fix below could not be put in place (a pywebview that no
+# longer has the method). The log-in still works, but a Facebook or Google
+# window opens in the browser -- and the page says so (decision 34).
+popups_go_to_browser = False
 
 
 def _keep_popups_inside() -> None:
@@ -389,14 +394,22 @@ def _keep_popups_inside() -> None:
     Replacing a method of somebody else's library is fragile, so it is done
     once, guarded, and falls back to the original for every other window.
     """
-    global _popups_kept
+    global _popups_kept, popups_go_to_browser
     if _popups_kept:
         return
     try:
         from webview.platforms import edgechromium
     except Exception:
         return                  # not WebView2: nothing to change
-    original = edgechromium.EdgeChrome.on_new_window_request
+    # The method we replace is somebody else's, and a new pywebview may
+    # rename it. Then: keep the original behaviour and say so, never crash
+    # the log-in (agreed 2026-09-25; the method exists in the installed
+    # version, checked the same day).
+    original = getattr(getattr(edgechromium, "EdgeChrome", None), "on_new_window_request", None)
+    if original is None:
+        popups_go_to_browser = True
+        _popups_kept = True
+        return
 
     def on_new_window_request(self, sender, args):
         if _window is not None and self.pywebview_window is _window:

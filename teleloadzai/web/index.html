@@ -1414,7 +1414,14 @@ async function openLogin(platform) {
   // Said in the status line too, which every screen shows: the button on a
   // failed download opens this window without leaving the download page.
   setStatus("A window has opened on " + platform.name
-    + ". Log in there — it closes by itself once you are in.");
+    + ". Log in there — it closes by itself once you are in."
+    // Said only when the pop-up fix could not be put in place (see
+    // login._keep_popups_inside): then "Continue with Facebook" or Google
+    // opens the browser, and a log-in made there is not seen.
+    + (result.popups_in_browser
+      ? " Log in with an e-mail or a phone number: a Facebook or Google log-in"
+        + " would open in your browser, where Teleloadzai cannot see it."
+      : ""));
   watchLogin(platform.name);
 }
 
