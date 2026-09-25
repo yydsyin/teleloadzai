@@ -123,12 +123,11 @@
   #result.is-error .title { color: var(--bad); }
   /* The sign on each log-in button, and its key: a dot drawn here, never an
      emoji. Colour is backed by words in the tooltip and accessible name. */
-  .login-logged_in::before, .login-saved::before, .login-expired::before {
+  .login-logged_in::before, .login-expired::before {
     content: ""; display: inline-block; width: 8px; height: 8px;
     border-radius: 50%; margin-right: 6px; vertical-align: 1px;
   }
   .login-logged_in::before { background: var(--ok); }
-  .login-saved::before { background: var(--soft); }
   .login-expired::before { background: var(--bad); }
   button.login-logged_in { border-color: var(--ok); color: var(--ink); }
   button.login-expired { border-color: var(--bad); color: var(--ink); }
@@ -1360,14 +1359,13 @@ function renderLogin(platforms, blocked) {
   if (blocked) return;
 
   // A sign per site (asked by the user 2026-09-25): green = logged in,
-  // grey = cookies saved but no finished log-in seen, red = past their end
-  // date. Said in words too -- tooltip and accessible name -- never by
-  // colour alone.
+  // red = past its end date, nothing otherwise -- never a grey "maybe".
+  // Said in words too -- tooltip and accessible name -- never by colour alone.
   const words = {
-    logged_in: (p) => `Logged in${p.since ? " " + agoText(p.since) : ""}.`
-      + (p.ends ? ` The log-in lasts until ${new Date(p.ends * 1000).toLocaleDateString()}.` : ""),
-    saved: () => "Cookies saved, but Teleloadzai did not see a log-in finish "
-      + "(the window was closed by hand, or they came from a file). Log in again to be sure.",
+    logged_in: (p) => (p.badge
+        ? "Logged in: the site's log-in cookie is here."
+        : `Logged in${p.since ? " " + agoText(p.since) : ""}: the log-in window saw it finish.`)
+      + (p.ends ? ` It lasts until ${new Date(p.ends * 1000).toLocaleDateString()}.` : ""),
     expired: (p) => `The log-in has expired (${new Date(p.ends * 1000).toLocaleDateString()}). Log in again.`,
     none: () => "Not logged in.",
   };
@@ -1385,7 +1383,7 @@ function renderLogin(platforms, blocked) {
     box.appendChild(button);
   }
   // The key, only for the signs actually on screen.
-  const key = [["logged_in", "logged in"], ["saved", "cookies saved"], ["expired", "expired — log in again"]]
+  const key = [["logged_in", "logged in"], ["expired", "expired — log in again"]]
     .filter(([s]) => shown.has(s))
     .map(([s, text]) => `<span class="login-key login-${s}">${text}</span>`).join("");
   $("login-legend").innerHTML = key;

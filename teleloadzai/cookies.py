@@ -469,6 +469,58 @@ def site_dates() -> dict[str, dict]:
     return found
 
 
+def badge_dates(domains: tuple[str, ...], names: tuple[str, ...]) -> list[float] | None:
+    """The end dates of a site's log-in cookies, or None when there is none.
+
+    A "badge" is a cookie a site hands only to a logged-in user. 0 in the
+    list means a session cookie: the site gave no end date. Names and dates
+    are looked at -- never a value (hard rule 1).
+    """
+    if not have_file():
+        return None
+    wanted = {d.lower() for d in domains}
+    found: list[float] = []
+    for domain, when, raw in _rows(COOKIE_FILE.read_text(encoding="utf-8").splitlines()):
+        host = domain.lstrip(".").lower()
+        if not any(host == d or host.endswith("." + d) for d in wanted):
+            continue
+        row = raw[len("#HttpOnly_"):] if raw.startswith("#HttpOnly_") else raw
+        if row.split("\t")[5] in names:
+            found.append(when or 0.0)
+    return found or None
+
+
+def drop_unsupported() -> int:
+    """Remove the cookies of sites we no longer download from. Returns how many.
+
+    The filter only guards what COMES IN. A site refused later (Netflix,
+    decision 10, refused from 2026-09-24) kept the cookies it already had:
+    5 netflix.com cookies were found in the user's file on 2026-09-25.
+    Run at every start, so the file always matches today's list.
+
+    Written to a temporary file first, and put in place only once complete:
+    a failure half-way must never leave the user with an empty file.
+    """
+    if not have_file():
+        return 0
+    known = known_domains()
+    lines = COOKIE_FILE.read_text(encoding="utf-8").splitlines()
+    keep = [raw for domain, _when, raw in _rows(lines)
+            if _known_match(domain, known) is not None]
+    dropped = len(_rows(lines)) - len(keep)
+    if not dropped:
+        return 0
+    temporary = COOKIE_FILE.with_name(COOKIE_FILE.name + ".tmp")
+    temporary.write_text(
+        "# Netscape HTTP Cookie File\n"
+        "# Written by Teleloadzai. Only the sites it can download from.\n"
+        + "\n".join(keep) + ("\n" if keep else ""),
+        encoding="utf-8",
+    )
+    temporary.replace(COOKIE_FILE)
+    return dropped
+
+
 def header_for(site: str, enabled: bool) -> str:
     """The cookies of ONE site as `name=value; name=value`, or "".
 

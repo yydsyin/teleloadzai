@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import login, toolservers
+from . import cookies, login, toolservers
 from .config import APP_NAME, APP_VERSION
 from .server import forget_if_once, serve, start_background
 
@@ -83,6 +83,13 @@ def main() -> int:
         forget_if_once()
     except Exception as problem:
         print(f"Could not forget the log-ins from the last run: {problem}")
+    # A site refused since (Netflix) must not keep the cookies it had.
+    try:
+        dropped = cookies.drop_unsupported()
+        if dropped:
+            print(f"{dropped} cookies of sites no longer supported were removed.")
+    except Exception as problem:
+        print(f"Could not tidy the cookie file: {problem}")
 
     if args.no_browser:
         serve(port=args.port, open_browser=False)

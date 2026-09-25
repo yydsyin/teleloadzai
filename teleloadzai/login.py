@@ -128,6 +128,24 @@ _SESSION_COOKIES = {
     "kuaishou": ("userId", "kuaishou.web.api_st"),
 }
 
+# Each site's "badge": the cookie it hands only to a logged-in user. The
+# log-in button is green while the badge is in our file, red once its end
+# date has passed, and shows nothing without it (asked by the user
+# 2026-09-25: no grey "maybe"). ONLY names with evidence (decision 38):
+# yt-dlp's own "is this user logged in?" code, read 2026-09-25 in its source
+# of 2026-09-16 -- or a real log-in seen here.
+_BADGES = {
+    "youtube": ("SAPISID", "__Secure-3PAPISID"),  # youtube/_base.py, _has_auth_cookies
+    "bilibili": ("SESSDATA",),                    # bilibili.py, is_logged_in
+    "tiktok": ("sid_tt",),                        # tiktok.py, its auth_cookie
+    "instagram": ("sessionid",),                  # instagram.py, _AUTH_COOKIE_NAME
+    "twitter": ("auth_token",),                   # twitter.py, is_logged_in
+    "reddit": ("reddit_session",),                # reddit.py, _is_logged_in
+    "twitch": ("auth-token",),                    # twitch.py, gql_auth
+    "niconico": ("user_session",),                # niconico.py, is_logged_in
+    "kuaishou": _SESSION_COOKIES["kuaishou"],     # seen on the user's log-in
+}
+
 _lock = threading.Lock()        # one login window at a time, never two
 
 # How long we wait for a page WE asked for to finish loading. pywebview's own
@@ -153,16 +171,20 @@ def login_url(platform_id: str) -> str | None:
 def choices() -> list[dict]:
     """The platforms worth offering a login for, for the page to draw.
 
-    Each carries a `state` for its button's sign (asked by the user
-    2026-09-25), from two things we really know and nothing else:
-      "logged_in" -- cookies saved AND the last log-in window finished by
+    Each carries a `state` for its button's sign -- green, red or nothing,
+    never a grey "maybe" (the user, 2026-09-25):
+      "logged_in" -- the site's badge (`_BADGES`) is in our file. For a site
+                     with no known badge: the last log-in window finished by
                      itself, or the user pressed "I have logged in"
-      "saved"     -- cookies saved, but no finished log-in was seen (window
-                     closed by hand, or a cookies.txt file)
-      "expired"   -- every cookie with an end date is past it
-      "none"      -- no cookie for this site
-    ⚠️ A site can end a session before its date (log out elsewhere); that
-    cannot be seen from here, so "expired" is about the date only.
+      "expired"   -- the badge is there but past its end date (for a site
+                     with no badge: every dated cookie is)
+      "none"      -- anything else. Cookies of a mere visit prove nothing.
+    `badge` says which of the two ways decided it, for the words.
+    ⚠️ A site can end a session before its date (log out elsewhere), and a
+    badge with no date (Kuaishou's) never turns red: that cannot be seen
+    without asking the site, so "expired" is about the date only.
+    ⚠️ Until 2026-09-25 the finished window alone made it green: TikTok was
+    green with no `sid_tt` in the file -- not logged in.
     """
     dates = cookies.site_dates()
     history = _history()
@@ -174,20 +196,28 @@ def choices() -> list[dict]:
         url = login_url(platform.id)
         if not url:
             continue
-        mine = [dates[d] for d in platform.domains if d in dates]
-        latest = max((m["latest"] for m in mine), default=0.0)
         seen = history.get(platform.id, {})
-        if not mine:
-            state = "none"
-        elif latest and latest < now:
-            state = "expired"
-        elif seen.get("how") in ("auto", "button"):
-            state = "logged_in"
+        if platform.id in _BADGES:
+            ends = cookies.badge_dates(platform.domains, _BADGES[platform.id])
+            latest = max(ends or [0.0])
+            if ends is None:
+                state = "none"
+            elif all(0 < when < now for when in ends):
+                state = "expired"
+            else:
+                state = "logged_in"
         else:
-            state = "saved"
+            mine = [dates[d] for d in platform.domains if d in dates]
+            latest = max((m["latest"] for m in mine), default=0.0)
+            if not mine or seen.get("how") not in ("auto", "button"):
+                state = "none"
+            elif latest and latest < now:
+                state = "expired"
+            else:
+                state = "logged_in"
         offered.append({"id": platform.id, "name": platform.name, "url": url,
                         "state": state, "since": seen.get("at", 0),
-                        "ends": latest})
+                        "ends": latest, "badge": platform.id in _BADGES})
     return offered
 
 
