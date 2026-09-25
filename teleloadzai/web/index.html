@@ -105,7 +105,9 @@
   .job-name { font-weight: 500; word-break: break-word; }
   .job-right { display: flex; gap: 8px; align-items: center; flex: none; }
   .bar { height: 6px; background: var(--bg); border-radius: 99px; overflow: hidden; margin-top: 8px; }
-  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  /* 0.7 s, the refresh rhythm: one update glides into the next. Before
+     2026-09-25 the bar was rebuilt every refresh and never moved at all. */
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .7s linear; }
   .state-done .bar > i { background: var(--ok); }
   .state-error .bar > i, .state-cancelled .bar > i { background: var(--bad); }
   .state-waiting .bar > i, .state-skipped .bar > i { background: var(--soft); }
@@ -681,14 +683,10 @@ function errorExplanation(job) {
     + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
 }
 
-function jobRow(job) {
-  const row = document.createElement("div");
-  // "already there" is not a success: it must not look green.
-  row.className = "job state-" + (job.skipped && job.state === "done" ? "skipped" : job.state);
-
+/** What moves while a job runs: the bar and the line on the right. */
+function jobProgress(job) {
   const percent = parseFloat((job.percent || "0").replace("%", ""))
     || (job.state === "done" ? 100 : 0);
-
   let right = "";
   // "already there" only when it is checked (yt-dlp compares the file's
   // date). A tool's own skip is just "skipped": XHS-Downloader skips notes
@@ -698,6 +696,23 @@ function jobRow(job) {
   else if (job.state === "cancelled") right = "cancelled";
   else if (job.state === "waiting") right = "waiting";
   else right = [job.percent, job.speed, job.eta && "eta " + job.eta].filter(Boolean).join("  ");
+  return { percent, right };
+}
+
+/** Everything that changes the SHAPE of a row. Same shape -> update in place. */
+function jobShape(job) {
+  return JSON.stringify([job.state, job.skipped, job.skip_reason, job.error,
+    job.cookie_note, job.other_tool && job.other_tool.id, loginOffer(job),
+    job.tool, job.target, job.title, job.mode, job.quality]);
+}
+
+function jobRow(job) {
+  const row = document.createElement("div");
+  // "already there" is not a success: it must not look green.
+  row.className = "job state-" + (job.skipped && job.state === "done" ? "skipped" : job.state);
+  row.dataset.shape = jobShape(job);
+
+  const { percent, right } = jobProgress(job);
 
   const canCancel = job.state === "waiting" || job.state === "running";
 
@@ -782,12 +797,36 @@ function jobRow(job) {
   return row;
 }
 
+// One row per job, kept between refreshes. The list used to be emptied and
+// rebuilt every 0.7 s: the bar jumped instead of moving, and a Stop or Retry
+// button was replaced under the pointer and the keyboard (critique of
+// 2026-09-25). Now a row is rebuilt only when its shape changes.
+const jobRows = new Map();
+
 async function refresh() {
   const data = await api("/api/jobs");
   const jobs = data.jobs || [];
   const list = $("jobs");
-  list.textContent = "";
-  for (const job of jobs) list.appendChild(jobRow(job));
+
+  const present = new Set(jobs.map((j) => j.id));
+  for (const [id, row] of jobRows) {
+    if (!present.has(id)) { row.remove(); jobRows.delete(id); }
+  }
+  jobs.forEach((job, index) => {
+    let row = jobRows.get(job.id);
+    if (row && row.dataset.shape === jobShape(job)) {
+      const { percent, right } = jobProgress(job);
+      row.querySelector(".bar > i").style.width = percent + "%";
+      row.querySelector(".small").textContent = right;
+    } else {
+      const fresh = jobRow(job);
+      if (row) row.replaceWith(fresh);
+      jobRows.set(job.id, fresh);
+      row = fresh;
+    }
+    // Newest first, as the server sends them.
+    if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null);
+  });
   $("jobs-card").classList.toggle("hidden", jobs.length === 0);
 
   const running = jobs.filter((j) => j.state === "running").length;
