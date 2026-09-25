@@ -698,12 +698,18 @@ function jobProgress(job) {
   // Running, and the tool has given no percentage yet -- or never gives one
   // (XHS-Downloader). The time it has been working is the one true thing to
   // show; a silent 0% bar looks exactly like a crash (decision 33).
+  // After the download, FFmpeg's step, as yt-dlp announces it. There is no
+  // percentage for it, so the time is the measure again.
+  else if (job.step) right = job.step[0].toUpperCase() + job.step.slice(1) + "… " + formatElapsed(job.elapsed || 0);
   else if (!job.percent) right = "Working… " + formatElapsed(job.elapsed || 0);
   // yt-dlp says "NA" when it does not know the time left (seen at 100%,
   // 2026-09-25). An unknown is not shown -- never a guessed one either.
   else {
     const eta = job.eta && !/^(NA|N\/A|Unknown)$/i.test(job.eta.trim()) ? "eta " + job.eta : "";
-    right = [job.percent, job.speed, eta].filter(Boolean).join("  ");
+    // "picture 86%" then "sound 12%": an MP4 comes down as two files, each
+    // counting to 100%. Named only when yt-dlp's codecs say which.
+    right = [job.part && job.part + " " + job.percent.trim(), !job.part && job.percent, job.speed, eta]
+      .filter(Boolean).join("  ");
   }
   return { percent, right };
 }

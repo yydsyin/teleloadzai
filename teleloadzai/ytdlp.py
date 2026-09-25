@@ -28,9 +28,22 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # parsing never depends on the human-readable output.
 _PROGRESS_TAG = "TLZ_P"
 _FILE_TAG = "TLZ_F"
+# The two codecs say WHICH part is coming down. An MP4 is fetched as two
+# files, picture then sound, each counting from 0 to 100% -- the bar went
+# from 86% back to 41% with nothing to say why (seen 2026-09-25). Probed the
+# same day: the picture part reports `vcodec=av01 acodec=none`, the sound
+# part `vcodec=none acodec=opus`.
 _PROGRESS_TEMPLATE = (
     f"download:{_PROGRESS_TAG}\t%(progress._percent_str)s"
     "\t%(progress._speed_str)s\t%(progress._eta_str)s"
+    "\t%(info.vcodec)s\t%(info.acodec)s"
+)
+
+# The steps after the download, as yt-dlp announces them (both seen
+# 2026-09-25): joining picture and sound for an MP4, converting for an MP3.
+_STEPS = (
+    ("[Merger]", "joining picture and sound"),
+    ("[ExtractAudio]", "making the MP3"),
 )
 _FILE_TEMPLATE = f"after_move:{_FILE_TAG}\t%(filepath)s"
 
@@ -48,6 +61,24 @@ class Progress:
     percent: str      # "  42.1%"
     speed: str        # "3.20MiB/s"
     eta: str          # "00:12"
+    part: str = ""    # "picture", "sound", or "" when it cannot be told
+
+
+def _part(vcodec: str, acodec: str) -> str:
+    """Which part a download is, from its two codecs -- or "" if unsure.
+
+    Named only when exactly one side is "none". A file carrying both, or a
+    codec yt-dlp does not know ("NA"), gets no name: never a guess.
+    """
+    v, a = vcodec.strip().lower(), acodec.strip().lower()
+    unknown = ("", "na", "n/a")
+    if v in unknown or a in unknown:
+        return ""
+    if a == "none" and v != "none":
+        return "picture"
+    if v == "none" and a != "none":
+        return "sound"
+    return ""
 
 
 @dataclass(frozen=True)
@@ -227,6 +258,7 @@ def download(
     out_path: Path | None = None,
     force: bool = False,
     cookie_file: Path | None = None,
+    on_step: Callable[[str], None] | None = None,
 ) -> DownloadResult:
     """Download one link as MP3 or MP4, reporting progress line by line.
 
@@ -254,6 +286,12 @@ def download(
         "--no-warnings",
         "--progress", "--progress-template", _PROGRESS_TEMPLATE,
         "--print", _FILE_TEMPLATE,
+        # `--print` turns quiet mode on, and quiet mode hides "[Merger]" and
+        # "[ExtractAudio]" -- the only signs of the step after the download.
+        # Probed on this exact command, 2026-09-25: steps seen [] without
+        # this flag, ["joining picture and sound"] with it, and the final
+        # file still reported either way.
+        "--no-quiet",
         *(["--yes-playlist"] if playlist else ["--no-playlist"]),
         *(["--force-overwrites"] if (out_path is not None or force) else []),
         *_cookie_arguments(cookie_file),
@@ -286,12 +324,17 @@ def download(
         if line.startswith(_PROGRESS_TAG):
             if on_progress:
                 parts = line.split("\t")
-                while len(parts) < 4:
+                while len(parts) < 6:
                     parts.append("")
-                on_progress(Progress(parts[1].strip(), parts[2].strip(), parts[3].strip()))
+                on_progress(Progress(parts[1].strip(), parts[2].strip(), parts[3].strip(),
+                                     _part(parts[4], parts[5])))
         elif line.startswith(_FILE_TAG):
             files.append(Path(line.split("\t", 1)[1].strip()))
         elif line.strip():
+            if on_step:
+                for prefix, step in _STEPS:
+                    if line.startswith(prefix):
+                        on_step(step)
             tail.append(line)
             del tail[:-40]          # keep only the last 40 lines
 

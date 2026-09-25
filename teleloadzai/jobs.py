@@ -60,6 +60,8 @@ class Job:
     # 33). Seen 2026-09-25: 12 to 18 s of nothing at the start of every
     # yt-dlp download.
     started: float = 0.0
+    part: str = ""              # "picture" / "sound" while yt-dlp fetches that part
+    step: str = ""              # "joining picture and sound", "making the MP3"
     process: subprocess.Popen | None = field(default=None, repr=False)
 
     def as_dict(self) -> dict:
@@ -89,6 +91,8 @@ class Job:
             # server share a clock, but the server is the one that knows.
             "elapsed": int(time.time() - self.started)
                        if self.state == RUNNING and self.started else 0,
+            "part": self.part,
+            "step": self.step,
         }
 
 
@@ -193,6 +197,11 @@ class Queue:
         def on_progress(progress: ytdlp.Progress) -> None:
             with self._lock:
                 job.percent, job.speed, job.eta = progress.percent, progress.speed, progress.eta
+                job.part = progress.part
+
+        def on_step(step: str) -> None:
+            with self._lock:
+                job.step = step
 
         def on_start(process: subprocess.Popen) -> None:
             with self._lock:
@@ -214,7 +223,7 @@ class Queue:
                     job.url, job.mode, Path(job.folder),
                     on_progress=on_progress, quality=job.quality, on_start=on_start,
                     out_path=Path(job.target) if job.target else None,
-                    force=job.force, cookie_file=cookie_file,
+                    force=job.force, cookie_file=cookie_file, on_step=on_step,
                 )
             else:
                 # A specialist tool cannot be told an exact file name, so it
