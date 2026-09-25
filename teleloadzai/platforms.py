@@ -152,9 +152,13 @@ PLATFORMS: tuple[Platform, ...] = (
     Platform("wechat_channels", "WeChat Channels",
              ("channels.weixin.qq.com", "finder.video.qq.com"),
              (),  # a tool exists, but it does not fit the "paste a link" model
-             note="A living tool exists (ltaoo/wx_channels_download) but it cannot be "
-                  "driven by a link: it needs Administrator rights, installs a root "
-                  "certificate, and the user clicks a button inside the WeChat PC app."),
+             # Said to the user, so in the user's words and with a next step
+             # (§6: "v1 shows a clear message + link"). It used to speak of
+             # "the user" and a "root certificate", and stopped there.
+             note="WeChat videos cannot be downloaded from a link. A separate "
+                  "program does it from inside the WeChat PC app: "
+                  "github.com/ltaoo/wx_channels_download. It needs "
+                  "administrator rights, so Teleloadzai does not run it for you."),
     # Decision 10: protected against copying (DRM), out of scope for good.
     # Named here so a link is REFUSED on sight. Before 2026-09-25 a Netflix
     # link fell through to "Unknown site" and was offered for download with
