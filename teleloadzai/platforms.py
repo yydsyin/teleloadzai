@@ -77,6 +77,10 @@ class Platform:
         return bool(self.tools)
 
 
+_DRM = ("This site protects its videos and music against copying (DRM). "
+        "Teleloadzai does not download protected content.")
+
+
 def _only_ytdlp(why: str = "the only serious option for this site") -> tuple[ToolOption, ...]:
     return (ToolOption("yt-dlp", why),)
 
@@ -151,6 +155,15 @@ PLATFORMS: tuple[Platform, ...] = (
              note="A living tool exists (ltaoo/wx_channels_download) but it cannot be "
                   "driven by a link: it needs Administrator rights, installs a root "
                   "certificate, and the user clicks a button inside the WeChat PC app."),
+    # Decision 10: protected against copying (DRM), out of scope for good.
+    # Named here so a link is REFUSED on sight. Before 2026-09-25 a Netflix
+    # link fell through to "Unknown site" and was offered for download with
+    # a bright button; Spotify's got yt-dlp's own "[DRM]" error AND the button.
+    # No tools, so `is_supported` is False and no log-in is offered.
+    Platform("netflix", "Netflix", ("netflix.com",), (), note=_DRM),
+    Platform("disneyplus", "Disney+", ("disneyplus.com",), (), note=_DRM),
+    Platform("primevideo", "Prime Video", ("primevideo.com",), (), note=_DRM),
+    Platform("spotify", "Spotify", ("spotify.com",), (), note=_DRM),
 )
 
 # A link that points straight at a stream manifest, whatever the site is.

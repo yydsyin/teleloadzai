@@ -7,7 +7,7 @@
 <style>
   :root {
     --bg: #f4f5f7;  --card: #ffffff;  --ink: #1b1d21;  --soft: #6b7079;
-    --line: #e2e5ea; --accent: #2f6df6; --ok: #1f9d55; --bad: #d1483c;
+    --line: #e2e5ea; --accent: #2f6df6; --ok: #1f9d55; --bad: #c0392b;
     --radius: 10px;
   }
   @media (prefers-color-scheme: dark) {
@@ -74,8 +74,16 @@
     width: 132px; height: 76px; flex: none; object-fit: cover;
     border-radius: 6px; background: var(--bg); border: 1px solid var(--line);
   }
+  /* No picture yet: the frame keeps its place, so the text beside it does not
+     jump sideways when the thumbnail arrives. */
+  .thumb.waiting { opacity: .55; }
   .title { font-weight: 600; margin-bottom: 2px; word-break: break-word; }
   .meta { color: var(--soft); font-size: 13px; }
+  /* yt-dlp could not read a link it would itself download: say it as a
+     problem, not as a title. */
+  #result.is-error .title { color: var(--bad); }
+  /* The second click of a destructive button (see `twoClicks`). */
+  button.danger { color: var(--bad); border-color: var(--bad); }
 
   .tag {
     display: inline-block; padding: 2px 8px; border-radius: 99px;
@@ -165,6 +173,7 @@
         <div class="meta" id="meta"></div>
         <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span></div>
         <div class="hint hidden" id="blocked-tools" style="margin-top:6px"></div>
+        <div class="hint hidden" id="probe-note" style="margin-top:6px"></div>
       </div>
     </div>
 
@@ -417,8 +426,28 @@ let currentPlatform = "";
 // Mixing them up would offer a log-in for a platform that does not exist.
 let currentPlatformId = "";
 
+// yt-dlp tried to read this link for the preview and failed. That predicts
+// the download only when yt-dlp is also the tool that will download it: on
+// Kuaishou yt-dlp always fails and KS-Downloader works (proven 2026-09-23).
+let probeProblem = false;
+
 function updateGoLabel() {
-  $("go").textContent = askWhere ? "Add…" : "Add to queue";
+  const chosen = currentTools.find((t) => t.id === $("tool-pick").value) || currentTools[0];
+  const sameTool = chosen && chosen.id === "yt-dlp";
+  // A link yt-dlp itself could not read keeps a way to try (decision 15),
+  // but no longer a bright button inviting a job that will fail
+  // (critique of 2026-09-25: Spotify's "[DRM]" error sat next to it).
+  const doubtful = probeProblem && sameTool;
+  $("result").classList.toggle("is-error", doubtful);
+  $("go").classList.toggle("ghost", doubtful);
+  $("go").textContent = doubtful ? "Try anyway" : askWhere ? "Add…" : "Add to queue";
+  // The preview is yt-dlp's; when another tool downloads, its failure is
+  // information about yt-dlp, not a verdict on this download (decision 38).
+  const other = probeProblem && chosen && !sameTool;
+  $("probe-note").classList.toggle("hidden", !other);
+  $("probe-note").textContent = other
+    ? `That was yt-dlp's preview. ${chosen.name} downloads this site its own way.`
+    : "";
 }
 
 /** The chosen tool decides the tag, and whether we must install first. */
@@ -438,6 +467,7 @@ function showChosenTool() {
     $("need-tool-install").dataset.tool = missing.id;
     $("need-tool-install").textContent = `Install ${missing.name} and continue`;
   }
+  updateGoLabel();
 }
 
 const setStatus = (text) => {
@@ -477,22 +507,63 @@ for (const button of document.querySelectorAll(".choice")) {
   });
 }
 
+// Each read gets a number. Pasting a second link while the first is still
+// being read must not let the first one's late answer overwrite the card.
+let readNumber = 0;
+let waitTimer = null;
+// The video's real title, or "" when none was read. The card's title line
+// also says "Ready to download" or an error, and that must never become
+// the name of the job or of the file.
+let currentTitle = "";
+
+/** "Asking YouTube for the title… 4 s" -- a real measure, never an estimate (decision 33). */
+function startWaiting(text) {
+  stopWaiting();
+  const started = Date.now();
+  const tick = () => {
+    $("meta").textContent = `${text} ${Math.round((Date.now() - started) / 1000)} s`;
+  };
+  tick();
+  waitTimer = setInterval(tick, 1000);
+}
+
+function stopWaiting() {
+  clearInterval(waitTimer);
+  waitTimer = null;
+}
+
 async function read() {
   const url = $("url").value.trim();
   if (!url) return;
+  const mine = ++readNumber;
   currentUrl = url;
   $("result").classList.add("hidden");
   $("unsupported").classList.add("hidden");
-  setStatus("Reading the link…");
+  stopWaiting();
+  setStatus("");
+  // Feedback in the button itself: nothing above the card appears and
+  // disappears, so the page no longer jumps down and back up.
+  $("read").disabled = true;
+  $("read").textContent = "Reading…";
+  try {
+    await readLink(url, mine);
+  } finally {
+    if (mine === readNumber) {
+      $("read").disabled = false;
+      $("read").textContent = "Read";
+    }
+  }
+}
 
+async function readLink(url, mine) {
   const found = await api("/api/detect", { url });
+  if (mine !== readNumber) return;
   if (found.error) { setStatus("Error: " + found.error); return; }
 
   if (!found.supported) {
     $("unsupported-title").textContent = found.platform + " cannot be downloaded from a link.";
     $("unsupported-note").textContent = found.note || "";
     $("unsupported").classList.remove("hidden");
-    setStatus("");
     return;
   }
 
@@ -517,24 +588,54 @@ async function read() {
     ? "Not usable yet — " + blocked.map((b) => `${b.name}: ${b.why}`).join(" · ")
     : "";
 
+  // The card appears NOW, with the site and the tool -- known within about a
+  // second -- instead of after the 6 to 14 s it takes to read the title.
+  probeProblem = false;
+  currentTitle = "";
+  $("thumb").removeAttribute("src");
   showChosenTool();
 
-  setStatus("Asking the site for the title…");
+  // The preview is always yt-dlp's. Where yt-dlp is not one of the site's
+  // tools, it can only fail (Kuaishou: "Unsupported URL", every time) and
+  // the user waited seconds for a red herring. Say so and skip it.
+  if (!currentTools.some((t) => t.id === "yt-dlp")) {
+    const tool = currentTools[0];
+    $("title").textContent = "Ready to download";
+    $("meta").textContent =
+      `No preview for ${found.platform} links: ${tool.name} reads the post when it downloads it.`;
+    $("thumb").classList.add("hidden");
+    $("result").classList.remove("hidden");
+    return;
+  }
+
+  $("title").textContent = "…";
+  $("thumb").classList.remove("hidden");
+  $("thumb").classList.add("waiting");
+  $("result").classList.remove("hidden");
+  const asking = found.platform_id === "unknown" ? "the site" : found.platform;
+  startWaiting(`Asking ${asking} for the title…`);
+
   const info = await api("/api/probe", { url: found.final_url || url });
+  if (mine !== readNumber) return;
+  stopWaiting();
+  $("thumb").classList.remove("waiting");
   if (info.error) {
     // Known error -> its plain meaning. Unknown -> the tool's words, said to
-    // be the tool's words. The download may still work with another tool, so
-    // this is information, not a verdict (decision 38).
+    // be the tool's words (decision 38). Whether it is a warning or only
+    // information depends on the tool chosen -- see updateGoLabel.
     const ex = info.explain || {};
-    $("title").textContent = ex.known ? ex.title : "(could not read the title)";
+    $("title").textContent = ex.known ? ex.title : "yt-dlp could not read this link.";
     $("meta").textContent = ex.known
       ? ex.next_step
       : info.from_tool
-        ? "yt-dlp could not read this link. Its own words: " + info.error
+        ? "Its own words: " + info.error
         : info.error;
     $("thumb").classList.add("hidden");
+    probeProblem = true;
+    updateGoLabel();
   } else {
     $("title").textContent = info.title;
+    currentTitle = info.title || "";
     const bits = [];
     if (info.uploader) bits.push(info.uploader);
     if (info.duration) bits.push(formatTime(info.duration));
@@ -543,8 +644,6 @@ async function read() {
     if (info.thumbnail) { $("thumb").src = info.thumbnail; $("thumb").classList.remove("hidden"); }
     else { $("thumb").classList.add("hidden"); }
   }
-  setStatus("");
-  $("result").classList.remove("hidden");
 }
 
 // The name to put on a "Log in to …" button for a failed job, or "" when
@@ -780,10 +879,12 @@ function renderTools() {
       button.addEventListener("click", () => installTool(button.dataset.install));
     }
     for (const button of list.querySelectorAll("[data-remove]")) {
-      button.addEventListener("click", async () => {
+      const name = (toolsData.tools.find((t) => t.id === button.dataset.remove) || {}).name
+        || button.dataset.remove;
+      button.addEventListener("click", () => twoClicks(button, `Remove ${name}? Click again`, async () => {
         await api("/api/tools/remove", { id: button.dataset.remove });
         loadTools();
-      });
+      }));
     }
   }
 
@@ -940,9 +1041,38 @@ $("tool-pick").addEventListener("change", showChosenTool);
 
 $("read").addEventListener("click", read);
 $("url").addEventListener("keydown", (event) => { if (event.key === "Enter") read(); });
+// Pasting a link IS asking to read it (chosen by the user 2026-09-25). The
+// box holds the new text only after the event, hence the zero delay. Read
+// stays, to read again.
+$("url").addEventListener("paste", () => setTimeout(read, 0));
+
+/**
+ * Anything that destroys asks twice, on the button itself: the first click
+ * turns it red with the question, the second does it, and after 5 s it
+ * goes back. No pop-up to dismiss. Found by the critique of 2026-09-25:
+ * Remove (a tool) and "Forget them" (every log-in) acted on the first click.
+ */
+function twoClicks(button, question, action) {
+  if (button.dataset.armed === "yes") {
+    delete button.dataset.armed;
+    button.classList.remove("danger");
+    action();
+    return;
+  }
+  const label = button.textContent;
+  button.dataset.armed = "yes";
+  button.textContent = question;
+  button.classList.add("danger");
+  setTimeout(() => {
+    if (button.dataset.armed !== "yes") return;
+    delete button.dataset.armed;
+    button.textContent = label;
+    button.classList.remove("danger");
+  }, 5000);
+}
 
 $("go").addEventListener("click", async () => {
-  const title = $("title").textContent;
+  const title = currentTitle;
   let target = "";
 
   if (askWhere) {
@@ -1215,7 +1345,10 @@ $("cookies-import").addEventListener("click", async () => {
   }
 });
 
-$("cookies-forget").addEventListener("click", async () => {
+$("cookies-forget").addEventListener("click", () => twoClicks(
+  $("cookies-forget"), "Forget every log-in? Click again", forgetCookies));
+
+async function forgetCookies() {
   cookieError("");
   const result = await api("/api/cookies/clear", {});
   renderCookies(result.cookies);
@@ -1230,7 +1363,7 @@ $("cookies-forget").addEventListener("click", async () => {
   } else {
     setStatus("Cookies forgotten.");
   }
-});
+}
 
 (async function start() {
   qualityLists = await api("/api/qualities");

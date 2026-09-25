@@ -162,7 +162,11 @@ def known_domains() -> set[str]:
     probe to run then, not a guess to make now.
     """
     from .platforms import PLATFORMS      # imported late: platforms is heavier
-    return {domain.lower() for platform in PLATFORMS for domain in platform.domains}
+    # Only sites with a tool. A site listed to be REFUSED (Netflix, decision
+    # 10) or with no link-driven tool (WeChat Channels) is not a site we
+    # download from, and its cookies have no business in our file.
+    return {domain.lower() for platform in PLATFORMS if platform.is_supported
+            for domain in platform.domains}
 
 
 def _known_match(domain: str, known: set[str]) -> str | None:
