@@ -531,5 +531,14 @@ def state(enabled: bool) -> dict:
         "more_sites": max(0, len(summary["sites"]) - 6),
         "imported_at": saved,
         "expires_at": summary["expires_at"],
-        "used_by": list(FILE_CAPABLE),
+        # Both roads: the file tools AND the server tools. Until 2026-09-25
+        # this named the file tools only, while TikTokDownloader and
+        # KS-Downloader received the cookies too (seen by the critique).
+        # Their display names, not our ids.
+        "used_by": [_tool_name(t) for t in FILE_CAPABLE + HEADER_CAPABLE],
     }
+
+
+def _tool_name(tool_id: str) -> str:
+    from .platforms import tool_name      # imported late, like known_domains
+    return tool_name(tool_id)

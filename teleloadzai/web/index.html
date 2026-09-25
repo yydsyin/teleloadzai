@@ -38,6 +38,10 @@
     border-radius: var(--radius); padding: 16px; margin-bottom: 14px;
   }
   .row { display: flex; gap: 8px; align-items: center; }
+  /* Controls do not inherit the page's font by default: every button, list
+     and box was drawn in Arial while the page is Segoe UI (measured by the
+     critique of 2026-09-25: 38 buttons, 12 lists, 5 boxes). */
+  button, input, select { font-family: inherit; }
   input[type=text], select {
     padding: 11px 12px; font-size: 15px; color: var(--ink);
     background: var(--bg); border: 1px solid var(--line);
@@ -54,7 +58,31 @@
     background: transparent; color: var(--soft);
     border: 1px solid var(--line); font-weight: 500;
   }
-  button.tiny { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
+  button.tiny { padding: 4px 10px; font-size: 13px; font-weight: 500; }
+
+  /* Five text sizes, not nine: 12 small labels, 13 help, 15 body and
+     controls, 17 section titles, 20 the app name. */
+  h2.section {
+    font-size: 17px; font-weight: 600; margin: 30px 0 4px;
+    padding-top: 18px; border-top: 1px solid var(--line);
+  }
+  h2.section:first-of-type { margin-top: 12px; padding-top: 0; border-top: 0; }
+  .label { font-weight: 500; }
+  details.more > summary {
+    cursor: pointer; color: var(--accent); font-size: 13px; margin-top: 10px;
+    list-style-position: outside;
+  }
+  details.more[open] > summary { margin-bottom: 6px; }
+
+  /* Every message, fixed at the bottom of the window: it used to sit at the
+     top of the page, 1500 px away from a setting changed in Settings. */
+  #status {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    max-width: min(640px, calc(100vw - 32px)); z-index: 10;
+    padding: 10px 16px; border-radius: 10px; font-size: 15px;
+    background: var(--ink); color: var(--card);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .18);
+  }
 
   .hint { color: var(--soft); font-size: 13px; }
   .hidden { display: none !important; }
@@ -92,11 +120,11 @@
   }
   .controls { display: flex; gap: 6px; margin: 14px 0 12px; flex-wrap: wrap; align-items: center; }
   .choice {
-    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 14px;
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 15px;
     border: 1px solid var(--line); background: transparent; color: var(--ink); font-weight: 500;
   }
   .choice[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
-  .controls select { padding: 7px 10px; font-size: 14px; }
+  .controls select { padding: 7px 10px; font-size: 15px; }
 
   .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .job { border-top: 1px solid var(--line); padding: 12px 0; }
@@ -111,7 +139,7 @@
   .state-done .bar > i { background: var(--ok); }
   .state-error .bar > i, .state-cancelled .bar > i { background: var(--bad); }
   .state-waiting .bar > i, .state-skipped .bar > i { background: var(--soft); }
-  .small { font-size: 12.5px; color: var(--soft); white-space: nowrap; }
+  .small { font-size: 12px; color: var(--soft); white-space: nowrap; }
 
   .tool { border-top: 1px solid var(--line); padding: 11px 0; }
   .tool:first-child { border-top: 0; }
@@ -119,7 +147,7 @@
   .tool-name { font-weight: 600; }
   .tool-buttons { display: flex; gap: 6px; flex: none; }
   .badge {
-    display: inline-block; font-size: 11.5px; padding: 1px 7px; border-radius: 99px;
+    display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 99px;
     border: 1px solid var(--line); color: var(--soft); margin-left: 6px; white-space: nowrap;
   }
   .badge.ok { color: var(--ok); border-color: var(--ok); }
@@ -144,7 +172,7 @@
   <!-- Every message the app says, on every screen. It used to live inside
        the link card, which meant a message sent while Settings was open
        went to something nobody could see. -->
-  <div class="hint hidden" id="status" style="margin:-10px 0 18px"></div>
+  <div class="hidden" id="status" role="status" aria-live="polite"></div>
 
   <div class="card hidden" data-view="main" id="welcome">
     <div class="section-title">Welcome</div>
@@ -162,7 +190,8 @@
 
   <div class="card" data-view="main">
     <div class="row">
-      <input type="text" id="url" placeholder="https://..." autocomplete="off" spellcheck="false">
+      <input type="text" id="url" placeholder="https://..." autocomplete="off" spellcheck="false"
+             aria-label="Link to a video or a post">
       <button id="read">Read</button>
     </div>
   </div>
@@ -211,45 +240,15 @@
     <div id="jobs"></div>
   </div>
 
+  <!-- Three sections in the order they are used: where files go, which
+       program fetches them, which accounts they may use. Until 2026-09-25
+       the section names were grey help text and the page had no structure
+       (critique, 2026-09-25). There is one way out, "Back" at the top. -->
   <div class="card" data-view="settings" id="settings">
-    <div class="head">
-      <span class="section-title">Settings</span>
-      <button class="ghost tiny" id="settings-close">Close</button>
-    </div>
+    <h2 class="section">Downloads</h2>
 
     <div class="field">
-      <div class="head">
-        <span class="hint">Tools</span>
-        <button class="ghost tiny" id="tools-refresh">Check versions</button>
-      </div>
-      <div id="tools-list" class="hint">Loading…</div>
-      <div class="card warn hidden" id="python-help" style="margin:12px 0 0">
-        <div class="title" id="python-help-title">Python is needed</div>
-        <div class="hint" style="margin:6px 0 10px" id="python-help-text"></div>
-        <div class="row" style="flex-wrap:wrap">
-          <button id="python-install">Install Python</button>
-          <button class="ghost" id="python-manual">Download it myself</button>
-          <button class="ghost" id="python-recheck">Check again</button>
-        </div>
-        <div class="hint" id="python-help-status" style="margin-top:8px"></div>
-      </div>
-    </div>
-
-    <!-- Decision 13, first level: the user's own default tool per site.
-         Only the sites with a real choice are listed; a site with one tool
-         has nothing to choose. The download page still lets him switch for
-         one download. -->
-    <div class="field">
-      <div class="hint" style="margin-bottom:8px">Tool for each site</div>
-      <div id="tool-choices" class="hint">Loading…</div>
-      <div class="hint" style="margin-top:6px">
-        The tool used when you paste a link from that site. You can still pick
-        another one for a single download.
-      </div>
-    </div>
-
-    <div class="field">
-      <div class="hint" style="margin-bottom:8px">Default folder</div>
+      <label class="label" for="folder" style="display:block; margin-bottom:8px">Default folder</label>
       <div class="row">
         <input type="text" id="folder" spellcheck="false">
         <button class="ghost" id="browse">Browse…</button>
@@ -264,7 +263,7 @@
     <div class="field">
       <label class="row" style="cursor:pointer">
         <input type="checkbox" id="ask-where" style="width:16px;height:16px;accent-color:var(--accent)">
-        <span>Ask where to save each file</span>
+        <span class="label">Ask where to save each file</span>
       </label>
       <div class="hint" style="margin:4px 0 0 24px">
         A Windows "Save as" window opens when you add a link, so you choose the
@@ -272,107 +271,19 @@
       </div>
     </div>
 
-    <!-- Decision 35: a screen that asks for something sensitive explains
-         itself FIRST. What it is, why it is needed, what we do not do with
-         it, and the risk -- before any switch. -->
     <div class="field">
-      <div class="head">
-        <span class="hint">Log-in cookies</span>
-        <!-- A real switch, not a label. Until 2026-09-22 this said "on" or
-             "off" and nothing could change it: the only way to reach "off"
-             was "Forget them", which erases the cookies instead of pausing
-             them. Decision 9 promises the user is in control of this. -->
-        <label class="row hidden" id="cookies-switch-box" style="cursor:pointer; gap:6px">
-          <input type="checkbox" id="cookies-switch" style="width:16px;height:16px;accent-color:var(--accent)">
-          <span class="hint" id="cookies-state">off</span>
-        </label>
-        <span class="hint" id="cookies-state-plain">off</span>
+      <div class="row">
+        <label class="label" for="parallel">Downloads at the same time</label>
+        <select id="parallel">
+          <option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+        </select>
       </div>
-
-      <div class="hint" style="margin:8px 0 0; line-height:1.6">
-        Some links only work if the app can prove you are logged in: a private
-        Instagram post, an age-restricted YouTube video, anything on Weibo.
-        <br><br>
-        Your browser already holds that proof. It is called a
-        <b>cookie</b> — a small piece of text your browser saved when you
-        logged in, which says "this is me".
-        <br><br>
-        <b>You never type a password here.</b> The file stays on this PC. It
-        goes straight to the download tool and nowhere else.
-      </div>
-
-      <div class="card warn" style="margin:12px 0 0">
-        <div class="hint" style="line-height:1.6">
-          ⚠️ Downloading a lot while logged in can get that account suspended.
-          If you do this often, use a second account.
-        </div>
-      </div>
-
-      <div id="cookies-summary" class="hint" style="margin:12px 0 0"></div>
-
-      <!-- The easy road: log in inside a Teleloadzai window. We receive only
-           the cookies of that one site, and only at the moment they exist. -->
-      <div class="field" style="margin-top:14px">
-        <div class="hint" style="margin-bottom:8px">
-          <b>Log in here.</b> A window opens on the site. You log in the normal
-          way; the window closes by itself once you are in, and Teleloadzai
-          takes only that site's cookies.
-        </div>
-        <div class="row" id="login-buttons" style="flex-wrap:wrap"></div>
-        <div class="hint warn-text hidden" id="login-blocked" style="margin-top:8px"></div>
-
-        <div class="card warn hidden" id="login-waiting" style="margin:12px 0 0">
-          <div class="title" id="login-waiting-title">Waiting for you</div>
-          <div class="hint" style="margin:6px 0 10px" id="login-waiting-text"></div>
-          <div class="row" style="flex-wrap:wrap">
-            <button id="login-done">I have logged in</button>
-            <button class="ghost" id="login-cancel">Cancel</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="hint" style="margin:14px 0 6px">
-        Or use a file you exported yourself:
-      </div>
-      <div class="row" style="flex-wrap:wrap">
-        <button class="ghost" id="cookies-import">Choose my cookies.txt…</button>
-        <button class="ghost hidden" id="cookies-forget">Forget them</button>
-      </div>
-
-      <div class="hint" style="margin-top:8px; line-height:1.6">
-        Export the file from your browser with a "cookies.txt" extension, and
-        pick the format called <b>Netscape</b>. Your file is never changed.
-        <br>
-        <b>Teleloadzai keeps only the sites it can download from</b> and throws
-        the rest away before saving — your bank and your mail never come in.
-      </div>
-
-      <label class="row" style="cursor:pointer; margin-top:8px">
-        <input type="checkbox" id="cookies-keep-all" style="width:16px;height:16px;accent-color:var(--accent)">
-        <span class="hint">Keep every site, even the ones Teleloadzai does not know</span>
-      </label>
-      <div class="hint" style="margin:4px 0 0 24px; line-height:1.6">
-        Only tick this for a site that is missing. It saves the whole file,
-        including anything else you are logged into.
-      </div>
-
-      <div class="field" style="margin-top:14px">
-        <div class="row">
-          <span class="hint">When I close __APP_NAME__</span>
-          <select id="cookies-keep">
-            <option value="keep">stay logged in</option>
-            <option value="once">forget everything</option>
-          </select>
-        </div>
-        <div class="hint" id="cookies-keep-note" style="margin-top:6px; line-height:1.6"></div>
-      </div>
-
-      <div class="hint hidden" id="cookies-error" style="margin-top:8px"></div>
     </div>
 
     <div class="field">
       <div class="row">
-        <span class="hint">Stop a live recording after</span>
+        <label class="label" for="record-minutes">Stop a live recording after</label>
         <select id="record-minutes">
           <option value="15">15 minutes</option>
           <option value="30">30 minutes</option>
@@ -388,14 +299,145 @@
       </div>
     </div>
 
+    <h2 class="section">Tools</h2>
+
+    <!-- Decision 13, first level: the user's own default tool per site.
+         Only the sites with a real choice are listed; a site with one tool
+         has nothing to choose. The download page still lets him switch for
+         one download. -->
     <div class="field">
-      <div class="row">
-        <span class="hint">Downloads at the same time</span>
-        <select id="parallel">
-          <option value="1">1</option><option value="2">2</option>
-          <option value="3">3</option><option value="4">4</option><option value="5">5</option>
-        </select>
+      <div class="label" style="margin-bottom:8px">Tool for each site</div>
+      <div id="tool-choices" class="hint">Loading…</div>
+      <div class="hint" style="margin-top:6px">
+        The tool used when you paste a link from that site. You can still pick
+        another one for a single download.
       </div>
+    </div>
+
+    <div class="field">
+      <div class="head">
+        <span class="label">Installed programs</span>
+        <button class="ghost tiny" id="tools-refresh">Check versions</button>
+      </div>
+      <div id="tools-list" class="hint">Loading…</div>
+      <div class="card warn hidden" id="python-help" style="margin:12px 0 0">
+        <div class="title" id="python-help-title">Python is needed</div>
+        <div class="hint" style="margin:6px 0 10px" id="python-help-text"></div>
+        <div class="row" style="flex-wrap:wrap">
+          <button id="python-install">Install Python</button>
+          <button class="ghost" id="python-manual">Download it myself</button>
+          <button class="ghost" id="python-recheck">Check again</button>
+        </div>
+        <div class="hint" id="python-help-status" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <!-- Decision 35: a screen that asks for something sensitive explains
+         itself FIRST. What it is, why it is needed, what we do not do with
+         it, and the risk -- before any switch. Those four stay visible; only
+         the longer explanation and the file road are folded (2026-09-25:
+         the section showed about twelve blocks at once). -->
+    <h2 class="section">Accounts</h2>
+    <div class="field">
+      <div class="head">
+        <span class="label">Use my log-ins for downloads</span>
+        <!-- A real switch, not a label. Until 2026-09-22 this said "on" or
+             "off" and nothing could change it: the only way to reach "off"
+             was "Forget them", which erases the cookies instead of pausing
+             them. Decision 9 promises the user is in control of this. -->
+        <label class="row hidden" id="cookies-switch-box" style="cursor:pointer; gap:6px">
+          <input type="checkbox" id="cookies-switch" style="width:16px;height:16px;accent-color:var(--accent)">
+          <span class="hint" id="cookies-state">off</span>
+        </label>
+        <span class="hint" id="cookies-state-plain">off</span>
+      </div>
+
+      <div class="hint" style="margin:8px 0 0; line-height:1.6">
+        Some links only work when you are logged in: a private Instagram post,
+        an age-restricted YouTube video, anything on Weibo. Log in to that site
+        below, and Teleloadzai keeps its proof of log-in — a <b>cookie</b> — for
+        the download tools. <b>You never type a password into Teleloadzai</b>,
+        and the cookies stay on this PC.
+      </div>
+      <details class="more">
+        <summary>What is a cookie, exactly?</summary>
+        <div class="hint" style="line-height:1.6">
+          A small piece of text a site saves when you log in, which says "this
+          is me". The log-in window takes only the cookies of the one site you
+          log in to, and they go straight to the download tool and nowhere
+          else.
+        </div>
+      </details>
+
+      <div class="card warn" style="margin:12px 0 0">
+        <div class="hint" style="line-height:1.6">
+          Downloading a lot while logged in can get that account suspended.
+          If you do this often, use a second account.
+        </div>
+      </div>
+
+      <div class="row" style="margin:12px 0 0; flex-wrap:wrap; justify-content:space-between">
+        <div id="cookies-summary" class="hint"></div>
+        <button class="ghost tiny hidden" id="cookies-forget">Forget them</button>
+      </div>
+
+      <!-- The easy road: log in inside a Teleloadzai window. We receive only
+           the cookies of that one site, and only at the moment they exist. -->
+      <div class="field" style="margin-top:14px">
+        <div class="label" style="margin-bottom:8px">Log in to a site</div>
+        <div class="hint" style="margin-bottom:8px">
+          A window opens on the site. Log in the normal way; the window closes
+          by itself once you are in.
+        </div>
+        <div class="row" id="login-buttons" style="flex-wrap:wrap"></div>
+        <div class="hint warn-text hidden" id="login-blocked" style="margin-top:8px"></div>
+
+        <div class="card warn hidden" id="login-waiting" style="margin:12px 0 0">
+          <div class="title" id="login-waiting-title">Waiting for you</div>
+          <div class="hint" style="margin:6px 0 10px" id="login-waiting-text"></div>
+          <div class="row" style="flex-wrap:wrap">
+            <button id="login-done">I have logged in</button>
+            <button class="ghost" id="login-cancel">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:14px">
+        <div class="row">
+          <label class="label" for="cookies-keep">When I close __APP_NAME__</label>
+          <select id="cookies-keep">
+            <option value="keep">stay logged in</option>
+            <option value="once">forget everything</option>
+          </select>
+        </div>
+        <div class="hint" id="cookies-keep-note" style="margin-top:6px; line-height:1.6"></div>
+      </div>
+
+      <!-- The second road (decision 36), folded: the log-in above is the one
+           we recommend. Everything it said before is still here. -->
+      <details class="more">
+        <summary>Use a cookies.txt file instead</summary>
+        <div class="row" style="flex-wrap:wrap; margin-top:6px">
+          <button class="ghost" id="cookies-import">Choose my cookies.txt…</button>
+        </div>
+        <div class="hint" style="margin-top:8px; line-height:1.6">
+          Export the file from your browser with a "cookies.txt" extension, and
+          pick the format called <b>Netscape</b>. Your file is never changed.
+          <br>
+          <b>Teleloadzai keeps only the sites it can download from</b> and throws
+          the rest away before saving — your bank and your mail never come in.
+        </div>
+        <label class="row" style="cursor:pointer; margin-top:8px">
+          <input type="checkbox" id="cookies-keep-all" style="width:16px;height:16px;accent-color:var(--accent)">
+          <span class="hint">Keep every site, even the ones Teleloadzai does not know</span>
+        </label>
+        <div class="hint" style="margin:4px 0 0 24px; line-height:1.6">
+          Only tick this for a site that is missing. It saves the whole file,
+          including anything else you are logged into.
+        </div>
+      </details>
+
+      <div class="hint hidden" id="cookies-error" style="margin-top:8px"></div>
     </div>
   </div>
 
@@ -472,12 +514,22 @@ function showChosenTool() {
   updateGoLabel();
 }
 
+let statusTimer = null;
+
 const setStatus = (text) => {
-  // The line lives in the topbar now, so it is read on any screen. It hides
-  // itself when empty instead of leaving a blank gap under the title.
+  // Fixed at the bottom of the window, so it is read on any screen and at
+  // any scroll. It hides itself when empty. A message set this way STAYS:
+  // errors and questions must not vanish before they are read.
+  clearTimeout(statusTimer);
   $("status").textContent = text || "";
   $("status").classList.toggle("hidden", !text);
 };
+
+/** A confirmation ("Saved…"): said, then gone after 4 s. */
+function notify(text) {
+  setStatus(text);
+  statusTimer = setTimeout(() => setStatus(""), 4000);
+}
 
 function qualityLabel(value) {
   if (value === "best") return "Best";
@@ -1062,9 +1114,10 @@ async function loadToolChoices() {
       option.selected = tool.id === site.chosen;
       pick.appendChild(option);
     }
+    pick.setAttribute("aria-label", "Tool for " + site.name);
     pick.addEventListener("change", async () => {
       await api("/api/settings", { tool_choice: { [site.id]: pick.value } });
-      setStatus(site.name + " links will now use " + pick.selectedOptions[0].text.split(" — ")[0] + ".");
+      notify("Saved: " + site.name + " links will use " + pick.selectedOptions[0].text.split(" — ")[0] + ".");
     });
     row.append(label, pick);
     box.appendChild(row);
@@ -1078,7 +1131,6 @@ const showSettings = (open) => showView(open ? "settings" : "main");
 $("settings-toggle").addEventListener("click", () => {
   showView(document.querySelector(".wrap").dataset.showing === "settings" ? "main" : "settings");
 });
-$("settings-close").addEventListener("click", () => showView("main"));
 
 $("need-tool-install").addEventListener("click", async () => {
   const id = $("need-tool-install").dataset.tool;
@@ -1100,6 +1152,9 @@ $("tool-pick").addEventListener("change", showChosenTool);
 
 $("read").addEventListener("click", read);
 $("url").addEventListener("keydown", (event) => { if (event.key === "Enter") read(); });
+// A message that stays can be put away with one click.
+$("status").addEventListener("click", () => setStatus(""));
+$("status").title = "Click to close";
 // Pasting a link IS asking to read it (chosen by the user 2026-09-25). The
 // box holds the new text only after the event, hence the zero delay. Read
 // stays, to read again.
@@ -1161,28 +1216,35 @@ $("browse").addEventListener("click", async () => {
   const result = await api("/api/browse", {});
   // A window that failed to open is not the same as the user cancelling.
   if (result.error) { setStatus("Error: " + result.error); return; }
-  setStatus(result.cancelled ? "" : "Folder saved.");
+  if (result.cancelled) setStatus(""); else notify("Folder saved.");
   if (result.download_folder) $("folder").value = result.download_folder;
 });
 
 $("save-folder").addEventListener("click", async () => {
   const settings = await api("/api/settings", { download_folder: $("folder").value.trim() });
   $("folder").value = settings.download_folder || "";
-  setStatus("Folder saved.");
+  notify("Folder saved.");
 });
 
+// These three used to save in silence: the user could not tell a change
+// that was kept from one that was lost (critique of 2026-09-25).
 $("parallel").addEventListener("change", async () => {
   await api("/api/settings", { max_parallel: Number($("parallel").value) });
+  notify(`Saved: ${$("parallel").value} download${$("parallel").value === "1" ? "" : "s"} at the same time.`);
 });
 
 $("record-minutes").addEventListener("change", async () => {
   await api("/api/settings", { record_minutes: Number($("record-minutes").value) });
+  notify("Saved: live recordings stop after "
+    + $("record-minutes").selectedOptions[0].text + ".");
 });
 
 $("ask-where").addEventListener("change", async () => {
   askWhere = $("ask-where").checked;
   updateGoLabel();
   await api("/api/settings", { ask_where: askWhere });
+  notify(askWhere ? "Saved: Windows will ask where to save each file."
+                  : "Saved: files go straight to the default folder.");
 });
 
 // ---- log-in cookies -------------------------------------------------------
@@ -1375,6 +1437,8 @@ $("cookies-switch").addEventListener("change", async () => {
 $("cookies-keep").addEventListener("change", async () => {
   renderKeepNote();
   await api("/api/settings", { cookies_keep: $("cookies-keep").value });
+  notify("Saved: when " + APP_NAME + " closes, "
+    + ($("cookies-keep").value === "once" ? "every log-in is forgotten." : "you stay logged in."));
 });
 
 async function loadCookies() {
