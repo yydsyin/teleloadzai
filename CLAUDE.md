@@ -37,7 +37,7 @@ One desktop interface that groups the best video/audio download tools behind a s
 
 - The user is a French speaker writing in English. **Use simple, short sentences.** Avoid rare words and idioms.
 - Tables and short lists are better than long paragraphs.
-- If the user switches to French, follow in French.
+- **Always answer in English.** If he writes in French, keep answering in English and say so in one short line ("You wrote in French — I'm staying in English"): he may have switched without meaning to. Switch to French only if he asks. *(Changed 2026-09-25 at his request; this line used to say "if the user switches to French, follow in French".)*
 - This file is built **gradually**. Do not add rules the user has not approved.
 
 ### 2.1 Speaking

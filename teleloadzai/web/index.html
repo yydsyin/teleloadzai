@@ -146,6 +146,19 @@
   }
   .choice[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
   .controls select { padding: 7px 10px; font-size: 15px; }
+  /* The tool switch under the title (asked by the user 2026-09-25): every
+     choice visible at once, the one in use filled. It starts on the default
+     each time; a click changes this download only. */
+  .switch {
+    display: inline-flex; vertical-align: middle; margin-left: 6px;
+    border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  }
+  .switch button {
+    padding: 4px 12px; font-size: 13px; font-weight: 500; border-radius: 0;
+    background: transparent; color: var(--ink);
+  }
+  .switch button + button { border-left: 1px solid var(--line); }
+  .switch button[aria-pressed="true"] { background: var(--accent-fill); color: #fff; font-weight: 600; }
 
   .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .job { border-top: 1px solid var(--line); padding: 12px 0; }
@@ -228,7 +241,7 @@
       <div style="min-width:0">
         <div class="title" id="title">…</div>
         <div class="meta" id="meta"></div>
-        <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span></div>
+        <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span><span class="switch hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span></div>
         <div class="hint hidden" id="blocked-tools" style="margin-top:6px"></div>
         <div class="hint hidden" id="probe-note" style="margin-top:6px"></div>
       </div>
@@ -239,8 +252,6 @@
       <button class="choice" data-mode="mp4" aria-pressed="true">MP4 — video</button>
       <span class="hint" style="margin-left:6px">Quality</span>
       <select id="quality"></select>
-      <span class="hint hidden" id="tool-label" style="margin-left:6px">Tool</span>
-      <select id="tool-pick" class="hidden"></select>
     </div>
 
     <div class="hidden" id="need-tool" style="margin-bottom:12px">
@@ -502,8 +513,12 @@ let currentPlatformId = "";
 // Kuaishou yt-dlp always fails and KS-Downloader works (proven 2026-09-23).
 let probeProblem = false;
 
+// The tool the switch is on. "" = the first one, which is the default.
+let pickedTool = "";
+const chosenTool = () => currentTools.find((t) => t.id === pickedTool) || currentTools[0];
+
 function updateGoLabel() {
-  const chosen = currentTools.find((t) => t.id === $("tool-pick").value) || currentTools[0];
+  const chosen = chosenTool();
   const sameTool = chosen && chosen.id === "yt-dlp";
   // A link yt-dlp itself could not read keeps a way to try (decision 15),
   // but no longer a bright button inviting a job that will fail
@@ -526,12 +541,17 @@ function updateGoLabel() {
 
 /** The chosen tool decides the tag, and whether we must install first. */
 function showChosenTool() {
-  const chosen = currentTools.find((t) => t.id === $("tool-pick").value) || currentTools[0];
-  // The reason is shown only when there is a choice to explain. For a site
-  // with one tool it read "yt-dlp — the only serious option for this site",
-  // jargon that answered a question nobody asked (critique, 2026-09-25).
-  $("tool").textContent = !chosen ? ""
-    : currentTools.length > 1 ? chosen.name + " — " + chosen.why : chosen.name;
+  const chosen = chosenTool();
+  // One tool: its name as a tag. Several: the switch says it, so the tag
+  // goes. For a site with one tool the reason read "yt-dlp — the only
+  // serious option for this site", jargon that answered a question nobody
+  // asked (critique, 2026-09-25).
+  const several = currentTools.length > 1;
+  $("tool").textContent = chosen && !several ? chosen.name : "";
+  $("tool").classList.toggle("hidden", several || !chosen);
+  for (const button of $("tool-pick").children) {
+    button.setAttribute("aria-pressed", String(chosen && button.dataset.tool === chosen.id));
+  }
 
   // Never answer "not supported" when a tool exists: offer it (decision 6).
   const missing = chosen && !chosen.installed ? chosen : null;
@@ -662,11 +682,20 @@ async function readLink(url, mine) {
 
   // The first one is the Teleloadzai default; the others are offered only
   // when they exist, so the choice never appears for nothing (decision 13).
-  $("tool-pick").innerHTML = currentTools
-    .map((t) => `<option value="${t.id}">${t.name}</option>`).join("");
-  const several = currentTools.length > 1;
-  $("tool-pick").classList.toggle("hidden", !several);
-  $("tool-label").classList.toggle("hidden", !several);
+  // Each new link starts on the default; the switch changes this download
+  // only, and Settings changes the default (the user, 2026-09-25).
+  pickedTool = "";
+  $("tool-pick").innerHTML = "";
+  for (const tool of currentTools) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.tool = tool.id;
+    button.textContent = tool.name;
+    button.title = tool.why;
+    button.addEventListener("click", () => { pickedTool = tool.id; showChosenTool(); });
+    $("tool-pick").appendChild(button);
+  }
+  $("tool-pick").classList.toggle("hidden", currentTools.length < 2);
 
   // Say what exists but cannot be used, instead of offering it and failing
   // on the button (decisions 6 and 15).
@@ -1184,8 +1213,6 @@ $("need-tool-install").addEventListener("click", async () => {
   read();        // read the link again, now that the tool is here
 });
 
-$("tool-pick").addEventListener("change", showChosenTool);
-
 $("read").addEventListener("click", read);
 $("url").addEventListener("keydown", (event) => { if (event.key === "Enter") read(); });
 // A message that stays can be put away with one click.
@@ -1235,7 +1262,7 @@ $("go").addEventListener("click", async () => {
 
   const job = await api("/api/download", {
     url: currentUrl, mode, quality: $("quality").value, title, target,
-    tool: $("tool-pick").value || "yt-dlp",
+    tool: (chosenTool() || {}).id || "yt-dlp",
     platform: currentPlatformId,
   });
   if (job.error) { setStatus("Error: " + job.error); return; }

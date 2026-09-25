@@ -89,7 +89,9 @@ SPECS: tuple[ToolSpec, ...] = (
     # No command line at all: `--help` opens a language menu (checked 2026-09-21).
     # version_args empty = never start it just to read a version.
     ToolSpec("tiktokdownloader", "TikTokDownloader", "JoeanAmier/TikTokDownloader", "zip",
-             what_for="TikTok and Douyin, without the watermark.",
+             # "without the watermark" until 2026-09-25: on the same TikTok
+             # video neither this tool nor yt-dlp had one (decision 38).
+             what_for="TikTok and Douyin.",
              exe_name="DouK-Downloader.exe", asset_keywords=("Windows",),
              version_args=()),
 

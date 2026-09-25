@@ -98,9 +98,13 @@ PLATFORMS: tuple[Platform, ...] = (
               ToolOption("yt-dlp", "video only"))),
     Platform("tiktok", "TikTok",
              ("tiktok.com",),
-             (ToolOption("tiktokdownloader", "no watermark"),
+             # Measured 2026-09-25 on the same video: TikTokDownloader
+             # 1280x720 (27.0 MB), yt-dlp 1024x576 (18.3 MB) -- and NEITHER
+             # had a watermark. These lines said "no watermark" / "may keep
+             # the watermark" until then, never checked (decision 38).
+             (ToolOption("tiktokdownloader", "higher quality"),
               ToolOption("f2", "batch, a whole profile"),
-              ToolOption("yt-dlp", "simple, but may keep the watermark"))),
+              ToolOption("yt-dlp", "smaller file"))),
     Platform("douyin", "Douyin",
              ("douyin.com", "iesdouyin.com"),
              (ToolOption("tiktokdownloader", "no watermark"),
