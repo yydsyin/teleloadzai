@@ -447,6 +447,28 @@ def have_file() -> bool:
     return COOKIE_FILE.is_file() and COOKIE_FILE.stat().st_size > 0
 
 
+def site_dates() -> dict[str, dict]:
+    """For each site in our file: how many cookies, and their latest end date.
+
+    `latest` is the furthest expiry among cookies that HAVE one (0 = only
+    session cookies, whose end nobody can tell). Dates and counts only --
+    never a name or a value -- for the log-in buttons' signs.
+    """
+    if not have_file():
+        return {}
+    known = known_domains()
+    found: dict[str, dict] = {}
+    for domain, when, _raw in _rows(COOKIE_FILE.read_text(encoding="utf-8").splitlines()):
+        site = _known_match(domain.lstrip(".").lower(), known)
+        if site is None:
+            continue
+        entry = found.setdefault(site, {"count": 0, "latest": 0.0})
+        entry["count"] += 1
+        if when:
+            entry["latest"] = max(entry["latest"], when)
+    return found
+
+
 def header_for(site: str, enabled: bool) -> str:
     """The cookies of ONE site as `name=value; name=value`, or "".
 

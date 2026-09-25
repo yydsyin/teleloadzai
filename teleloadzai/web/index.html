@@ -121,6 +121,17 @@
   /* yt-dlp could not read a link it would itself download: say it as a
      problem, not as a title. */
   #result.is-error .title { color: var(--bad); }
+  /* The sign on each log-in button, and its key: a dot drawn here, never an
+     emoji. Colour is backed by words in the tooltip and accessible name. */
+  .login-logged_in::before, .login-saved::before, .login-expired::before {
+    content: ""; display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; margin-right: 6px; vertical-align: 1px;
+  }
+  .login-logged_in::before { background: var(--ok); }
+  .login-saved::before { background: var(--soft); }
+  .login-expired::before { background: var(--bad); }
+  button.login-logged_in { border-color: var(--ok); color: var(--ink); }
+  button.login-expired { border-color: var(--bad); color: var(--ink); }
   /* The second click of a destructive button (see `twoClicks`). */
   button.danger { color: var(--bad); border-color: var(--bad); }
 
@@ -406,6 +417,7 @@
           by itself once you are in.
         </div>
         <div class="row" id="login-buttons" style="flex-wrap:wrap"></div>
+        <div class="hint hidden" id="login-legend" style="margin-top:8px; display:flex; gap:14px; flex-wrap:wrap"></div>
         <div class="hint warn-text hidden" id="login-blocked" style="margin-top:8px"></div>
 
         <div class="card warn hidden" id="login-waiting" style="margin:12px 0 0">
@@ -1347,13 +1359,46 @@ function renderLogin(platforms, blocked) {
   $("login-blocked").classList.toggle("hidden", !blocked);
   if (blocked) return;
 
+  // A sign per site (asked by the user 2026-09-25): green = logged in,
+  // grey = cookies saved but no finished log-in seen, red = past their end
+  // date. Said in words too -- tooltip and accessible name -- never by
+  // colour alone.
+  const words = {
+    logged_in: (p) => `Logged in${p.since ? " " + agoText(p.since) : ""}.`
+      + (p.ends ? ` The log-in lasts until ${new Date(p.ends * 1000).toLocaleDateString()}.` : ""),
+    saved: () => "Cookies saved, but Teleloadzai did not see a log-in finish "
+      + "(the window was closed by hand, or they came from a file). Log in again to be sure.",
+    expired: (p) => `The log-in has expired (${new Date(p.ends * 1000).toLocaleDateString()}). Log in again.`,
+    none: () => "Not logged in.",
+  };
+  let shown = new Set();
   for (const platform of platforms) {
+    const state = platform.state || "none";
+    shown.add(state);
     const button = document.createElement("button");
-    button.className = "ghost tiny";
+    button.className = "ghost tiny login-site login-" + state;
     button.textContent = platform.name;
+    const said = words[state](platform);
+    button.title = said;
+    button.setAttribute("aria-label", platform.name + ": " + said);
     button.addEventListener("click", () => openLogin(platform));
     box.appendChild(button);
   }
+  // The key, only for the signs actually on screen.
+  const key = [["logged_in", "logged in"], ["saved", "cookies saved"], ["expired", "expired — log in again"]]
+    .filter(([s]) => shown.has(s))
+    .map(([s, text]) => `<span class="login-key login-${s}">${text}</span>`).join("");
+  $("login-legend").innerHTML = key;
+  $("login-legend").classList.toggle("hidden", !key);
+}
+
+/** "2 h ago", "3 days ago" -- from a real timestamp, never an estimate. */
+function agoText(seconds) {
+  const minutes = Math.max(0, Math.round((Date.now() / 1000 - seconds) / 60));
+  if (minutes < 60) return minutes <= 1 ? "just now" : `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} days ago`;
 }
 
 async function openLogin(platform) {

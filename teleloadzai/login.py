@@ -151,15 +151,73 @@ def login_url(platform_id: str) -> str | None:
 
 
 def choices() -> list[dict]:
-    """The platforms worth offering a login for, for the page to draw."""
+    """The platforms worth offering a login for, for the page to draw.
+
+    Each carries a `state` for its button's sign (asked by the user
+    2026-09-25), from two things we really know and nothing else:
+      "logged_in" -- cookies saved AND the last log-in window finished by
+                     itself, or the user pressed "I have logged in"
+      "saved"     -- cookies saved, but no finished log-in was seen (window
+                     closed by hand, or a cookies.txt file)
+      "expired"   -- every cookie with an end date is past it
+      "none"      -- no cookie for this site
+    ⚠️ A site can end a session before its date (log out elsewhere); that
+    cannot be seen from here, so "expired" is about the date only.
+    """
+    dates = cookies.site_dates()
+    history = _history()
+    now = time.time()
     offered = []
     for platform in PLATFORMS:
         if not platform.is_supported:
             continue
         url = login_url(platform.id)
-        if url:
-            offered.append({"id": platform.id, "name": platform.name, "url": url})
+        if not url:
+            continue
+        mine = [dates[d] for d in platform.domains if d in dates]
+        latest = max((m["latest"] for m in mine), default=0.0)
+        seen = history.get(platform.id, {})
+        if not mine:
+            state = "none"
+        elif latest and latest < now:
+            state = "expired"
+        elif seen.get("how") in ("auto", "button"):
+            state = "logged_in"
+        else:
+            state = "saved"
+        offered.append({"id": platform.id, "name": platform.name, "url": url,
+                        "state": state, "since": seen.get("at", 0),
+                        "ends": latest})
     return offered
+
+
+# How each site's last log-in ended: {platform id: {"how": ..., "at": ...}}.
+# Only ids, words and dates -- never a cookie (hard rule 1).
+HISTORY_FILE = DATA_DIR / "logins.json"
+
+
+def _history() -> dict:
+    try:
+        import json
+        return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _remember(platform_id: str, how: str) -> None:
+    import json
+    history = _history()
+    history[platform_id] = {"how": how, "at": time.time()}
+    try:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        HISTORY_FILE.write_text(json.dumps(history, indent=2), encoding="utf-8")
+    except OSError:
+        pass                    # a sign, not a need: the cookies are saved
+
+
+def forget_history() -> None:
+    """With the cookies gone, no site may still look logged in."""
+    HISTORY_FILE.unlink(missing_ok=True)
 
 
 def unavailable_reason() -> str | None:
@@ -232,6 +290,26 @@ def _netscape_lines(jar) -> list[str]:
     return lines
 
 
+def _only_site(lines: list[str], platform_id: str) -> list[str]:
+    """Keep the cookies of THIS platform's addresses, and nothing else.
+
+    Decision 36: a log-in hands us one site. The general filter of
+    `cookies.merge_lines` keeps every site we download from, which is right
+    for a file the user imports and too wide here: logging in to TikTok
+    through Facebook left three facebook.com cookies in the file (seen
+    2026-09-25; `sb`, `fr`, `datr`, not a session -- but the next ones could
+    be).
+    """
+    domains = next((p.domains for p in PLATFORMS if p.id == platform_id), ())
+    kept = []
+    for line in lines:
+        host = line[len("#HttpOnly_"):] if line.startswith("#HttpOnly_") else line
+        host = host.split("\t", 1)[0].lstrip(".").lower()
+        if any(host == d or host.endswith("." + d) for d in domains):
+            kept.append(line)
+    return kept
+
+
 def home_url(platform_id: str) -> str:
     """The platform's own page, where its cookies live."""
     for platform in PLATFORMS:
@@ -268,6 +346,8 @@ def open_for(platform_id: str) -> dict:
 
     import webview
 
+    _keep_popups_inside()
+
     with _lock:
         if _window is not None:
             raise LoginError("a log-in window is already open — finish that one first")
@@ -289,6 +369,48 @@ def open_for(platform_id: str) -> dict:
     threading.Thread(target=_watch, args=(window, platform_id, url, closed),
                      daemon=True).start()
     return {"platform": platform_id, "url": url}
+
+
+_popups_kept = False
+
+
+def _keep_popups_inside() -> None:
+    """A window the log-in window opens stays in OUR engine, not in Chrome.
+
+    pywebview sends every new window to the PC's default browser
+    (`OPEN_EXTERNAL_LINKS_IN_BROWSER`, on by default, read in its
+    edgechromium.py 2026-09-25). "Continue with Facebook" on TikTok opens
+    one: the user logged in -- in Chrome, whose cookies nobody can read
+    (decision 9) -- and our window never saw it (reported by the user the
+    same day).
+
+    Only the log-in window is changed. The main window keeps the original
+    behaviour, so "Download it myself" (Python) still opens the browser.
+    Replacing a method of somebody else's library is fragile, so it is done
+    once, guarded, and falls back to the original for every other window.
+    """
+    global _popups_kept
+    if _popups_kept:
+        return
+    try:
+        from webview.platforms import edgechromium
+    except Exception:
+        return                  # not WebView2: nothing to change
+    original = edgechromium.EdgeChrome.on_new_window_request
+
+    def on_new_window_request(self, sender, args):
+        if _window is not None and self.pywebview_window is _window:
+            # Not handled: WebView2 then opens its OWN pop-up window, in the
+            # same profile and still tied to the page that opened it. That
+            # tie is the whole point. The first version loaded the page in
+            # this window instead: Facebook's log-in opened, but it could no
+            # longer answer TikTok, and the user stayed stuck on Facebook
+            # (seen 2026-09-25).
+            return
+        original(self, sender, args)
+
+    edgechromium.EdgeChrome.on_new_window_request = on_new_window_request
+    _popups_kept = True
 
 
 # --------------------------------------------------------------------------
@@ -313,6 +435,8 @@ def _report(platform_id: str, kept: int, how: str, error: str = "") -> None:
     _result.clear()
     _result.update(number=_result_number, platform=platform_id, kept=kept,
                    how=how, error=error)
+    if kept:
+        _remember(platform_id, how)
     if kept and on_saved is not None:
         try:
             on_saved(kept)
@@ -420,7 +544,7 @@ def _watch(window, platform_id: str, start: str, closed: threading.Event) -> Non
                 press = None    # open -- or the site changed; the user sees its page
         if on_site:
             try:
-                latest = _netscape_lines(window.get_cookies() or [])
+                latest = _only_site(_netscape_lines(window.get_cookies() or []), platform_id)
             except Exception:
                 pass            # a page still loading; the next look will do
             logged_in = any(f"\t{name}\t" in line for name in session for line in latest)
@@ -486,11 +610,15 @@ def finish() -> int:
                 "page to finish, and press the button again."
             ) from problem
 
-        fresh = _netscape_lines(jar)
+        fresh = _only_site(_netscape_lines(jar), platform_id)
         kept = cookies.merge_lines(fresh) if fresh else 0
     finally:
         close()
 
+    # "I have logged in" is the user's own word. When the watcher called
+    # this, its _report("auto") overwrites it right after -- same meaning.
+    if kept:
+        _remember(platform_id, "button")
     return kept
 
 

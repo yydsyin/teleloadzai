@@ -115,6 +115,7 @@ def forget_if_once() -> bool:
     if load_settings()["cookies_keep"] != "once":
         return False
     gone = cookies.clear()
+    login.forget_history()
     # This runs after the window engine has stopped, which is the one moment
     # Windows lets the profile folder go (it stays locked while the app runs).
     if login.forget_browser() in ("now", "later"):
@@ -584,6 +585,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/cookies/clear":
             removed = cookies.clear()
+            login.forget_history()
             # The log-in window keeps its own browser profile. Forgetting the
             # cookies while leaving that behind would be a lie: the next
             # log-in window would open still logged in.
