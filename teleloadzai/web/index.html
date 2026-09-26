@@ -587,7 +587,7 @@ function needText(tool) {
   }
   if (n.kind === "visit") {
     return `${tool.name} needs fresh ${site} cookies. If the download fails, open ${site} once `
-      + "with the button below — no need to log in.";
+      + "with the button below — no need to log in." + orFree;
   }
   if (n.kind === "asked") {
     return `${tool.name} asked for a ${site} account on every link we tried.`;
@@ -964,7 +964,16 @@ function jobRow(job) {
     update.disabled = true;
     update.textContent = "updating…";
     await installTool(update.dataset.update);
-    await waitForInstall(update.dataset.update);
+    const result = await waitForInstall(update.dataset.update);
+    // Said only when it happened (decision 24). Until 2026-09-26 this read
+    // "updated" whatever came back -- seen with an install made to fail.
+    if (!result || result.state === "error") {
+      update.disabled = false;
+      update.textContent = "Update failed — try again";
+      setStatus(`The update of ${update.dataset.update} did not finish: `
+        + (result && result.error ? result.error : "no answer after 6 minutes") + ".");
+      return;
+    }
     update.textContent = "updated — press Retry";
   });
 
@@ -1672,17 +1681,15 @@ async function forgetCookies() {
   cookieError("");
   const result = await api("/api/cookies/clear", {});
   renderCookies(result.cookies);
-  // The saved log-ins are a second thing, and Windows keeps that folder busy
-  // while the app runs. Say which of the two really happened — "forgotten"
-  // while the next log-in window would still open logged in would be a lie.
-  if (result.browser_wiped === "later") {
-    setStatus("Cookies forgotten. The saved log-ins are locked by Windows "
-      + "while Teleloadzai runs — they will be deleted the next time you start it.");
-  } else if (result.browser_wiped === "now") {
-    setStatus("Cookies forgotten, and the saved log-ins deleted.");
-  } else {
-    setStatus("Cookies forgotten.");
-  }
+  // The log-in window runs in private mode: its folder never holds a log-in
+  // (its cookie database was found empty, 2026-09-26). The cookie file IS
+  // every log-in, so "forgotten" is true the moment it is gone. This used to
+  // say the log-ins were "locked by Windows" until the next start -- a
+  // promise about something that does not exist.
+  setStatus(result.browser_wiped === "later"
+    ? "Cookies forgotten. The log-in window's own files (no log-in in them) are in use, "
+      + "and will be tidied the next time you start " + APP_NAME + "."
+    : "Cookies forgotten.");
 }
 
 (async function start() {

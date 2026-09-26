@@ -653,9 +653,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/cookies/clear":
             removed = cookies.clear()
             login.forget_history()
-            # The log-in window keeps its own browser profile. Forgetting the
-            # cookies while leaving that behind would be a lie: the next
-            # log-in window would open still logged in.
+            # The log-in window's folder is tidied too. It holds no log-in --
+            # the window runs in private mode (found 2026-09-26) -- so this is
+            # housekeeping, and the page no longer claims otherwise.
             wiped = login.forget_browser()       # "", "now" or "later"
             settings = load_settings()
             settings["cookies_enabled"] = False

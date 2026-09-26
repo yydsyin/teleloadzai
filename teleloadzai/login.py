@@ -174,9 +174,11 @@ _BADGES = {
 _NEEDS = {
     # "HTTP redirect to login page" on a public reel; yt-dlp got the same reel.
     ("instagram", "gallery-dl"): "login",
-    # "Forbidden" with no cookies; worked with the user's log-in 2026-09-23/24;
-    # yt-dlp got the same video with none.
-    ("tiktok", "tiktokdownloader"): "login",
+    # "Forbidden" with NO cookies (audit); but in the app, 2026-09-26, it
+    # delivered the whole video (26,964,923 bytes) with 9 visit cookies and
+    # no sid_tt / sessionid -- a visit is enough. This line said "login" for
+    # a few hours, from the audit alone: a claim the button test disproved.
+    ("tiktok", "tiktokdownloader"): "visit",
     # "Failed to retrieve posts data" with no cookies; worked with the user's
     # QR log-in 2026-09-23.
     ("kuaishou", "ks-downloader"): "login",

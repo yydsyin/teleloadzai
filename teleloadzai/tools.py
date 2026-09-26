@@ -485,25 +485,49 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
     if on_progress:
         on_progress(f"unpacking {tool.name}", 0)
 
+    # The working tool is never touched until its replacement is COMPLETE on
+    # the disk. Until 2026-09-26 the old folder was deleted first and the new
+    # one unpacked after, and FFmpeg was copied straight over itself -- an
+    # unpacking that failed half-way (a full disk, a file held open) left the
+    # user with no tool at all.
     try:
         with zipfile.ZipFile(archive) as zipped:
             if tool.extract_only:
                 wanted = {w.lower() for w in tool.extract_only}
-                taken = 0
+                taken = []
                 for member in zipped.infolist():
                     if Path(member.filename).name.lower() in wanted:
-                        with zipped.open(member) as source, \
-                             (BIN_DIR / Path(member.filename).name).open("wb") as out:
+                        target = BIN_DIR / Path(member.filename).name
+                        temporary = target.with_name(target.name + ".part")
+                        with zipped.open(member) as source, temporary.open("wb") as out:
                             shutil.copyfileobj(source, out)
-                        taken += 1
-                if taken == 0:
+                        taken.append((temporary, target))
+                if not taken:
                     raise InstallError(f"{', '.join(tool.extract_only)} not found in the archive")
+                for temporary, target in taken:     # only now, all of them complete
+                    temporary.replace(target)
             else:
                 folder = BIN_DIR / tool.id
-                shutil.rmtree(folder, ignore_errors=True)
-                zipped.extractall(folder)
+                fresh = BIN_DIR / f"{tool.id}.new"
+                old = BIN_DIR / f"{tool.id}.old"
+                shutil.rmtree(fresh, ignore_errors=True)
+                shutil.rmtree(old, ignore_errors=True)
+                zipped.extractall(fresh)            # complete, beside the working one
+                if folder.exists():
+                    folder.rename(old)              # fails cleanly if the tool is in use
+                try:
+                    fresh.rename(folder)
+                except OSError:
+                    if old.exists() and not folder.exists():
+                        old.rename(folder)          # put the working one back
+                    raise
+                shutil.rmtree(old, ignore_errors=True)
     finally:
         archive.unlink(missing_ok=True)
+        for leftover in BIN_DIR.glob(f"{tool.id}.new"):
+            shutil.rmtree(leftover, ignore_errors=True)
+        for name in tool.extract_only or ():       # a copy that stopped half-way
+            (BIN_DIR / (Path(name).name + ".part")).unlink(missing_ok=True)
 
     if on_progress:
         on_progress(f"unpacking {tool.name}", 100)
