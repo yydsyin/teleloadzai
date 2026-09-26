@@ -1296,6 +1296,11 @@ $("need-tool-install").addEventListener("click", async () => {
   read();        // read the link again, now that the tool is here
 });
 
+// A picture the site refuses to hand us is hidden, not drawn as an empty box.
+// Xiaohongshu's image server answers 403 to our window (seen 2026-09-26);
+// Douyin's and Kuaishou's load. Any site, same answer.
+$("thumb").addEventListener("error", () => $("thumb").classList.add("hidden"));
+
 $("read").addEventListener("click", read);
 $("url").addEventListener("keydown", (event) => { if (event.key === "Enter") read(); });
 // A message that stays can be put away with one click.

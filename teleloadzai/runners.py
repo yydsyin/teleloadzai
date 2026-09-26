@@ -101,6 +101,13 @@ class Recipe:
     # XHS-Downloader skipped a note it had already seen, wrote only its own
     # database, and that alone looked like a download (2026-09-22).
     ignore: tuple[str, ...] = ()
+    # Clutter the tool leaves in the USER'S folder, removed after the run --
+    # but only a file this run created (absent from the snapshot before): one
+    # that was already there belongs to the user. Exact names, never a
+    # pattern. XHS-Downloader writes an empty `ExploreData.db` beside every
+    # video, whatever its own `record_data` setting says (False, and the file
+    # still came, with 0 rows -- seen 2026-09-26).
+    litter: tuple[str, ...] = ()
     # Reads the tool's output and returns why it skipped, or "" if it did
     # not. Without this, "no new file" is an ERROR, never "already there":
     # XHS-Downloader failed three different ways -- wrong link, missing
@@ -312,7 +319,7 @@ RECIPES: dict[str, Recipe] = {
                          skipped=_gallery_dl_skipped, reported=_gallery_dl_reported),
     "streamlink": Recipe("streamlink", _streamlink, after=_repackage_to_mp4),
     "xhs-downloader": Recipe("xhs-downloader", _xhs, ignore=("*.db",),
-                             skipped=_xhs_skipped),
+                             litter=("ExploreData.db",), skipped=_xhs_skipped),
     "n-m3u8dl-re": Recipe("n-m3u8dl-re", _n_m3u8dl_re, encoding="oem"),
     "f2": Recipe("f2", _f2, module="f2",
                  note="f2 needs a cookie in its own config file for most sites."),
@@ -710,6 +717,12 @@ def run(
     # "newer than the start" filter threw away the only file it downloaded
     # (found 2026-09-21). Comparing before and after needs no clock.
     afterwards = _snapshot(request.out_dir)
+    for path in list(afterwards):
+        if path not in before and path.name in recipe.litter:
+            try:
+                path.unlink()
+            except OSError:
+                pass            # still held by the tool: a leftover, never a crash
     written = sorted(
         path for path, stamp in afterwards.items()
         if (path not in before or before[path] != stamp)

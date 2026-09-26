@@ -281,6 +281,11 @@ def install_progress() -> dict:
 # reads faster and stays (the user's choice, the same day).
 _READ_BY_TOOL = ("douyin", "kuaishou")
 
+# Sites where yt-dlp is not a download tool but DOES read the title: the card
+# said "no preview" there. Xiaohongshu, 2026-09-26, the user's own note: title
+# read in 6.8 s, while XHS-Downloader downloaded it (198 MB, 1280p).
+_READ_BY_YTDLP = ("xiaohongshu",)
+
 
 def tool_probe(platform_id: str, url: str) -> dict:
     """The card's title, picture and length, read by the site's own tool."""
@@ -346,7 +351,7 @@ def detection_json(result: Detection) -> dict:
         # site's tools, the site's own tool on Douyin and Kuaishou, nobody
         # elsewhere (Xiaohongshu: not tested).
         "read_by": ({"id": "yt-dlp", "name": "yt-dlp"}
-                    if any(o.tool_id == "yt-dlp" for o in offered)
+                    if any(o.tool_id == "yt-dlp" for o in offered) or platform.id in _READ_BY_YTDLP
                     else {"id": offered[0].tool_id, "name": tool_name(offered[0].tool_id)}
                     if offered and platform.id in _READ_BY_TOOL else None),
         "final_url": result.final_url,
