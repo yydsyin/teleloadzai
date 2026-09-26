@@ -118,6 +118,15 @@ _PRESS_LOGIN = {
 }
 _PRESS_TRIES = 8
 
+# What the user must know while the window seems to do nothing (decision 33).
+# Douyin, 2026-09-26: its QR pop-up opened BY ITSELF in 6 runs of 6, after
+# 14, 16, 16, 18, 18 and 32 s; scripted clicks (the 登录 button, the pop-up's
+# close icon) changed nothing. So no press -- the wait is said instead.
+_LOGIN_HINT = {
+    "douyin": "Douyin shows its QR code by itself after about 15 to 30 seconds. "
+              "Scan it with the Douyin app.",
+}
+
 # The cookies that exist only once logged in. Where the address never
 # changes after a log-in (a pop-up, a QR code), their arrival is the only
 # sign the user is in. ONLY names seen on a real log-in (decision 38).
@@ -407,7 +416,8 @@ def open_for(platform_id: str) -> dict:
     threading.Thread(target=_watch, args=(window, platform_id, url, closed),
                      daemon=True).start()
     return {"platform": platform_id, "url": url,
-            "popups_in_browser": popups_go_to_browser}
+            "popups_in_browser": popups_go_to_browser,
+            "hint": _LOGIN_HINT.get(platform_id, "")}
 
 
 _popups_kept = False
@@ -554,7 +564,12 @@ def _watch(window, platform_id: str, start: str, closed: threading.Event) -> Non
     automatic = login_url(platform_id) != home_url(platform_id)
     press = _PRESS_LOGIN.get(platform_id)
     tries = 0
-    session = _SESSION_COOKIES.get(platform_id, ())
+    # A site whose log-in cookie is proven (`_BADGES`) closes on THAT cookie
+    # only. "The address left the log-in page" is not a log-in: on 2026-09-25
+    # TikTok's window closed itself and turned green with no `sid_tt` in the
+    # file. The address rule stays only for sites with no proven cookie yet.
+    session = _BADGES.get(platform_id) or _SESSION_COOKIES.get(platform_id, ())
+    automatic = automatic and platform_id not in _BADGES
     domains = next((p.domains for p in PLATFORMS if p.id == platform_id), ())
 
     while True:

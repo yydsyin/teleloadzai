@@ -1434,12 +1434,14 @@ async function openLogin(platform) {
   $("login-waiting-text").textContent =
     "A window has opened on " + platform.name + ". Log in there the normal way — "
     + "password, code by SMS, whatever it asks. It closes by itself once you "
-    + "are in. You can also just close it when you are done.";
+    + "are in. You can also just close it when you are done."
+    + (result.hint ? " " + result.hint : "");
   $("login-waiting").classList.remove("hidden");
   // Said in the status line too, which every screen shows: the button on a
   // failed download opens this window without leaving the download page.
   setStatus("A window has opened on " + platform.name
     + ". Log in there — it closes by itself once you are in."
+    + (result.hint ? " " + result.hint : "")
     // Said only when the pop-up fix could not be put in place (see
     // login._keep_popups_inside): then "Continue with Facebook" or Google
     // opens the browser, and a log-in made there is not seen.
