@@ -46,6 +46,7 @@ _STEPS = (
     ("[ExtractAudio]", "making the MP3"),
 )
 _FILE_TEMPLATE = f"after_move:{_FILE_TAG}\t%(filepath)s"
+_DESTINATION = "[download] Destination: "
 
 
 class ToolMissing(RuntimeError):
@@ -259,6 +260,7 @@ def download(
     force: bool = False,
     cookie_file: Path | None = None,
     on_step: Callable[[str], None] | None = None,
+    on_destination: Callable[[Path], None] | None = None,
 ) -> DownloadResult:
     """Download one link as MP3 or MP4, reporting progress line by line.
 
@@ -331,6 +333,11 @@ def download(
         elif line.startswith(_FILE_TAG):
             files.append(Path(line.split("\t", 1)[1].strip()))
         elif line.strip():
+            # "[download] Destination: C:\...\name.f137.mp4" -- the one place
+            # yt-dlp names the files it is writing. A stopped job uses these,
+            # and only these, to remove what it leaves half-written.
+            if on_destination and line.startswith(_DESTINATION):
+                on_destination(Path(line[len(_DESTINATION):].strip()))
             if on_step:
                 for prefix, step in _STEPS:
                     if line.startswith(prefix):

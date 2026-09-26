@@ -9,6 +9,8 @@ The queue owns the running process of each job, which is what makes
 
 from __future__ import annotations
 
+import glob
+import re
 import subprocess
 import threading
 import time
@@ -40,6 +42,37 @@ def stop_tree(process: subprocess.Popen) -> None:
         pass                    # the check below still stops what we hold
     if process.poll() is None:
         process.kill()
+
+
+_INTERMEDIATE = re.compile(r"\.f\d+(-\d+)?\.[A-Za-z0-9]+$")    # name.f137.mp4, name.f251-1.webm
+
+
+def _leftovers(destinations: list[Path], since: float) -> list[Path]:
+    """What a STOPPED yt-dlp job leaves half-written, and nothing more.
+
+    Asked by the user 2026-09-26: a stopped download left `cops.mp4.part`
+    (4.1 MB) in his folder, which Teleloadzai never resumes. Deleting is
+    dangerous, so the list is narrow on purpose:
+      * only names yt-dlp itself announced for THIS job ("Destination:") --
+        never a glob of the folder, where another job may be running;
+      * their unfinished pieces: `.part`, `.ytdl`, `.part-FragN`;
+      * a picture-only / sound-only piece (`name.f137.mp4`) ONLY if it was
+        written after the job started -- never a file that was already there.
+    The finished file of the user's own name is never on the list.
+    """
+    found: list[Path] = []
+    for dest in destinations:
+        pieces = [dest.with_name(dest.name + ".part"), dest.with_name(dest.name + ".ytdl")]
+        pieces += list(dest.parent.glob(glob.escape(dest.name) + ".part-Frag*"))
+        if _INTERMEDIATE.search(dest.name):
+            pieces.append(dest)
+        for piece in pieces:
+            try:
+                if piece.is_file() and piece.stat().st_mtime >= since and piece not in found:
+                    found.append(piece)
+            except OSError:
+                pass
+    return found
 
 
 @dataclass
@@ -81,6 +114,9 @@ class Job:
     started: float = 0.0
     part: str = ""              # "picture" / "sound" while yt-dlp fetches that part
     step: str = ""              # "joining picture and sound", "making the MP3"
+    # The files yt-dlp said it was writing, for this job only. After a Stop,
+    # their unfinished pieces are removed -- and nothing else (`_leftovers`).
+    destinations: list[Path] = field(default_factory=list, repr=False)
     process: subprocess.Popen | None = field(default=None, repr=False)
 
     def as_dict(self) -> dict:
@@ -229,6 +265,10 @@ class Queue:
                 if job.state == CANCELLED:
                     stop_tree(process)
 
+        def on_destination(path: Path) -> None:
+            with self._lock:
+                job.destinations.append(path)
+
         def on_percent(percent: int) -> None:
             """The specialist tools give a bare number, not yt-dlp's three fields."""
             with self._lock:
@@ -243,6 +283,7 @@ class Queue:
                     on_progress=on_progress, quality=job.quality, on_start=on_start,
                     out_path=Path(job.target) if job.target else None,
                     force=job.force, cookie_file=cookie_file, on_step=on_step,
+                    on_destination=on_destination,
                 )
             else:
                 # A specialist tool cannot be told an exact file name, so it
@@ -283,4 +324,14 @@ class Queue:
         finally:
             with self._lock:
                 job.process = None
+                stopped = job.state == CANCELLED
+                destinations = list(job.destinations)
+            # Here the tool has ended (download() returned), so Windows no
+            # longer holds its files open and they can go.
+            if stopped:
+                for piece in _leftovers(destinations, job.started - 2):
+                    try:
+                        piece.unlink()
+                    except OSError:
+                        pass            # still held: a leftover, never a crash
             self._pump()
