@@ -92,6 +92,25 @@ def safe_filename(name: str, fallback: str = "download") -> str:
     return clean[:150] or fallback
 
 
+# The name of a file whose title nobody could read (asked by the user
+# 2026-09-26). Before, the same case gave "download", "video", "stream" or a
+# post number, depending on the road, and the job row showed the raw link.
+UNKNOWN = "unknown"
+
+
+def free_name(folder: Path, base: str, extension: str) -> str:
+    """`base`, or `base (2)`, `base (3)`... -- the first one not in `folder`.
+
+    Two different videos without a title must not share "unknown.mp4": the
+    second would be refused as "already there" (decision 24), or replace the
+    first. Windows names its copies the same way.
+    """
+    candidate, number = base, 2
+    while (folder / f"{candidate}.{extension}").exists():
+        candidate, number = f"{base} ({number})", number + 1
+    return candidate
+
+
 # PowerShell prints in the old Windows code page unless it is told otherwise,
 # which destroys every non-Latin character of a path (Chinese, Japanese...).
 _FORCE_UTF8 = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n"
@@ -169,7 +188,8 @@ def save_file(suggested_name: str, mode: str, start: Path) -> Path | None:
     comes back the user has already agreed to overwrite it.
     """
     extension = "mp3" if mode == "mp3" else "mp4"
-    name = f"{safe_filename(without_media_ending(suggested_name))}.{extension}"
+    base = safe_filename(without_media_ending(suggested_name), fallback="")
+    name = f"{base or free_name(start, UNKNOWN, extension)}.{extension}"
     script = _SAVE_FILE.format(
         start=_quote(start),
         name=_quote(name),

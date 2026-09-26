@@ -158,6 +158,13 @@
     background: transparent; color: var(--ink);
   }
   .switch button + button { border-left: 1px solid var(--line); }
+  /* The switch clips what sticks out (its rounded corners), and the focus
+     ring stuck out: a keyboard user saw no ring at all (critique of
+     2026-09-26). Drawn inside the button instead. */
+  .switch button:focus-visible { outline-offset: -3px; }
+  /* Inside the filled (selected) button a blue ring vanished into the blue:
+     white there -- seen with the keyboard on TikTokDownloader. */
+  .switch button[aria-pressed="true"]:focus-visible { outline-color: #fff; }
   .switch button[aria-pressed="true"] { background: var(--accent-fill); color: #fff; font-weight: 600; }
 
   .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -194,6 +201,9 @@
     border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
   }
   .warn-text { color: var(--bad); }
+  /* Grey text on the pink tint measured 4.49:1, under the 4.5:1 minimum --
+     on the account-suspension warning of hard rule 5 (critique, 2026-09-26). */
+  .warn .hint { color: var(--ink); }
 </style>
 </head>
 <body>
@@ -211,21 +221,6 @@
        the link card, which meant a message sent while Settings was open
        went to something nobody could see. -->
   <div class="hidden" id="status" role="status" aria-live="polite"></div>
-
-  <div class="card hidden" data-view="main" id="welcome">
-    <div class="section-title">Welcome</div>
-    <div class="hint" style="margin:6px 0 14px">
-      <b>yt-dlp</b> and <b>FFmpeg</b> are the base — they already cover most sites.
-      The others are only needed for a few platforms. Install what you use;
-      you can add or remove any of them later in Settings.
-    </div>
-    <div id="welcome-tools"></div>
-    <div class="row" style="margin-top:16px">
-      <!-- One button: "Continue" and "Skip — decide later" both just closed
-           this card (critique of 2026-09-25). Tools can be added any time. -->
-      <button id="welcome-done">Continue</button>
-    </div>
-  </div>
 
   <div class="card" data-view="main">
     <div class="row">
@@ -285,6 +280,26 @@
        program fetches them, which accounts they may use. Until 2026-09-25
        the section names were grey help text and the page had no structure
        (critique, 2026-09-25). There is one way out, "Back" at the top. -->
+  <!-- First launch (decisions 5 and 17): the tool list, BELOW the link box
+       and the downloads. It used to sit on top, 840 px tall, and a new user
+       met nine program names before the one thing he came for -- the place
+       to paste a link (critique of 2026-09-26). -->
+  <div class="card hidden" data-view="main" id="welcome">
+    <div class="section-title">Welcome</div>
+    <div class="hint" style="margin:6px 0 14px">
+      Paste a link above to start. <b>yt-dlp</b> and <b>FFmpeg</b> are the base — they
+      already cover most sites. The others are only needed for a few platforms, and
+      Teleloadzai offers each one the first time a link needs it. You can add or
+      remove any of them here, or later in Settings.
+    </div>
+    <div id="welcome-tools"></div>
+    <div class="row" style="margin-top:16px">
+      <!-- One button: "Continue" and "Skip — decide later" both just closed
+           this card (critique of 2026-09-25). Tools can be added any time. -->
+      <button id="welcome-done">Continue</button>
+    </div>
+  </div>
+
   <div class="card" data-view="settings" id="settings">
     <h2 class="section">Downloads</h2>
 
@@ -516,12 +531,35 @@ let currentPlatformId = "";
 // the download only when yt-dlp is also the tool that will download it: on
 // Kuaishou yt-dlp always fails and KS-Downloader works (proven 2026-09-23).
 let probeProblem = false;
+// Why the title could not be read, in words, while probeProblem is true.
+let probeReason = "";
 // Which tool read the title ({id, name}), or null when nobody did.
 let readBy = null;
 
 // The tool the switch is on. "" = the first one, which is the default.
 let pickedTool = "";
 const chosenTool = () => currentTools.find((t) => t.id === pickedTool) || currentTools[0];
+// The default tool we stepped away from, or null. When it needs a log-in the
+// user does not have, the card starts on a tool that needs none: the bright
+// Download button used to send a new user into gallery-dl's refusal on
+// Instagram, with yt-dlp -- which got the same posts with no log-in (§4
+// audit) -- one click away (critique of 2026-09-26, its P0).
+let autoPicked = null;
+// The user pressed the switch: their choice stands, nothing moves it.
+let userPicked = false;
+
+function pickWorkingTool() {
+  if (userPicked) return;
+  const first = currentTools[0];
+  const n = first && first.need;
+  // Only a proven refusal ("login"): a "visit" is a reminder -- TikTokDownloader
+  // often works without one, and gives the better picture.
+  const refused = n && n.kind === "login" && !n.met;
+  const other = refused
+    ? currentTools.find((t) => t.id !== first.id && !t.need && t.installed) : null;
+  pickedTool = other ? other.id : "";
+  autoPicked = other ? first : null;
+}
 
 function updateGoLabel() {
   const chosen = chosenTool();
@@ -545,6 +583,27 @@ function updateGoLabel() {
   $("probe-note").textContent = other
     ? `That was ${reader.name}'s preview. ${chosen.name} downloads this site its own way.`
     : "";
+  if (probeProblem) {
+    // A tool's own words often end without a full stop, and ran straight
+    // into the next sentence ("…manually pass cookies The "Save as"…").
+    const reason = probeReason.trim();
+    $("meta").textContent = reason + (/[.!?]$/.test(reason) ? " " : ". ") + unknownNameText(chosen);
+  }
+}
+
+/**
+ * What the file will be called when no title was read -- per road, because
+ * the roads differ (checked in runners._file_name and dialogs.save_file).
+ */
+function unknownNameText(tool) {
+  if (askWhere) return 'The "Save as" window will suggest the name "unknown".';
+  const id = tool && tool.id;
+  if (id === "streamlink" || id === "n-m3u8dl-re") return 'The file will be named "unknown".';
+  if (id === "tiktokdownloader" || id === "ks-downloader") {
+    return `${tool.name} names the file from the post's text, or "unknown" if it has none.`;
+  }
+  // yt-dlp, gallery-dl, XHS-Downloader write their own name, from the post.
+  return tool ? `If ${tool.name} can download it, it names the file itself.` : "";
 }
 
 /**
@@ -584,7 +643,11 @@ function needText(tool) {
   const site = currentPlatform;
   // Another tool of this site with nothing to ask for (yt-dlp on Instagram
   // and TikTok downloaded the same public posts with no cookies at all).
-  const free = currentTools.find((t) => t.id !== tool.id && !t.need);
+  // Never the tool that just failed to read this very link: the card said
+  // "choose yt-dlp, it works without a log-in" under yt-dlp's own failure
+  // (critique of 2026-09-26).
+  const failed = probeProblem && readBy ? readBy.id : "";
+  const free = currentTools.find((t) => t.id !== tool.id && !t.need && t.id !== failed);
   const orFree = free ? ` Or choose ${free.name} above: it works without a log-in.` : "";
   if (!n.cookies_on) {
     return `${tool.name} needs your ${site} cookies, and cookies are switched off. `
@@ -598,6 +661,15 @@ function needText(tool) {
     return `${tool.name} asked for a ${site} account on every link we tried.`;
   }
   return `${tool.name} needs you to be logged in to ${site}.` + orFree;
+}
+
+/** "Using yt-dlp: gallery-dl, the usual tool for Instagram, needs a log-in." */
+function steppedText(chosen, usual) {
+  const site = currentPlatform;
+  const why = usual.need.logged_in
+    ? `needs your ${site} cookies, and cookies are switched off in Settings → Accounts.`
+    : `needs you to be logged in to ${site}.`;
+  return `Using ${chosen.name}: ${usual.name}, the usual tool for ${site}, ${why}`;
 }
 
 /** The chosen tool decides the tag, and whether we must install first. */
@@ -614,13 +686,16 @@ function showChosenTool() {
     button.setAttribute("aria-pressed", String(chosen && button.dataset.tool === chosen.id));
   }
   applyChoices(chosen);
-  const need = needText(chosen);
+  // Started on another tool because the usual one needs a log-in: say which,
+  // and why, with the log-in button -- one click puts the usual one back.
+  const stepped = autoPicked && chosen && chosen.id !== autoPicked.id ? autoPicked : null;
+  const need = stepped ? steppedText(chosen, stepped) : needText(chosen);
   $("tool-need-text").textContent = need;
   $("tool-need").classList.toggle("hidden", !need);
   // The log-in, right where it is asked for (the user, 2026-09-26) -- not
   // "go to Settings → Accounts". Hidden when a log-in would not help: the
   // user IS logged in and only the cookie switch is off.
-  const n = chosen && chosen.need;
+  const n = (stepped || chosen) && (stepped || chosen).need;
   const helps = Boolean(need && n && !(n.logged_in && !n.cookies_on));
   $("tool-need-login").classList.toggle("hidden", !helps);
   $("tool-need-login").textContent = n && n.kind === "visit"
@@ -714,9 +789,32 @@ function stopWaiting() {
   waitTimer = null;
 }
 
+/**
+ * The link in what was pasted, or "" when there is none. Douyin and TikTok
+ * share a sentence with the link inside ("7.99 复制打开抖音…
+ * https://v.douyin.com/… 01/15"), which used to be read whole and fail; and
+ * "hello" waited 12 s for a technical error (critique of 2026-09-26).
+ */
+function linkIn(text) {
+  const inside = text.match(/https?:\/\/[^\s"'<>，。！？、]+/i);
+  if (inside) return inside[0];
+  // A bare address still counts: "youtube.com/watch?v=…".
+  return /^[^\s\/]+\.[a-z]{2,}(\/\S*)?$/i.test(text) ? text : "";
+}
+
 async function read() {
-  const url = $("url").value.trim();
-  if (!url) return;
+  const typed = $("url").value.trim();
+  if (!typed) return;
+  const url = linkIn(typed);
+  if (!url) {
+    readNumber++;           // an older read still running must not come back
+    $("result").classList.add("hidden");
+    $("unsupported").classList.add("hidden");
+    stopWaiting();
+    setStatus("That is not a link. Copy the address of the video — it starts with https:// — and paste it here.");
+    return;
+  }
+  if (url !== typed) $("url").value = url;    // show the link we took out
   const mine = ++readNumber;
   currentUrl = url;
   $("result").classList.add("hidden");
@@ -758,7 +856,7 @@ async function readLink(url, mine) {
   // when they exist, so the choice never appears for nothing (decision 13).
   // Each new link starts on the default; the switch changes this download
   // only, and Settings changes the default (the user, 2026-09-25).
-  pickedTool = "";
+  userPicked = false;
   $("tool-pick").innerHTML = "";
   for (const tool of currentTools) {
     const button = document.createElement("button");
@@ -766,10 +864,16 @@ async function readLink(url, mine) {
     button.dataset.tool = tool.id;
     button.textContent = tool.name;
     button.title = tool.why;
-    button.addEventListener("click", () => { pickedTool = tool.id; showChosenTool(); });
+    button.addEventListener("click", () => {
+      pickedTool = tool.id;
+      userPicked = true;
+      autoPicked = null;
+      showChosenTool();
+    });
     $("tool-pick").appendChild(button);
   }
   $("tool-pick").classList.toggle("hidden", currentTools.length < 2);
+  pickWorkingTool();
 
   // Say what exists but cannot be used, instead of offering it and failing
   // on the button (decisions 6 and 15).
@@ -782,6 +886,7 @@ async function readLink(url, mine) {
   // The card appears NOW, with the site and the tool -- known within about a
   // second -- instead of after the 6 to 14 s it takes to read the title.
   probeProblem = false;
+  probeReason = "";
   currentTitle = "";
   $("thumb").removeAttribute("src");
   showChosenTool();
@@ -819,16 +924,18 @@ async function readLink(url, mine) {
     // Known error -> its plain meaning. Unknown -> the tool's words, said to
     // be the tool's words (decision 38). Whether it is a warning or only
     // information depends on the tool chosen -- see updateGoLabel.
+    // One title line that says what the user lost -- the title -- then why,
+    // then what the file will be called. The explanation's "next step" is
+    // left out here: it speaks of a Retry button that exists only on a
+    // failed download (critique of 2026-09-26: "press Retry", no Retry).
     const ex = info.explain || {};
-    $("title").textContent = ex.known ? ex.title : `${readBy.name} could not read this link.`;
-    $("meta").textContent = ex.known
-      ? ex.next_step
-      : info.from_tool
-        ? "Its own words: " + info.error
-        : info.error;
+    $("title").textContent = "No title found";
+    probeReason = ex.known ? ex.title
+      : `${readBy.name} could not read this link.`
+        + (info.from_tool ? " Its own words: " + info.error : " " + info.error);
     $("thumb").classList.add("hidden");
     probeProblem = true;
-    updateGoLabel();
+    showChosenTool();         // the needs line may no longer offer the reader
   } else {
     $("title").textContent = info.title;
     currentTitle = info.title || "";
@@ -964,8 +1071,12 @@ function jobRow(job) {
     </div>
     <div class="bar"><i style="width:${percent}%"></i></div>
     <div class="err ${job.error ? "" : "hidden"}"></div>
-    ${job.cookie_note ? `<div class="hint warn-text" style="margin-top:6px">
+    ${job.cookie_note && job.state !== "done" ? `<div class="hint warn-text" style="margin-top:6px">
         ⚠️ Running without your cookies: ${job.cookie_note}.
+      </div>` : ""}
+    ${job.state === "done" && (job.files || []).length ? `<div class="row" style="margin-top:6px">
+        <button class="ghost tiny" data-open="${job.id}">Open</button>
+        <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
       </div>` : ""}
     ${job.state === "done" && job.skipped ? `<div class="hint" style="margin-top:6px">
         ${job.skip_reason ? job.skip_reason + " <b>Nothing was downloaded.</b>"
@@ -982,8 +1093,13 @@ function jobRow(job) {
       </div>
       <div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>` : ""}`;
 
-  // Show the name the user chose in the "Save as" window, when there is one.
-  const shown = job.target ? job.target.split("\\").pop() : job.title;
+  // The name the user chose in "Save as"; else, once it exists, the file's
+  // real name; else the title -- and when nobody could read one, that is
+  // said, not the raw link (the user, 2026-09-26).
+  const fileName = (path) => path.split("\\").pop();
+  const shown = job.target ? fileName(job.target)
+    : (job.files || []).length ? fileName(job.files[0])
+    : job.title || "Unknown title";
   row.querySelector(".job-name").textContent =
     `${shown}  ·  ${job.mode.toUpperCase()} ${job.quality === "best" ? "" : job.quality}`.trim();
   row.querySelector(".small").textContent = right;
@@ -1035,6 +1151,16 @@ function jobRow(job) {
     await api("/api/job/" + retry.dataset.retry + "/retry", {});
     refresh();
   });
+
+  // A success ends on the file itself (critique of 2026-09-26: a finished
+  // row ended on a red cookie line, with no way to reach what was saved).
+  for (const action of ["open", "reveal"]) {
+    const button = row.querySelector(`[data-${action}]`);
+    if (button) button.addEventListener("click", async () => {
+      const answer = await api(`/api/job/${job.id}/${action}`, {});
+      if (answer.error) setStatus(answer.error);
+    });
+  }
 
   const stop = row.querySelector(".cancel");
   if (stop) stop.addEventListener("click", async () => {
@@ -1128,8 +1254,8 @@ function toolRow(tool, progress) {
     // No version known (TikTokDownloader and KS-Downloader are never started
     // just to ask): say nothing -- the "installed" badge already says it,
     // and it said it twice.
-    ? (tool.version || "")
-    : (tool.latest ? "not installed · latest " + tool.latest + size : "not installed");
+    ? shortVersion(tool.version || "")
+    : (tool.latest ? "not installed · latest " + shortVersion(tool.latest) + size : "not installed");
 
   row.innerHTML = `
     <div class="tool-top">
@@ -1217,6 +1343,17 @@ async function waitForInstall(id) {
     await new Promise((resolve) => setTimeout(resolve, 800));
   }
   return null;
+}
+
+/**
+ * "9.0.2" out of "ffmpeg version 9.0.2-essentials_build-www.gyan.dev
+ * Copyright…", "0.6.0" out of "0.6.0+df70f0b3da0c…" (40 characters of a
+ * code). Only for the eye: updates are still decided on the full text's
+ * numbers (decision 30). No number in it -> the text, cut short.
+ */
+function shortVersion(text) {
+  const number = String(text).match(/\d+(?:\.\d+)+/);
+  return number ? number[0] : String(text).slice(0, 24);
 }
 
 // ---- first launch ---------------------------------------------------------
@@ -1644,6 +1781,7 @@ async function refreshNeeds() {
     const fresh = (found.tools || []).find((t) => t.id === tool.id);
     if (fresh) tool.need = fresh.need;
   }
+  pickWorkingTool();        // logged in now: back to the usual tool
   showChosenTool();
 }
 

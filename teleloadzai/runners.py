@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import cookies, explain, toolservers, tools
-from .dialogs import without_media_ending
+from .dialogs import UNKNOWN, free_name, without_media_ending
 from .paths import BIN_DIR, make_folder
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -57,6 +57,9 @@ class Request:
     url: str
     out_dir: Path               # the folder the file must land in
     out_name: str = ""          # wanted base name; some tools ignore it
+    # The title the card read, or "" when nobody could. Used to name the file
+    # when the tool leaves the name to us and the user was not asked.
+    title: str = ""
     mode: str = "mp4"
     quality: str = "best"
     # A live stream has no end. Without a limit the recording stops only when
@@ -161,7 +164,7 @@ _STREAMLINK_QUALITY = {
 
 def _streamlink(exe: Path, r: Request) -> list[str]:
     # A recording arrives as .ts; `after` repackages it to .mp4.
-    name = (r.out_name or "stream") + ".ts"
+    name = _file_name(r) + ".ts"
     wanted = "audio_only,worst" if r.mode == "mp3" else _STREAMLINK_QUALITY.get(r.quality, "best")
 
     command = [str(exe), r.url, wanted, "-o", str(r.out_dir / name), "--progress", "force"]
@@ -198,7 +201,7 @@ def _n_m3u8dl_re(exe: Path, r: Request) -> list[str]:
             "--auto-select",
             "--tmp-dir", str(r.out_dir),
             "--save-dir", str(r.out_dir),
-            "--save-name", r.out_name or "stream"]
+            "--save-name", _file_name(r)]
 
 
 def _f2(_exe: Path, r: Request) -> list[str]:
@@ -374,7 +377,7 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
             "TikTokDownloader found the work but gave no file to download. "
             "It may be a photo post, or a live stream that has ended.")
 
-    name = request.out_name or _clean_name(data)
+    name = _file_name(request, _clean_name(data))
     reason = _already_there(request.out_dir / (name + "." + request.mode), request)
     if reason:
         return RunResult([], [], skip_reason=reason)
@@ -426,8 +429,8 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
             f"KS-Downloader found the post (type: {kind}) but gave no single "
             "video file to download.")
 
-    name = request.out_name or _clean_name(
-        {"nickname": data.get("name", ""), "desc": data.get("caption", "")})
+    name = _file_name(request, _clean_name(
+        {"nickname": data.get("name", ""), "desc": data.get("caption", "")}))
     reason = _already_there(request.out_dir / (name + "." + request.mode), request)
     if reason:
         return RunResult([], [], skip_reason=reason)
@@ -587,12 +590,29 @@ def _with_page_cookies(page: str, cookie: str) -> str:
 
 
 def _clean_name(data: dict) -> str:
-    """A file name from what the site says, safe for Windows.
+    """A file name from what the site says, safe for Windows, or "".
 
     A caption ending in ".mp4" would give "….mp4.mp4" (dialogs.MEDIA_ENDING).
     """
-    raw = without_media_ending(f"{data.get('nickname', '')} {data.get('desc', '')}".strip()) or "video"
-    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", raw)[:120].strip() or "video"
+    raw = without_media_ending(f"{data.get('nickname', '')} {data.get('desc', '')}".strip())
+    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", raw)[:120].strip().rstrip(".")
+
+
+def _file_name(request: Request, found: str = "") -> str:
+    """The file's base name, for the tools that let us choose it.
+
+    The "Save as" choice first; then what the tool found in the post; then
+    the title the card read; else "unknown" -- or "unknown (2)" when that is
+    taken, so two videos without a title never share one name (asked by the
+    user 2026-09-26). Until then a stream was always "stream.mp4", even
+    when its title was on the card.
+    """
+    if request.out_name:
+        return request.out_name
+    name = found or _clean_name({"desc": request.title})
+    if name:
+        return name
+    return free_name(request.out_dir, UNKNOWN, "mp3" if request.mode == "mp3" else "mp4")
 
 
 def _fetch(address: str, target: Path, site: str,

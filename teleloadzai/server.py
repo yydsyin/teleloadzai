@@ -10,7 +10,9 @@ Two safety rules, because a web page is easy to reach by accident:
 from __future__ import annotations
 
 import json
+import os
 import secrets
+import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -172,7 +174,9 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
     # is the sentence for the case where it cannot -- it travels with the job
     # so the row can say it instead of failing in silence.
     on = load_settings()["cookies_enabled"]
-    job = QUEUE.add(url, mode, quality, title or url, download_folder(),
+    # "" when nobody could read the title: the row says so, and the file is
+    # named "unknown" -- never the raw link (the user, 2026-09-26).
+    job = QUEUE.add(url, mode, quality, title, download_folder(),
                     Path(target) if target else None, force=force, tool=tool,
                     limit_minutes=record_minutes(),
                     cookie_file=cookies.path_for(tool, on),
@@ -606,6 +610,31 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/job/") and path.endswith("/cancel"):
             job_id = path[len("/api/job/"):-len("/cancel")]
             self._json({"cancelled": QUEUE.cancel(job_id)})
+            return
+
+        if path.startswith("/api/job/") and path.endswith(("/open", "/reveal")):
+            # Only a file this job itself saved -- never a path the page
+            # sends, or any web page could make us open anything.
+            job_id, _, action = path[len("/api/job/"):].rpartition("/")
+            job = QUEUE.get(job_id)
+            saved = [Path(f) for f in (job.files if job else []) if Path(f).is_file()]
+            if not saved:
+                self._json({"error": "The file is no longer where it was saved: "
+                                     "it may have been moved or deleted."}, 404)
+                return
+            try:
+                if action == "open":
+                    os.startfile(saved[0])          # the program Windows uses for it
+                else:
+                    # One string, the path in its own quotes: as a list item
+                    # the whole "/select,C:\Users\WINDOWS 10\..." got quoted,
+                    # and Explorer opened Documents instead (seen 2026-09-26).
+                    # A Windows path cannot contain a quote.
+                    subprocess.Popen(f'explorer /select,"{saved[0]}"')
+            except OSError as problem:
+                self._json({"error": f"Windows could not open it: {problem}"}, 500)
+                return
+            self._json({"ok": True})
             return
 
         if path.startswith("/api/job/") and path.endswith("/retry"):

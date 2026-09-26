@@ -183,7 +183,7 @@ class Queue:
         Returns None when ``replace`` is unknown or still running."""
         job = Job(
             id=replace or uuid.uuid4().hex[:12], url=url, mode=mode, quality=quality,
-            title=title or url, folder=str(target.parent if target else folder),
+            title=title, folder=str(target.parent if target else folder),
             target=str(target) if target else "", force=force, tool=tool,
             limit_minutes=limit_minutes,
             cookie_file=str(cookie_file) if cookie_file else "",
@@ -322,6 +322,7 @@ class Queue:
                         url=job.url,
                         out_dir=target.parent if target else Path(job.folder),
                         out_name=target.stem if target else "",
+                        title=job.title,
                         mode=job.mode, quality=job.quality,
                         limit_minutes=job.limit_minutes, force=job.force,
                         cookie_file=cookie_file,
