@@ -564,7 +564,6 @@ def remove(tool_id: str) -> bool:
     if tool is None:
         return False
 
-    removed = False
     if tool.kind == "pip":
         python = find_python()
         if python:
@@ -576,22 +575,25 @@ def remove(tool_id: str) -> bool:
             )
         for leftover in libs_dir().glob(f"{tool.module}*"):
             shutil.rmtree(leftover, ignore_errors=True) if leftover.is_dir() else leftover.unlink(missing_ok=True)
-            removed = True
-        return removed
+        # Judged by what is left, not by what this loop found: pip had
+        # already deleted f2, the loop found nothing, and a real removal
+        # answered False (seen 2026-09-26).
+        return installed_path(tool_id) is None
 
-    if tool.exe_name and (BIN_DIR / tool.exe_name).is_file():
-        (BIN_DIR / tool.exe_name).unlink()
-        removed = True
-    for extra in tool.extract_only:
-        target = BIN_DIR / extra
-        if target.is_file():
-            target.unlink()
-            removed = True
+    for name in (tool.exe_name, *tool.extract_only):
+        try:
+            if name:
+                (BIN_DIR / name).unlink(missing_ok=True)
+        except OSError:
+            pass                # still running: said below, never a crash
     folder = BIN_DIR / tool.id
     if folder.is_dir():
         shutil.rmtree(folder, ignore_errors=True)
-        removed = True
-    return removed
+    # What is left in OUR folder decides -- `ignore_errors` hides a folder
+    # Windows keeps locked. Not `installed_path`: it also looks at the PATH,
+    # and a copy installed elsewhere on the PC is not ours to remove.
+    ours = [BIN_DIR / name for name in (tool.exe_name, *tool.extract_only) if name] + [folder]
+    return not any(path.exists() for path in ours)
 
 
 # --------------------------------------------------------------------------

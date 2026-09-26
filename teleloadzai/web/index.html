@@ -8,6 +8,9 @@
   :root {
     --bg: #f4f5f7;  --card: #ffffff;  --ink: #1b1d21;  --soft: #6b7079;
     --line: #e2e5ea; --accent: #2f6df6; --ok: #1f9d55; --bad: #c0392b;
+    /* Green TEXT needs a darker green: the "installed" badge's #1f9d55 on
+       white measured 3.49:1 (critique of 2026-09-26). */
+    --ok-text: #16733e;
     --radius: 10px;
     /* Filled buttons carry white text: they need a darker blue than the
        one used for links and outlines. */
@@ -17,6 +20,7 @@
     :root {
       --bg: #16181c; --card: #1f2227; --ink: #e9eaec; --soft: #9aa0a8;
       --line: #2e3339; --accent: #5b8cff; --ok: #35c07a; --bad: #ef6d60;
+      --ok-text: #35c07a;
       /* White on #5b8cff was 3.2:1 (critique, 2026-09-25); on this blue it
          passes. The lighter --accent stays for text on the dark page. */
       --accent-fill: #3a6ee8;
@@ -144,7 +148,19 @@
     padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 15px;
     border: 1px solid var(--line); background: transparent; color: var(--ink); font-weight: 500;
   }
-  .choice[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  /* "Selected" looks the same everywhere: filled, as on the tool switch. The
+     MP3/MP4 pair was an outline next to the switch's fill -- two styles for
+     one meaning (critique of 2026-09-26). */
+  .choice[aria-pressed="true"] {
+    background: var(--accent-fill); border-color: var(--accent-fill); color: #fff; font-weight: 600;
+  }
+  .choice[aria-pressed="true"]:focus-visible { outline-color: var(--accent); }
+  /* One format only (gallery-dl): said as text, not a toggle with nothing
+     to toggle against. */
+  .choice.only, .choice.only[aria-pressed="true"] {
+    background: none; border-color: transparent; color: var(--soft);
+    font-weight: 500; font-size: 13px; padding-left: 0; cursor: default;
+  }
   .controls select { padding: 7px 10px; font-size: 15px; }
   /* The tool switch under the title (asked by the user 2026-09-25): every
      choice visible at once, the one in use filled. It starts on the default
@@ -191,7 +207,7 @@
     display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 99px;
     border: 1px solid var(--line); color: var(--soft); margin-left: 6px; white-space: nowrap;
   }
-  .badge.ok { color: var(--ok); border-color: var(--ok); }
+  .badge.ok { color: var(--ok-text); border-color: var(--ok); }
   .badge.alert { color: var(--bad); border-color: var(--bad); }
   .err { color: var(--bad); font-size: 13px; margin-top: 6px; word-break: break-word; }
   a { color: var(--accent); }
@@ -203,7 +219,7 @@
   .warn-text { color: var(--bad); }
   /* Grey text on the pink tint measured 4.49:1, under the 4.5:1 minimum --
      on the account-suspension warning of hard rule 5 (critique, 2026-09-26). */
-  .warn .hint { color: var(--ink); }
+  .warn .hint, .hint.warn { color: var(--ink); }
 </style>
 </head>
 <body>
@@ -237,19 +253,25 @@
         <div class="title" id="title">…</div>
         <div class="meta" id="meta"></div>
         <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span><span class="switch hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span></div>
-        <div class="hint warn hidden" id="tool-need" style="margin-top:8px;padding:6px 10px;border-width:1px;border-style:solid;border-radius:8px">
+        <div class="hint hidden" id="tool-need" style="margin-top:8px;padding:6px 10px;border-width:1px;border-style:solid;border-radius:8px">
           <span id="tool-need-text"></span>
           <div style="margin-top:6px"><button class="tiny" id="tool-need-login"></button></div>
         </div>
         <div class="hint hidden" id="blocked-tools" style="margin-top:6px"></div>
         <div class="hint hidden" id="probe-note" style="margin-top:6px"></div>
+        <details class="more hidden" id="probe-words" style="margin-top:6px">
+          <summary class="hint">Show the tool's message</summary>
+          <div class="hint" id="probe-words-text" style="margin-top:4px; word-break:break-word"></div>
+        </details>
       </div>
     </div>
 
     <div class="controls">
       <button class="choice" data-mode="mp3" aria-pressed="false">MP3 — audio</button>
       <button class="choice" data-mode="mp4" aria-pressed="true">MP4 — video</button>
-      <span class="hint" id="quality-label" style="margin-left:6px">Quality</span>
+      <!-- A real <label>: a screen reader announced the list with no name
+           (critique of 2026-09-26). -->
+      <label class="hint" id="quality-label" for="quality" style="margin-left:6px">Quality</label>
       <select id="quality"></select>
     </div>
 
@@ -616,7 +638,10 @@ function applyChoices(tool) {
   const mp3 = document.querySelector('.choice[data-mode="mp3"]');
   const mp4 = document.querySelector('.choice[data-mode="mp4"]');
   mp3.classList.toggle("hidden", !("mp3" in can));
-  mp4.textContent = can.label || "MP4 — video";
+  const only = !("mp3" in can);
+  mp4.classList.toggle("only", only);
+  mp4.textContent = only && can.label ? `You get: the post's ${can.label.toLowerCase()}`
+    : can.label || "MP4 — video";
   if (!(mode in can)) {                 // MP3 was chosen, this tool makes none
     mode = "mp4";
     mp3.setAttribute("aria-pressed", "false");
@@ -654,8 +679,8 @@ function needText(tool) {
       + `Turn them on in Settings → Accounts${n.logged_in ? "" : ", then log in to " + site}.` + orFree;
   }
   if (n.kind === "visit") {
-    return `${tool.name} needs fresh ${site} cookies. If the download fails, open ${site} once `
-      + "with the button below — no need to log in." + orFree;
+    // A reminder, not a refusal: TikTokDownloader often works without it.
+    return `Tip: if ${tool.name} is refused, open ${site} once with the button below — no log-in needed.`;
   }
   if (n.kind === "asked") {
     return `${tool.name} asked for a ${site} account on every link we tried.`;
@@ -696,8 +721,17 @@ function showChosenTool() {
   // "go to Settings → Accounts". Hidden when a log-in would not help: the
   // user IS logged in and only the cookie switch is off.
   const n = (stepped || chosen) && (stepped || chosen).need;
-  const helps = Boolean(need && n && !(n.logged_in && !n.cookies_on));
+  // Never offered when the log-in window cannot open here at all (the
+  // failed-job button already checked this through loginOffer).
+  const helps = Boolean(need && n && !(n.logged_in && !n.cookies_on) && !loginIsBlocked);
   $("tool-need-login").classList.toggle("hidden", !helps);
+  // Pink only when the tool in use WILL be refused. A tip -- the tool was
+  // swapped for one that works, or a "visit" that may never be needed --
+  // was pink too, with a filled button above Download, and a new user read
+  // "this will fail" on links that work (critique of 2026-09-26).
+  const refused = Boolean(!stepped && n && !n.met && (n.kind === "login" || n.kind === "asked"));
+  $("tool-need").classList.toggle("warn", refused);
+  $("tool-need-login").classList.toggle("ghost", !refused);
   $("tool-need-login").textContent = n && n.kind === "visit"
     ? `Open ${currentPlatform} once` : `Log in to ${currentPlatform}`;
 
@@ -848,7 +882,10 @@ async function readLink(url, mine) {
   if (found.error) { setStatus("Error: " + found.error); return; }
 
   if (!found.supported) {
-    $("unsupported-title").textContent = found.platform + " cannot be downloaded from a link.";
+    // Not "cannot be downloaded from a link": for Netflix that hinted another
+    // way exists, and WeChat's note said the same words again (critique of
+    // 2026-09-26). The note says why, and what else there is.
+    $("unsupported-title").textContent = `Teleloadzai does not download ${found.platform}.`;
     $("unsupported-note").textContent = found.note || "";
     $("unsupported").classList.remove("hidden");
     return;
@@ -896,6 +933,7 @@ async function readLink(url, mine) {
   // second -- instead of after the 6 to 14 s it takes to read the title.
   probeProblem = false;
   probeReason = "";
+  $("probe-words").classList.add("hidden");
   currentTitle = "";
   $("thumb").removeAttribute("src");
   showChosenTool();
@@ -939,9 +977,14 @@ async function readLink(url, mine) {
     // failed download (critique of 2026-09-26: "press Retry", no Retry).
     const ex = info.explain || {};
     $("title").textContent = "No title found";
-    probeReason = ex.known ? ex.title
-      : `${readBy.name} could not read this link.`
-        + (info.from_tool ? " Its own words: " + info.error : " " + info.error);
+    // An error we do not know: one plain line, and the tool's own words
+    // folded underneath -- still shown (decision 34), no longer a wall of
+    // command-line options on the card (Vimeo's "--cookies, --username…",
+    // critique of 2026-09-26).
+    probeReason = ex.known ? ex.title : `${readBy.name} could not read this link.`;
+    $("probe-words-text").textContent = ex.known ? "" : info.error;
+    $("probe-words").classList.toggle("hidden", ex.known || !info.error);
+    $("probe-words").open = false;
     $("thumb").classList.add("hidden");
     probeProblem = true;
     showChosenTool();         // the needs line may no longer offer the reader
@@ -1306,7 +1349,13 @@ function renderTools() {
       const name = (toolsData.tools.find((t) => t.id === button.dataset.remove) || {}).name
         || button.dataset.remove;
       button.addEventListener("click", () => twoClicks(button, `Remove ${name}? Click again`, async () => {
-        await api("/api/tools/remove", { id: button.dataset.remove });
+        const answer = await api("/api/tools/remove", { id: button.dataset.remove });
+        // A removal Windows refused (a file still open) left the row saying
+        // "installed" with no word why (decision 34).
+        if (!answer.removed) {
+          setStatus(`${name} could not be removed completely. Close any download `
+            + "that uses it, then try again.");
+        }
         loadTools();
       }));
     }
@@ -1700,7 +1749,14 @@ function agoText(seconds) {
 async function openLogin(platform) {
   cookieError("");
   const result = await api("/api/login/open", { platform: platform.id });
-  if (result.error) { cookieError(result.error); return; }
+  if (result.error) {
+    cookieError(result.error);
+    // Also where every screen can see it: pressed from the download card,
+    // the error went only to Settings → Accounts, and the button seemed to
+    // do nothing (critique of 2026-09-26; decision 34).
+    setStatus("The log-in window could not open: " + result.error);
+    return;
+  }
   $("login-waiting-title").textContent = "Log in to " + platform.name;
   $("login-waiting-text").textContent =
     "A window has opened on " + platform.name + ". Log in there the normal way — "

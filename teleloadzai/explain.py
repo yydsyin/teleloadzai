@@ -45,6 +45,19 @@ KNOWN: tuple[Known, ...] = (
               "video downloaded fine on the same connection, the same day."),
     ),
     Known(
+        words=("only works when logged-in",),
+        tools=("yt-dlp",),
+        title="Vimeo shows this video only to a logged-in account.",
+        next_step=("Log in to Vimeo in Settings → Accounts, then try again. "
+                   "Teleloadzai has not yet seen a Vimeo download work with "
+                   "a log-in, so this is advice, not a promise."),
+        seen=("2026-09-26: vimeo.com/56015672 and vimeo.com/68375962, no "
+              "cookies -- yt-dlp: 'The web client only works when "
+              "logged-in'. It then listed its own command-line options "
+              "(--cookies, --username…), which the card used to show as "
+              "they were. Never tried with a Vimeo log-in (§4)."),
+    ),
+    Known(
         words=("this video is unavailable",),
         tools=("yt-dlp",),
         title="YouTube says this video is unavailable.",
