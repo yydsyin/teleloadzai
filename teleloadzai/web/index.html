@@ -242,6 +242,10 @@
         <div class="title" id="title">…</div>
         <div class="meta" id="meta"></div>
         <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span><span class="switch hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span></div>
+        <div class="hint warn hidden" id="tool-need" style="margin-top:8px;padding:6px 10px;border-width:1px;border-style:solid;border-radius:8px">
+          <span id="tool-need-text"></span>
+          <div style="margin-top:6px"><button class="tiny" id="tool-need-login"></button></div>
+        </div>
         <div class="hint hidden" id="blocked-tools" style="margin-top:6px"></div>
         <div class="hint hidden" id="probe-note" style="margin-top:6px"></div>
       </div>
@@ -512,6 +516,8 @@ let currentPlatformId = "";
 // the download only when yt-dlp is also the tool that will download it: on
 // Kuaishou yt-dlp always fails and KS-Downloader works (proven 2026-09-23).
 let probeProblem = false;
+// Which tool read the title ({id, name}), or null when nobody did.
+let readBy = null;
 
 // The tool the switch is on. "" = the first one, which is the default.
 let pickedTool = "";
@@ -519,7 +525,9 @@ const chosenTool = () => currentTools.find((t) => t.id === pickedTool) || curren
 
 function updateGoLabel() {
   const chosen = chosenTool();
-  const sameTool = chosen && chosen.id === "yt-dlp";
+  // The tool that read the title is the one that failed, if any.
+  const reader = readBy || { id: "yt-dlp", name: "yt-dlp" };
+  const sameTool = chosen && chosen.id === reader.id;
   // A link yt-dlp itself could not read keeps a way to try (decision 15),
   // but no longer a bright button inviting a job that will fail
   // (critique of 2026-09-25: Spotify's "[DRM]" error sat next to it).
@@ -535,8 +543,34 @@ function updateGoLabel() {
   const other = probeProblem && chosen && !sameTool;
   $("probe-note").classList.toggle("hidden", !other);
   $("probe-note").textContent = other
-    ? `That was yt-dlp's preview. ${chosen.name} downloads this site its own way.`
+    ? `That was ${reader.name}'s preview. ${chosen.name} downloads this site its own way.`
     : "";
+}
+
+/**
+ * What the chosen tool needs on this site BEFORE Download, or "" -- only
+ * what the 2026-09-26 audit proved (the server sends it, login._NEEDS).
+ */
+function needText(tool) {
+  const n = tool && tool.need;
+  if (!n || n.met) return "";
+  const site = currentPlatform;
+  // Another tool of this site with nothing to ask for (yt-dlp on Instagram
+  // and TikTok downloaded the same public posts with no cookies at all).
+  const free = currentTools.find((t) => t.id !== tool.id && !t.need);
+  const orFree = free ? ` Or choose ${free.name} above: it works without a log-in.` : "";
+  if (!n.cookies_on) {
+    return `${tool.name} needs your ${site} cookies, and cookies are switched off. `
+      + `Turn them on in Settings → Accounts${n.logged_in ? "" : ", then log in to " + site}.` + orFree;
+  }
+  if (n.kind === "visit") {
+    return `${tool.name} needs fresh ${site} cookies. If the download fails, open ${site} once `
+      + "with the button below — no need to log in.";
+  }
+  if (n.kind === "asked") {
+    return `${tool.name} asked for a ${site} account on every link we tried.`;
+  }
+  return `${tool.name} needs you to be logged in to ${site}.` + orFree;
 }
 
 /** The chosen tool decides the tag, and whether we must install first. */
@@ -552,6 +586,17 @@ function showChosenTool() {
   for (const button of $("tool-pick").children) {
     button.setAttribute("aria-pressed", String(chosen && button.dataset.tool === chosen.id));
   }
+  const need = needText(chosen);
+  $("tool-need-text").textContent = need;
+  $("tool-need").classList.toggle("hidden", !need);
+  // The log-in, right where it is asked for (the user, 2026-09-26) -- not
+  // "go to Settings → Accounts". Hidden when a log-in would not help: the
+  // user IS logged in and only the cookie switch is off.
+  const n = chosen && chosen.need;
+  const helps = Boolean(need && n && !(n.logged_in && !n.cookies_on));
+  $("tool-need-login").classList.toggle("hidden", !helps);
+  $("tool-need-login").textContent = n && n.kind === "visit"
+    ? `Open ${currentPlatform} once` : `Log in to ${currentPlatform}`;
 
   // Never answer "not supported" when a tool exists: offer it (decision 6).
   const missing = chosen && !chosen.installed ? chosen : null;
@@ -712,10 +757,12 @@ async function readLink(url, mine) {
   $("thumb").removeAttribute("src");
   showChosenTool();
 
-  // The preview is always yt-dlp's. Where yt-dlp is not one of the site's
-  // tools, it can only fail (Kuaishou: "Unsupported URL", every time) and
-  // the user waited seconds for a red herring. Say so and skip it.
-  if (!currentTools.some((t) => t.id === "yt-dlp")) {
+  // Who reads the title: yt-dlp where it is one of the site's tools; on
+  // Douyin and Kuaishou their own tool (asked 2026-09-26 -- yt-dlp can only
+  // fail there: "Unsupported URL" on Kuaishou, every time); elsewhere nobody,
+  // and the card says so rather than wait seconds for a red herring.
+  readBy = found.read_by || null;
+  if (!readBy) {
     const tool = currentTools[0];
     $("title").textContent = "Ready to download";
     $("meta").textContent =
@@ -730,7 +777,10 @@ async function readLink(url, mine) {
   $("thumb").classList.add("waiting");
   $("result").classList.remove("hidden");
   const asking = found.platform_id === "unknown" ? "the site" : found.platform;
-  startWaiting(`Asking ${asking} for the title…`);
+  // Their servers take 12-22 s to start and answer (measured 2026-09-26):
+  // said, so the wait never looks frozen (decision 33).
+  startWaiting(readBy.id === "yt-dlp" ? `Asking ${asking} for the title…`
+    : `${readBy.name} is reading the post — this takes about 20 seconds…`);
 
   const info = await api("/api/probe", { url: found.final_url || url });
   if (mine !== readNumber) return;
@@ -741,7 +791,7 @@ async function readLink(url, mine) {
     // be the tool's words (decision 38). Whether it is a warning or only
     // information depends on the tool chosen -- see updateGoLabel.
     const ex = info.explain || {};
-    $("title").textContent = ex.known ? ex.title : "yt-dlp could not read this link.";
+    $("title").textContent = ex.known ? ex.title : `${readBy.name} could not read this link.`;
     $("meta").textContent = ex.known
       ? ex.next_step
       : info.from_tool
@@ -1474,6 +1524,7 @@ async function watchLogin(name) {
         $("login-waiting").classList.add("hidden");
         setStatus(loginMessage(result, name));
         loadCookies();          // the card, the switch, and who can log in
+        refreshNeeds();         // and the line on the download card
         return;
       }
       if (!state.open) return;  // finished by the button, or cancelled
@@ -1512,7 +1563,23 @@ $("login-done").addEventListener("click", async () => {
   }
   renderCookies(result.cookies);
   setStatus(result.kept + " cookies saved from the log-in.");
+  refreshNeeds();
 });
+
+// The card's "needs a log-in" line, asked again after a log-in -- a quick
+// question (0.01 s), not a new title read: the title and the tool choice stay.
+async function refreshNeeds() {
+  if (!currentUrl || $("result").classList.contains("hidden")) return;
+  const found = await api("/api/detect", { url: currentUrl });
+  for (const tool of currentTools) {
+    const fresh = (found.tools || []).find((t) => t.id === tool.id);
+    if (fresh) tool.need = fresh.need;
+  }
+  showChosenTool();
+}
+
+$("tool-need-login").addEventListener("click", () =>
+  openLogin({ id: currentPlatformId, name: currentPlatform }));
 
 $("login-cancel").addEventListener("click", async () => {
   await api("/api/login/cancel", {});

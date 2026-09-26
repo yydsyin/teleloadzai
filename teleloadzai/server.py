@@ -265,6 +265,47 @@ def install_progress() -> dict:
         return {k: dict(v) for k, v in _installs.items()}
 
 
+# Sites where yt-dlp cannot read a link, so the title comes from the tool that
+# downloads it (asked by the user 2026-09-26). Seen, not assumed: Douyin ->
+# yt-dlp "Fresh cookies ... are needed" after 7.5 s; Kuaishou -> "Unsupported
+# URL". Their own tools answered: 22 s and 12.5 s. Everywhere else yt-dlp
+# reads faster and stays (the user's choice, the same day).
+_READ_BY_TOOL = ("douyin", "kuaishou")
+
+
+def tool_probe(platform_id: str, url: str) -> dict:
+    """The card's title, picture and length, read by the site's own tool."""
+    cookies_on = bool(load_settings()["cookies_enabled"])
+    if platform_id == "douyin":
+        server, name = toolservers.TIKTOK, "TikTokDownloader"
+        read = lambda: toolservers.detail(url, True, cookies.header_for("douyin.com", cookies_on))
+        fields = ("desc", "nickname", "static_cover")
+    else:
+        server, name = toolservers.KS, "KS-Downloader"
+        read = lambda: toolservers.ks_detail(url, cookies.header_for("kuaishou.com", cookies_on))
+        fields = ("caption", "name", "coverUrl")
+    try:
+        server.start()
+        try:
+            data = read()
+        finally:
+            server.release()      # its door is 0.0.0.0: open only while used
+    except Exception as exc:
+        said = cookies.redact(str(exc))
+        return {"error": said, "kind": "probe_failed",
+                "explain": explain.explain(said, server.tool_id),
+                "from_tool": explain.said_by_tool(exc)}
+    seconds = None
+    try:                          # both say "00:04:46"
+        h, m, s = (int(x) for x in str(data.get("duration", "")).split(":"))
+        seconds = h * 3600 + m * 60 + s
+    except ValueError:
+        pass
+    title, uploader, picture = (data.get(f) or "" for f in fields)
+    return {"title": title, "uploader": uploader, "duration": seconds,
+            "thumbnail": picture, "extractor": name, "is_playlist": False, "entries": 0}
+
+
 # --------------------------------------------------------------------------
 # JSON shapes
 # --------------------------------------------------------------------------
@@ -273,6 +314,7 @@ def detection_json(result: Detection) -> dict:
     platform = result.platform
     # The user's saved choice first: the page picks the first one.
     offered = usable_tools(platform)
+    cookies_on = bool(load_settings()["cookies_enabled"])
     blocked = [
         {"name": tool_name(o.tool_id), "why": runners.unavailable_reason(o.tool_id)}
         for o in platform.tools if runners.unavailable_reason(o.tool_id) is not None
@@ -291,6 +333,13 @@ def detection_json(result: Detection) -> dict:
         "supported": bool(offered),
         "note": note,
         "blocked": blocked,
+        # Who reads the title for the card: yt-dlp where it is one of the
+        # site's tools, the site's own tool on Douyin and Kuaishou, nobody
+        # elsewhere (Xiaohongshu: not tested).
+        "read_by": ({"id": "yt-dlp", "name": "yt-dlp"}
+                    if any(o.tool_id == "yt-dlp" for o in offered)
+                    else {"id": offered[0].tool_id, "name": tool_name(offered[0].tool_id)}
+                    if offered and platform.id in _READ_BY_TOOL else None),
         "final_url": result.final_url,
         "was_shortened": result.was_shortened,
         "redirect_error": result.redirect_error,
@@ -304,6 +353,9 @@ def detection_json(result: Detection) -> dict:
                 "installed": tools.installed_path(option.tool_id) is not None,
                 "size": tools.latest_release(option.tool_id).get("size", 0),
                 "needs_python": bool(getattr(tools.spec(option.tool_id), "needs_python", False)),
+                # A log-in or a visit this tool needs here, said BEFORE the
+                # download (the 2026-09-26 audit). None when nothing is proven.
+                "need": login.need(platform.id, option.tool_id, cookies_on),
             }
             for option in offered
         ],
@@ -436,6 +488,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/probe":
             url = (body.get("url") or "").strip()
+            platform_id = detect(url).platform.id
+            if platform_id in _READ_BY_TOOL:
+                self._json(tool_probe(platform_id, url))
+                return
             try:
                 # A private post has no readable title without the cookies,
                 # and the window would show "(no title)" with no reason why.

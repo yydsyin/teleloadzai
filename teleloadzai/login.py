@@ -163,6 +163,50 @@ _BADGES = {
     "douyin": _SESSION_COOKIES["douyin"],         # seen on the user's log-in
 }
 
+# What a tool needs BEFORE it can work on a site, told on the card before the
+# user presses Download (asked 2026-09-26: a Douyin link waited 100 s for an
+# error). ONLY what was seen (decision 38) -- the audit of 2026-09-26: every
+# site, every tool, a public link, NO cookies. A site not listed is either
+# proven to work without a log-in, or not proven at all: nothing is said.
+#   "login": the tool refused without cookies, and a real log-in worked.
+#   "visit": fresh cookies from one visit are enough -- no account needed.
+#   "asked": the tool itself asked for an account; never tried with one.
+_NEEDS = {
+    # "HTTP redirect to login page" on a public reel; yt-dlp got the same reel.
+    ("instagram", "gallery-dl"): "login",
+    # "Forbidden" with no cookies; worked with the user's log-in 2026-09-23/24;
+    # yt-dlp got the same video with none.
+    ("tiktok", "tiktokdownloader"): "login",
+    # "Failed to retrieve posts data" with no cookies; worked with the user's
+    # QR log-in 2026-09-23.
+    ("kuaishou", "ks-downloader"): "login",
+    # "Failed to retrieve data!" with 2 visit cookies (ttwid, __ac_nonce);
+    # the user's 4 downloads of 2026-09-26 worked with 35 cookies from one
+    # visit of the log-in window and NO sessionid -- a visit is enough.
+    ("douyin", "tiktokdownloader"): "visit",
+    # "Use --username and --password ... (vimeo) to provide account
+    # credentials", on 2 links of 2. Never tried with a log-in.
+    ("vimeo", "yt-dlp"): "asked",
+}
+
+
+def need(platform_id: str, tool_id: str, cookies_on: bool) -> dict | None:
+    """What this tool needs on this site before it can work, or None.
+
+    `met` is True only on the proven sign: the site's log-in cookie is in our
+    file AND cookies are switched on. A visit leaves no proven sign, so a
+    "visit" need is always said -- as a reminder, not a refusal.
+    """
+    kind = _NEEDS.get((platform_id, tool_id))
+    if kind is None:
+        return None
+    platform = next((p for p in PLATFORMS if p.id == platform_id), None)
+    badge = _BADGES.get(platform_id)
+    logged_in = bool(platform and badge and cookies.badge_dates(platform.domains, badge))
+    return {"kind": kind, "logged_in": logged_in, "cookies_on": cookies_on,
+            "met": logged_in and cookies_on}
+
+
 _lock = threading.Lock()        # one login window at a time, never two
 
 # How long we wait for a page WE asked for to finish loading. pywebview's own
