@@ -686,7 +686,8 @@ def can_run(tool_id: str) -> bool:
 # runner" when pressed (found 2026-09-22 by the audit).
 NOT_READY: dict[str, str] = {
     "f2":
-        "it needs a cookie in its own settings file, which comes with step 5",
+        "it reads cookies only from its own settings file, and Teleloadzai "
+        "cannot fill that file yet",
 }
 
 
