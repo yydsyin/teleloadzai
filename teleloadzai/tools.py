@@ -456,6 +456,18 @@ def install(tool_id: str, on_progress: ProgressFn | None = None) -> str:
     ensure_dirs()
     BIN_DIR.mkdir(parents=True, exist_ok=True)
 
+    # FFmpeg is the base every download uses (decision 28). Its only way in
+    # was the first-launch list; that list went on 2026-09-26 (decision 17:
+    # tools are chosen in the installer), so the first tool a link installs
+    # brings FFmpeg with it. Without this, a fresh PC got yt-dlp from
+    # "Install and continue", then "ffmpeg is not installed" on Download.
+    if tool_id != "ffmpeg" and installed_path("ffmpeg") is None:
+        try:
+            install("ffmpeg", on_progress)
+        except InstallError as problem:
+            raise InstallError(f"FFmpeg, which every download needs, could not be "
+                               f"installed: {problem}") from problem
+
     if tool.kind == "pip":
         _install_pip(tool, on_progress)
     else:

@@ -361,6 +361,11 @@ def detection_json(result: Detection) -> dict:
         "final_url": result.final_url,
         "was_shortened": result.was_shortened,
         "redirect_error": result.redirect_error,
+        # FFmpeg is every download's base (decision 28): missing, the card
+        # offers it like a missing tool -- never a Download that must fail.
+        "ffmpeg_missing": tools.installed_path("ffmpeg") is None,
+        "ffmpeg_size": (tools.latest_release("ffmpeg").get("size", 0)
+                        if tools.installed_path("ffmpeg") is None else 0),
         "tools": [
             {
                 "id": option.tool_id,

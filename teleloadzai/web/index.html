@@ -280,23 +280,20 @@
        program fetches them, which accounts they may use. Until 2026-09-25
        the section names were grey help text and the page had no structure
        (critique, 2026-09-25). There is one way out, "Back" at the top. -->
-  <!-- First launch (decisions 5 and 17): the tool list, BELOW the link box
-       and the downloads. It used to sit on top, 840 px tall, and a new user
-       met nine program names before the one thing he came for -- the place
-       to paste a link (critique of 2026-09-26). -->
+  <!-- First launch (decisions 5 and 17, changed by the user 2026-09-26): one
+       line, not the tool list. Choosing tools moves to the installer (step 6);
+       every other way in -- the portable .zip, a tool the installer could not
+       fetch -- is the "Install and continue" a link offers (decision 6). The
+       list itself lives in Settings → Tools only. Before: nine program rows,
+       840 px, ABOVE the place to paste a link (critique of 2026-09-26). -->
   <div class="card hidden" data-view="main" id="welcome">
-    <div class="section-title">Welcome</div>
-    <div class="hint" style="margin:6px 0 14px">
-      Paste a link above to start. <b>yt-dlp</b> and <b>FFmpeg</b> are the base — they
-      already cover most sites. The others are only needed for a few platforms, and
-      Teleloadzai offers each one the first time a link needs it. You can add or
-      remove any of them here, or later in Settings.
+    <div class="hint">
+      Paste a link above to start. If a site needs a tool that is not installed yet,
+      Teleloadzai offers to install it right there, the first time.
     </div>
-    <div id="welcome-tools"></div>
-    <div class="row" style="margin-top:16px">
-      <!-- One button: "Continue" and "Skip — decide later" both just closed
-           this card (critique of 2026-09-25). Tools can be added any time. -->
-      <button id="welcome-done">Continue</button>
+    <div class="row" style="margin-top:10px">
+      <button id="welcome-done">Got it</button>
+      <button class="ghost" id="welcome-tools-open">Manage tools</button>
     </div>
   </div>
 
@@ -538,6 +535,9 @@ let readBy = null;
 
 // The tool the switch is on. "" = the first one, which is the default.
 let pickedTool = "";
+// FFmpeg is missing on this PC (the server says so with each link), and its size.
+let ffmpegMissing = false;
+let ffmpegSize = 0;
 const chosenTool = () => currentTools.find((t) => t.id === pickedTool) || currentTools[0];
 // The default tool we stepped away from, or null. When it needs a log-in the
 // user does not have, the card starts on a tool that needs none: the bright
@@ -702,16 +702,23 @@ function showChosenTool() {
     ? `Open ${currentPlatform} once` : `Log in to ${currentPlatform}`;
 
   // Never answer "not supported" when a tool exists: offer it (decision 6).
-  const missing = chosen && !chosen.installed ? chosen : null;
+  // FFmpeg counts too: every download uses it, and installing the tool
+  // brings it along (tools.install). The first-launch list used to be its
+  // only way in (decision 17, changed 2026-09-26).
+  const ffmpeg = Boolean(ffmpegMissing);
+  const missing = chosen && (!chosen.installed || ffmpeg) ? chosen : null;
   $("need-tool").classList.toggle("hidden", !missing);
   $("go").disabled = Boolean(missing);
   if (missing) {
-    const size = missing.size ? ` (${Math.round(missing.size / 1048576)} MB)` : "";
+    const mb = (bytes) => bytes ? ` (${Math.round(bytes / 1048576)} MB)` : "";
     const python = missing.needs_python ? " It also needs Python." : "";
-    $("need-tool-text").textContent =
-      `${currentPlatform} is best with ${missing.name}${size}, and it is not installed yet.${python}`;
-    $("need-tool-install").dataset.tool = missing.id;
-    $("need-tool-install").textContent = `Install ${missing.name} and continue`;
+    const names = [!missing.installed && missing.name, ffmpeg && "FFmpeg"].filter(Boolean);
+    $("need-tool-text").textContent = !missing.installed
+      ? `${currentPlatform} is best with ${missing.name}${mb(missing.size)}, and it is not installed yet.`
+        + (ffmpeg ? ` FFmpeg${mb(ffmpegSize)} comes with it: every download uses it.` : "") + python
+      : `FFmpeg${mb(ffmpegSize)} is not installed yet: every download uses it, to make MP3s and join picture and sound.`;
+    $("need-tool-install").dataset.tool = missing.installed ? "ffmpeg" : missing.id;
+    $("need-tool-install").textContent = `Install ${names.join(" and ")} and continue`;
   }
   updateGoLabel();
 }
@@ -851,6 +858,8 @@ async function readLink(url, mine) {
   currentPlatform = found.platform;
   currentPlatformId = found.platform_id || "";
   currentTools = found.tools || [];
+  ffmpegMissing = Boolean(found.ffmpeg_missing);
+  ffmpegSize = found.ffmpeg_size || 0;
 
   // The first one is the Teleloadzai default; the others are offered only
   // when they exist, so the choice never appears for nothing (decision 13).
@@ -1281,9 +1290,9 @@ function toolRow(tool, progress) {
 }
 
 function renderTools() {
-  // The first-launch screen and Settings show the SAME list (decision 17),
-  // so there is only one place to fix when something changes.
-  for (const id of ["tools-list", "welcome-tools"]) {
+  // One list, in Settings → Tools. The first-launch copy of it went on
+  // 2026-09-26 (decision 17 changed: tools are chosen in the installer).
+  for (const id of ["tools-list"]) {
     const list = document.getElementById(id);
     if (!list) continue;
     list.textContent = "";
@@ -1364,6 +1373,12 @@ async function closeWelcome() {
   $("url").focus();
 }
 $("welcome-done").addEventListener("click", closeWelcome);
+$("welcome-tools-open").addEventListener("click", async () => {
+  await closeWelcome();
+  showView("settings");
+  // After showView's own scroll to the top has started.
+  setTimeout(() => $("tools-list").scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+});
 
 $("tools-refresh").addEventListener("click", () => {
   document.getElementById("tools-list").textContent = "Asking GitHub…";
@@ -1881,9 +1896,8 @@ async function forgetCookies() {
   $("ask-where").checked = askWhere;
   updateGoLabel();
 
-  if (!settings.setup_done) {      // first launch: the same tool list, up front
+  if (!settings.setup_done) {      // first launch: one line (decision 17)
     $("welcome").classList.remove("hidden");
-    loadTools();
   }
 
   refresh();
