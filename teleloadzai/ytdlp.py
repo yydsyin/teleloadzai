@@ -241,8 +241,15 @@ def _output_arguments(
         # Filtered by extension, not by codec: Archive.org's real videos
         # have no known codec either.
         real = "[ext!=jpg][ext!=png][ext!=webp][ext!=mhtml]"
+        # "MP4" means an .mp4 file. Picture + sound fetched apart are joined
+        # into one (--merge-output-format); but a site that serves READY
+        # files (Archive.org) was answered with whatever file fit the height:
+        # MP4 at 360p gave Cops1922's 300p .ogv (seen 2026-09-26). A real
+        # .mp4 now comes first, at the closest height; another format only
+        # when the site has no .mp4 at all.
         if quality == "best":
-            selector = f"bestvideo[ext=mp4]{real}+bestaudio[ext=m4a]/bestvideo{real}+bestaudio/best{real}"
+            selector = (f"bestvideo[ext=mp4]{real}+bestaudio[ext=m4a]/bestvideo{real}+bestaudio/"
+                        f"best[ext=mp4]{real}/best{real}")
             sort = []
         else:
             # The best not taller than the chosen height; when there is none,
@@ -252,6 +259,7 @@ def _output_arguments(
             selector = (
                 f"bestvideo[height<={quality}][ext=mp4]{real}+bestaudio[ext=m4a]/"
                 f"bestvideo[height<={quality}]{real}+bestaudio/"
+                f"best[height<={quality}][ext=mp4]{real}/best[ext=mp4]{real}/"
                 f"best[height<={quality}]{real}/best{real}"
             )
             sort = ["-S", f"res:{quality}"]
