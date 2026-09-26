@@ -36,12 +36,6 @@
     font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
   }
   .wrap { max-width: 720px; margin: 0 auto; }
-  /* A short window: the space above the title went before Download did --
-     Download ended 14 px below a 421 px window on TikTok (round 1). */
-  @media (max-height: 520px) {
-    body { padding-top: 14px; }
-    .topbar { margin-bottom: 12px !important; }
-  }
   h1 { font-size: 20px; margin: 0 0 2px; letter-spacing: -.01em; }
   .sub { color: var(--soft); font-size: 13px; }
   .topbar {
@@ -101,7 +95,7 @@
   .label { font-weight: 500; }
   details.more > summary {
     cursor: pointer; color: var(--accent); font-size: 13px; margin-top: 10px;
-    list-style-position: outside;
+    list-style-position: inside;
   }
   details.more[open] > summary { margin-bottom: 6px; }
 
@@ -117,6 +111,11 @@
 
   .hint { color: var(--soft); font-size: 13px; }
   .hidden { display: none !important; }
+  /* One filled button on screen: once a card is shown, Read only reads
+     again, and Download is the step (loop round 2). */
+  .wrap:has(#result:not(.hidden)) #read, .wrap:has(#unsupported:not(.hidden)) #read {
+    background: transparent; color: var(--soft); border: 1px solid var(--line); font-weight: 500;
+  }
   /* Read aloud by a screen reader, never drawn. */
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -156,10 +155,12 @@
     /* Settings is read top to bottom: one column, wider than before -- but
        not so wide that a help line runs to 146 characters (measured at
        900 px, round 1): 820 px and 14 px help text. */
-    .wrap[data-showing="settings"] { max-width: 820px; }
+    .wrap[data-showing="settings"] { max-width: 760px; }
     .hint { font-size: 14px; }
-    /* The picture stayed 132x76 in a 630 px card. */
-    .thumb { width: 200px; height: 112px; }
+    /* The picture stayed 132x76 in a 630 px card. `.preview .thumb`, not
+       `.thumb`: the plain rule comes later in this file and won (seen in
+       loop round 2 -- this line had never applied). */
+    .preview .thumb { width: 200px; height: 112px; }
   }
 
   .preview { display: flex; gap: 14px; align-items: flex-start; }
@@ -250,7 +251,8 @@
      2026-09-25 the bar was rebuilt every refresh and never moved at all. */
   .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .7s linear; }
   .state-done .bar > i { background: var(--ok); }
-  .state-error .bar > i, .state-cancelled .bar > i { background: var(--bad); }
+  .state-error .bar > i { background: var(--bad); }
+  .state-cancelled .bar > i { background: var(--soft); }
   .state-error .job-right .small { color: var(--bad); font-weight: 600; }
   .state-waiting .bar > i, .state-skipped .bar > i { background: var(--soft); }
   .small { font-size: 12px; color: var(--soft); white-space: nowrap; }
@@ -311,6 +313,7 @@
         <div class="title" id="title">…</div>
         <div class="meta" id="meta"></div>
         <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span><span class="switch hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span></div>
+        <div class="hint hidden" id="tool-why" style="margin-top:6px"></div>
         <div class="hint hidden" id="tool-need" style="margin-top:8px;padding:6px 10px;border-width:1px;border-style:solid;border-radius:8px">
           <span id="tool-need-text"></span>
           <div style="margin-top:6px"><button class="tiny" id="tool-need-login"></button></div>
@@ -325,8 +328,8 @@
     </div>
 
     <div class="controls">
-      <button class="choice" data-mode="mp3" aria-pressed="false">MP3 — audio</button>
-      <button class="choice" data-mode="mp4" aria-pressed="true">MP4 — video</button>
+      <button class="choice" data-mode="mp3" aria-pressed="false">MP3</button>
+      <button class="choice" data-mode="mp4" aria-pressed="true">MP4</button>
       <!-- A real <label>: a screen reader announced the list with no name
            (critique of 2026-09-26). -->
       <label class="hint" id="quality-label" for="quality" style="margin-left:6px">Quality</label>
@@ -677,8 +680,11 @@ function updateGoLabel() {
   if (probeProblem) {
     // A tool's own words often end without a full stop, and ran straight
     // into the next sentence ("…manually pass cookies The "Save as"…").
-    const reason = probeReason.trim();
-    $("meta").textContent = reason + (/[.!?]$/.test(reason) ? " " : ". ") + unknownNameText(chosen);
+    // The pink box already says the refusal: the line under the title
+    // keeps only what it adds -- the file name (loop round 2: Vimeo said it twice).
+    const reason = $("tool-need").classList.contains("warn") ? "" : probeReason.trim();
+    $("meta").textContent = (reason ? reason + (/[.!?]$/.test(reason) ? " " : ". ") : "")
+      + unknownNameText(chosen);
   }
 }
 
@@ -709,8 +715,8 @@ function applyChoices(tool) {
   mp3.classList.toggle("hidden", !("mp3" in can));
   const only = !("mp3" in can);
   mp4.classList.toggle("only", only);
-  mp4.textContent = only && can.label ? `You get: the post's ${can.label.toLowerCase()}`
-    : can.label || "MP4 — video";
+  mp4.textContent = only && can.label ? `You get: ${can.label.toLowerCase()}`
+    : can.label || "MP4";
   if (!(mode in can)) {                 // MP3 was chosen, this tool makes none
     mode = "mp4";
     mp3.setAttribute("aria-pressed", "false");
@@ -757,7 +763,7 @@ function needText(tool) {
   if (n.kind === "asked") {
     // In the user's words, not the audit's ("on every link we tried"); and
     // honest: a Vimeo download with a log-in has not been seen yet.
-    return `${site} asks for an account. Logging in may help — Teleloadzai has not seen it work yet.`;
+    return `${site} asks for an account. Logging in may help — not proven yet.`;
   }
   return `${tool.name} needs you to be logged in to ${site}.` + orFree;
 }
@@ -785,6 +791,13 @@ function showChosenTool() {
     button.setAttribute("aria-pressed", String(chosen && button.dataset.tool === chosen.id));
   }
   applyChoices(chosen);
+  // What the chosen tool gives, in words anyone sees -- it lived only in a
+  // hover tooltip, which touch and keyboard never reach (loop round 2).
+  const why = several && chosen ? `${chosen.name}: ${chosen.why}.` : "";
+  const mp3Elsewhere = chosen && !("mp3" in (chosen.choices || {}))
+    ? currentTools.find((t) => t.id !== chosen.id && "mp3" in (t.choices || {})) : null;
+  $("tool-why").textContent = why + (mp3Elsewhere ? ` Need an MP3? Choose ${mp3Elsewhere.name} above.` : "");
+  $("tool-why").classList.toggle("hidden", !$("tool-why").textContent);
   // Started on another tool because the usual one needs a log-in: say which,
   // and why, with the log-in button -- one click puts the usual one back.
   const stepped = autoPicked && chosen && chosen.id !== autoPicked.id ? autoPicked : null;
@@ -1121,6 +1134,31 @@ function errorExplanation(job) {
     + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
 }
 
+/**
+ * A failed row's buttons, the ones its explanation points to -- and ONE
+ * filled: log in when the tool asked for it, else another tool, else "Update" for an error
+ * nobody recognises (the text says "updating is the first thing to try"),
+ * else Retry. A known error about the link itself ("check the link")
+ * offers no Retry and no Update: they would get the same answer (loop
+ * round 2, 2026-09-26: a filled Retry sat under words saying it would not
+ * help).
+ */
+function failButtons(job) {
+  const ex = job.explain || {};
+  const hopeless = ex.known && ex.retry === false;
+  // Log in leads only when the tool itself said a log-in is needed: filled
+  // on every failure, it topped a region-blocked video too (loop round 2).
+  const primary = job.needs_login && loginOffer(job) ? "login" : job.other_tool ? "switch"
+    : !ex.known && job.error_from_tool ? "update" : hopeless ? "" : "retry";
+  const cls = (name) => (primary === name ? "" : "ghost ") + "tiny";
+  return [
+    loginOffer(job) && `<button class="${cls("login")}" data-login="${job.platform}">Log in to ${loginOffer(job)}</button>`,
+    job.other_tool && `<button class="${cls("switch")}" data-switch="${job.id}" data-tool="${job.other_tool.id}">Try with ${job.other_tool.name}</button>`,
+    !hopeless && `<button class="${cls("update")}" data-update="${job.tool}">Update ${job.tool}</button>`,
+    !hopeless && `<button class="${cls("retry")}" data-retry="${job.id}">Retry</button>`,
+  ].filter(Boolean).join("\n");
+}
+
 /** What moves while a job runs: the bar and the line on the right. */
 function jobProgress(job) {
   const percent = parseFloat((job.percent || "0").replace("%", ""))
@@ -1226,12 +1264,7 @@ function jobRow(job) {
       ${job.error && job.error_from_tool ? `<details class="more" style="margin-top:4px">
         <summary class="hint">Show ${job.tool}'s message</summary><div class="err"></div>
       </details>` : ""}
-      <div class="row" style="margin-top:8px; flex-wrap:wrap">
-        ${loginOffer(job) ? `<button class="tiny" data-login="${job.platform}">Log in to ${loginOffer(job)}</button>` : ""}
-        ${job.other_tool ? `<button class="ghost tiny" data-switch="${job.id}" data-tool="${job.other_tool.id}">Try with ${job.other_tool.name}</button>` : ""}
-        <button class="ghost tiny" data-update="${job.tool}">Update ${job.tool}</button>
-        <button class="${loginOffer(job) ? "ghost " : ""}tiny" data-retry="${job.id}">Retry</button>
-      </div>` : ""}`;
+      <div class="row" style="margin-top:8px; flex-wrap:wrap">${failButtons(job)}</div>` : ""}`;
   // A failure used to open on the tool's raw words in red ("Use --cookies,
   // --username…"), then four equal grey buttons, and "failed" in small grey
   // -- the worst moment to be unclear (round 1 of the loop, 2026-09-26). Now:

@@ -29,6 +29,11 @@ class Known:
     title: str                  # what happened, in plain words
     next_step: str              # what the user can do -- advice, not a cause
     seen: str                   # the evidence. No evidence, no entry.
+    # False when the link or the post itself is the problem: a Retry, or an
+    # updated tool, gets the same answer. The failed row then offers neither
+    # -- it showed a filled Retry under "check the link" (loop round 2,
+    # 2026-09-26).
+    retry: bool = True
 
 
 KNOWN: tuple[Known, ...] = (
@@ -36,6 +41,7 @@ KNOWN: tuple[Known, ...] = (
         words=("your ip address is blocked from accessing this post",),
         tools=("yt-dlp",),
         title="TikTok does not show this video on your internet connection.",
+        retry=False,
         next_step=("Other TikTok videos can still work — try another one. "
                    "TikTok does not say why; it may be a video limited to "
                    "some countries."),
@@ -111,6 +117,7 @@ KNOWN: tuple[Known, ...] = (
         words=("unsupported url",),
         tools=("yt-dlp", "gallery-dl"),
         title="This tool found nothing it can download on this page.",
+        retry=False,
         next_step=("Check that the link opens the video or the post itself, "
                    "not a home page, a profile or a search."),
         seen=("https://example.com/ -- a page that exists and has no video. "
@@ -120,6 +127,7 @@ KNOWN: tuple[Known, ...] = (
         words=("unable to download webpage", "http error 404"),
         tools=("yt-dlp",),
         title="The site says this page does not exist (error 404).",
+        retry=False,
         next_step="Check the link: it may be mistyped, or the page was removed.",
         seen="https://example.com/some-page -- a page that does not exist.",
     ),
@@ -137,6 +145,7 @@ KNOWN: tuple[Known, ...] = (
         words=("notfounderror",),
         tools=("gallery-dl",),
         title="The site says this item could not be found.",
+        retry=False,
         next_step="The link may be wrong, or the item was deleted.",
         seen=("Pinterest pin 999999999999999999, which does not exist: "
               "'NotFoundError: Requested pin could not be found'."),
@@ -155,6 +164,7 @@ KNOWN: tuple[Known, ...] = (
         words=("no plugin can handle url",),
         tools=("streamlink",),
         title="Streamlink cannot read this page.",
+        retry=False,
         next_step=("Streamlink records live streams. Check that the link "
                    "opens a live channel, for example on Twitch."),
         seen="https://example.com/: 'error: No plugin can handle URL'.",
@@ -174,6 +184,7 @@ KNOWN: tuple[Known, ...] = (
         words=("提取小红书作品链接失败",),
         tools=("xhs-downloader",),
         title="XHS-Downloader found no Xiaohongshu note in this link.",
+        retry=False,
         next_step="Check that the link opens a note on xiaohongshu.com.",
         seen=("https://example.com/: '提取小红书作品链接失败' (could not "
               "extract a Xiaohongshu link), exit code 0."),
@@ -193,6 +204,7 @@ KNOWN: tuple[Known, ...] = (
         words=("does not indicate success: 404",),
         tools=("n-m3u8dl-re",),
         title="The server says this stream does not exist (error 404).",
+        retry=False,
         next_step="Check the link: it may be mistyped, or no longer there.",
         seen=("https://example.com/nothing-here.m3u8: 'Response status code "
               "does not indicate success: 404 (Not Found)', after 10 tries."),
@@ -201,6 +213,7 @@ KNOWN: tuple[Known, ...] = (
         words=("input not supported",),
         tools=("n-m3u8dl-re",),
         title="N_m3u8DL-RE cannot read this link.",
+        retry=False,
         next_step=("It reads stream playlists — links ending in .m3u8 or "
                    ".mpd. Check that the link is one."),
         seen="https://example.com/, a web page: 'Unhandled exception: ...: Input not supported'.",
@@ -260,5 +273,5 @@ def explain(error: str, tool: str) -> dict:
     for entry in KNOWN:
         if tool in entry.tools and all(w in low for w in entry.words):
             return {"known": True, "title": entry.title,
-                    "next_step": entry.next_step}
+                    "next_step": entry.next_step, "retry": entry.retry}
     return {"known": False}
