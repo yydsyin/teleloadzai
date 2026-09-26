@@ -119,11 +119,6 @@ SPECS: tuple[ToolSpec, ...] = (
              pip_name="gallery-dl", module="gallery_dl", needs_python=True,
              requires=("Python",)),
 
-    ToolSpec("f2", "f2", "Johnserf-Seed/f2", "pip",
-             # NOT Kuaishou: it has no `ks` app, checked 2026-09-22.
-             what_for="Weibo.",
-             pip_name="f2", module="f2", needs_python=True,
-             requires=("Python",)),
 )
 
 BY_ID: dict[str, ToolSpec] = {s.id: s for s in SPECS}

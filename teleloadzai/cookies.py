@@ -70,9 +70,6 @@ COMMAND_LINE_ONLY = {
     "n-m3u8dl-re":
         "N_m3u8DL-RE only takes a cookie inside a command-line header, "
         "where another program on this PC could read it",
-    "f2":
-        "f2 only takes a cookie on the command line or in its own settings "
-        "file, which Teleloadzai does not write yet",
 }
 
 # TikTokDownloader takes the cookie in the BODY of a request to its own local

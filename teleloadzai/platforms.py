@@ -37,7 +37,6 @@ _TOOL_LIST = (
     Tool("tiktokdownloader", "TikTokDownloader", "JoeanAmier/TikTokDownloader", "python"),
     Tool("xhs-downloader", "XHS-Downloader", "JoeanAmier/XHS-Downloader", "python"),
     Tool("ks-downloader", "KS-Downloader", "JoeanAmier/KS-Downloader", "exe"),
-    Tool("f2", "f2", "Johnserf-Seed/f2", "python"),
     Tool("n-m3u8dl-re", "N_m3u8DL-RE", "nilaoda/N_m3u8DL-RE", "exe"),
 )
 
@@ -103,12 +102,10 @@ PLATFORMS: tuple[Platform, ...] = (
              # had a watermark. These lines said "no watermark" / "may keep
              # the watermark" until then, never checked (decision 38).
              (ToolOption("tiktokdownloader", "higher quality"),
-              ToolOption("f2", "batch, a whole profile"),
               ToolOption("yt-dlp", "smaller file"))),
     Platform("douyin", "Douyin",
              ("douyin.com", "iesdouyin.com"),
-             (ToolOption("tiktokdownloader", "no watermark"),
-              ToolOption("f2", "batch, a whole profile"))),
+             (ToolOption("tiktokdownloader", "no watermark"),)),
     # One tool, and the only one that works (decision 39). Tested 2026-09-23
     # on the same video: KS-Downloader downloaded it; yt-dlp ("Unsupported
     # URL"), lux and you-get failed. f2, listed here until 2026-09-22, has no
@@ -119,11 +116,15 @@ PLATFORMS: tuple[Platform, ...] = (
     Platform("xiaohongshu", "Xiaohongshu",
              ("xiaohongshu.com", "xhslink.com"),
              (ToolOption("xhs-downloader", "video and photos, no watermark"),)),
+    # f2 was listed first here until 2026-09-26, and never ran once: with
+    # the user's Weibo cookies, through its own config file, it saved only
+    # the post's text (329 B, 77 B) on two posts where gallery-dl and yt-dlp
+    # both gave the same video (118,485,736 B at 1920x1080; 1,810,094 B).
+    # Removed from Teleloadzai (decision 39).
     Platform("weibo", "Weibo",
              ("weibo.com", "weibo.cn"),
-             (ToolOption("f2", "posts with video"),
-              ToolOption("gallery-dl", "images"),
-              ToolOption("yt-dlp", "simple video"))),
+             (ToolOption("gallery-dl", "the post's own files, video and photos"),
+              ToolOption("yt-dlp", "video, or MP3"))),
     Platform("twitter", "X (Twitter)",
              ("twitter.com", "x.com"),
              (ToolOption("yt-dlp", "video"),

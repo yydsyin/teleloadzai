@@ -204,22 +204,6 @@ def _n_m3u8dl_re(exe: Path, r: Request) -> list[str]:
             "--save-name", _file_name(r)]
 
 
-def _f2(_exe: Path, r: Request) -> list[str]:
-    """f2 has one sub-command per site, and it needs a cookie for most of them.
-
-    ⚠️ It has **no Kuaishou**. This line used to build `ks`, which was never
-    checked against the program. Asked on 2026-09-22:
-
-        $ python -m f2 ks --help
-        Error: 没有找到 ks 应用          ("the ks app was not found")
-
-    Its own help lists eleven apps and Kuaishou is not among them, and the
-    installed package ships five: bark, douyin, tiktok, twitter, weibo. So
-    `wb` is the only one of ours that exists here.
-    """
-    return ["wb", "-u", r.url, "-p", str(r.out_dir)]
-
-
 def _repackage_to_mp4(files: list[Path]) -> list[Path]:
     """Turn a .ts recording into a .mp4, without touching the video itself.
 
@@ -325,8 +309,6 @@ RECIPES: dict[str, Recipe] = {
     "xhs-downloader": Recipe("xhs-downloader", _xhs, ignore=("*.db",),
                              litter=("ExploreData.db",), skipped=_xhs_skipped),
     "n-m3u8dl-re": Recipe("n-m3u8dl-re", _n_m3u8dl_re, encoding="oem"),
-    "f2": Recipe("f2", _f2, module="f2",
-                 note="f2 needs a cookie in its own config file for most sites."),
 }
 
 
@@ -693,11 +675,10 @@ CHOICES: dict[str, dict] = {
     "tiktokdownloader": {"mp3": "kbps", "mp4": ""},
     "ks-downloader": {"mp3": "kbps", "mp4": ""},
     # Neither the MP4 choice nor the quality reaches these: the post's own
-    # files, as they are. gallery-dl and f2 make no MP3.
+    # files, as they are. gallery-dl makes no MP3.
     "gallery-dl": {"mp4": "", "label": "Original files"},
     "xhs-downloader": {"mp3": "kbps", "mp4": "", "label": "Original files"},
     "n-m3u8dl-re": {"mp3": "kbps", "mp4": "", "label": "Original file"},
-    "f2": {"mp4": "", "label": "Original files"},
 }
 
 
@@ -710,11 +691,9 @@ def can_run(tool_id: str) -> bool:
 # failing on the button is a dead end, which decisions 6 and 15 forbid: a
 # TikTok link proposed TikTokDownloader, looked ready, and answered "no
 # runner" when pressed (found 2026-09-22 by the audit).
-NOT_READY: dict[str, str] = {
-    "f2":
-        "it reads cookies only from its own settings file, and Teleloadzai "
-        "cannot fill that file yet",
-}
+# Empty since f2 was removed (2026-09-26): kept for the next tool that is
+# installed before we can drive it.
+NOT_READY: dict[str, str] = {}
 
 
 def unavailable_reason(tool_id: str) -> str | None:

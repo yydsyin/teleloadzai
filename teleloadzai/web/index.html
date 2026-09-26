@@ -1317,8 +1317,8 @@ function renderTools() {
   $("python-help").classList.toggle("hidden", !needed);
   if (needed) {
     $("python-help-text").textContent = python.winget
-      ? "gallery-dl and f2 are Python programs. Python is not on this PC. Windows can install it for you."
-      : "gallery-dl and f2 are Python programs. Python is not on this PC, and this PC has no winget, so you must install it yourself.";
+      ? "gallery-dl is a Python program. Python is not on this PC. Windows can install it for you."
+      : "gallery-dl is a Python program. Python is not on this PC, and this PC has no winget, so you must install it yourself.";
     $("python-install").classList.toggle("hidden", !python.winget);
   }
 }
