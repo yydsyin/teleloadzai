@@ -254,7 +254,7 @@
     <div class="controls">
       <button class="choice" data-mode="mp3" aria-pressed="false">MP3 — audio</button>
       <button class="choice" data-mode="mp4" aria-pressed="true">MP4 — video</button>
-      <span class="hint" style="margin-left:6px">Quality</span>
+      <span class="hint" id="quality-label" style="margin-left:6px">Quality</span>
       <select id="quality"></select>
     </div>
 
@@ -548,6 +548,28 @@ function updateGoLabel() {
 }
 
 /**
+ * Only the buttons the chosen tool really honours (server: runners.CHOICES).
+ * Until 2026-09-26 the Quality list showed for every tool, and five of them
+ * never received it; gallery-dl's "MP3" gave back the post's own files.
+ */
+function applyChoices(tool) {
+  const can = (tool && tool.choices) || { mp3: "kbps", mp4: "height" };
+  const mp3 = document.querySelector('.choice[data-mode="mp3"]');
+  const mp4 = document.querySelector('.choice[data-mode="mp4"]');
+  mp3.classList.toggle("hidden", !("mp3" in can));
+  mp4.textContent = can.label || "MP4 — video";
+  if (!(mode in can)) {                 // MP3 was chosen, this tool makes none
+    mode = "mp4";
+    mp3.setAttribute("aria-pressed", "false");
+    mp4.setAttribute("aria-pressed", "true");
+    fillQualities();
+  }
+  const hasQuality = Boolean(can[mode]);
+  $("quality").classList.toggle("hidden", !hasQuality);
+  $("quality-label").classList.toggle("hidden", !hasQuality);
+}
+
+/**
  * What the chosen tool needs on this site BEFORE Download, or "" -- only
  * what the 2026-09-26 audit proved (the server sends it, login._NEEDS).
  */
@@ -586,6 +608,7 @@ function showChosenTool() {
   for (const button of $("tool-pick").children) {
     button.setAttribute("aria-pressed", String(chosen && button.dataset.tool === chosen.id));
   }
+  applyChoices(chosen);
   const need = needText(chosen);
   $("tool-need-text").textContent = need;
   $("tool-need").classList.toggle("hidden", !need);
@@ -657,6 +680,7 @@ for (const button of document.querySelectorAll(".choice")) {
       other.setAttribute("aria-pressed", String(other === button));
     }
     fillQualities();
+    applyChoices(chosenTool());     // MP3 and MP4 may differ in having a quality
   });
 }
 
@@ -1311,7 +1335,9 @@ $("go").addEventListener("click", async () => {
   }
 
   const job = await api("/api/download", {
-    url: currentUrl, mode, quality: $("quality").value, title, target,
+    url: currentUrl, mode, title, target,
+    // A hidden list is a choice the tool never receives: say so, send "best".
+    quality: $("quality").classList.contains("hidden") ? "best" : $("quality").value,
     tool: (chosenTool() || {}).id || "yt-dlp",
     platform: currentPlatformId,
   });

@@ -229,18 +229,29 @@ def _output_arguments(
         ]
 
     if mode == "mp4":
+        # Never a picture. Weibo lists a 320x180 preview strip (`scrubber_hd`,
+        # ext jpg, no codec) among its videos; asked for 360p, the old rule
+        # downloaded that .jpg and the job said "done" (seen 2026-09-26).
+        # Filtered by extension, not by codec: Archive.org's real videos
+        # have no known codec either.
+        real = "[ext!=jpg][ext!=png][ext!=webp][ext!=mhtml]"
         if quality == "best":
-            selector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+            selector = f"bestvideo[ext=mp4]{real}+bestaudio[ext=m4a]/bestvideo{real}+bestaudio/best{real}"
+            sort = []
         else:
-            # Take the best that is not taller than the chosen height, and
-            # fall back step by step so we never end with nothing.
+            # The best not taller than the chosen height; when there is none,
+            # `-S res:N` makes the last "best" the CLOSEST above -- Weibo at
+            # 360 now gives its 720p video, not its 1080p. Measured the same
+            # day: YouTube picks exactly the formats it picked before.
             selector = (
-                f"bestvideo[height<={quality}][ext=mp4]+bestaudio[ext=m4a]/"
-                f"bestvideo[height<={quality}]+bestaudio/"
-                f"best[height<={quality}]/best"
+                f"bestvideo[height<={quality}][ext=mp4]{real}+bestaudio[ext=m4a]/"
+                f"bestvideo[height<={quality}]{real}+bestaudio/"
+                f"best[height<={quality}]{real}/best{real}"
             )
+            sort = ["-S", f"res:{quality}"]
         return [
             "-f", selector,
+            *sort,
             "--merge-output-format", "mp4",
             "-o", target,
         ]

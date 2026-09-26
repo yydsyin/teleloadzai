@@ -542,6 +542,33 @@ def _fetch(address: str, target: Path, site: str,
         raise
 
 
+# What each tool REALLY does with the window's choices -- the window shows
+# these and nothing else (the user, 2026-09-26: "don't fabricate something
+# that does not exist"). Until then the Quality list was shown for every
+# tool and only yt-dlp and streamlink ever received it.
+#   "mp3" / "mp4": the button exists. Its value is the quality list the tool
+#   takes ("kbps", "height"), or "" for none -- then "best" is sent.
+#   "label": the MP4 button's words, where the tool hands back the post's own
+#   files (pictures, videos) as they are, not an MP4 we chose.
+# Read in each recipe on 2026-09-26; measured where a choice is passed on.
+CHOICES: dict[str, dict] = {
+    # Measured 2026-09-25/26 on real files: 2160/1080/720/480/360p and
+    # 320/192/128 kbps each came out as asked.
+    "yt-dlp": {"mp3": "kbps", "mp4": "height"},
+    # Heights passed as its own stream names (_STREAMLINK_QUALITY); not
+    # measured on a live stream. Its "MP3" gave an audio .mp4: no MP3 button.
+    "streamlink": {"mp4": "height"},
+    # MP3 really made, by our ffmpeg at its best setting; no quality passed.
+    "tiktokdownloader": {"mp3": "", "mp4": ""},
+    "ks-downloader": {"mp3": "", "mp4": ""},
+    # Neither the mode nor the quality reaches these three.
+    "gallery-dl": {"mp4": "", "label": "Original files"},
+    "xhs-downloader": {"mp4": "", "label": "Original files"},
+    "n-m3u8dl-re": {"mp4": "", "label": "Original file"},
+    "f2": {"mp4": "", "label": "Original files"},
+}
+
+
 def can_run(tool_id: str) -> bool:
     """True when we know how to drive this tool at all."""
     return tool_id in RECIPES or tool_id in ("yt-dlp", "tiktokdownloader", "ks-downloader")

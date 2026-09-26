@@ -159,6 +159,13 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
     # Only a tool we know how to drive, and only one that is here.
     if not runners.can_run(tool):
         return {"error": f"no runner for {tool}"}, 400
+    # Only a choice this tool really makes (runners.CHOICES). A quality it
+    # never receives is not carried as if it were: "best" is what happens.
+    can = runners.CHOICES.get(tool, {})
+    if mode not in can:
+        return {"error": f"{tool_name(tool)} cannot make an MP3. Choose MP4, or another tool."}, 400
+    if not can[mode]:
+        quality = "best"
     if tools.installed_path(tool) is None:
         return {"error": f"{tool} is not installed"}, 400
     # Cookies, when the user has them on AND this tool can take them. `note`
@@ -193,7 +200,9 @@ def other_tool(job: dict) -> dict | None:
     for option in platform.tools:
         tid = option.tool_id
         if (tid != job.get("tool") and runners.unavailable_reason(tid) is None
-                and tools.installed_path(tid) is not None):
+                and tools.installed_path(tid) is not None
+                # an MP3 job is never sent to a tool that makes no MP3
+                and job.get("mode") in runners.CHOICES.get(tid, {})):
             return {"id": tid, "name": tool_name(tid)}
     return None
 
@@ -356,6 +365,8 @@ def detection_json(result: Detection) -> dict:
                 # A log-in or a visit this tool needs here, said BEFORE the
                 # download (the 2026-09-26 audit). None when nothing is proven.
                 "need": login.need(platform.id, option.tool_id, cookies_on),
+                # The buttons the window may show for this tool, and no other.
+                "choices": runners.CHOICES.get(option.tool_id, {"mp4": ""}),
             }
             for option in offered
         ],
