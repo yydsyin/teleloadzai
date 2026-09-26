@@ -23,6 +23,25 @@ WAITING, RUNNING, DONE, ERROR, CANCELLED = "waiting", "running", "done", "error"
 ACTIVE_STATES = (WAITING, RUNNING)
 
 
+def stop_tree(process: subprocess.Popen) -> None:
+    """Stop a tool AND every process it started.
+
+    `yt-dlp.exe` is a launcher that starts the real yt-dlp as a second
+    process. `terminate()` stopped the launcher only: seen 2026-09-26, a job
+    stopped after 10 s kept downloading in the background and delivered the
+    whole 164,088,517-byte file. `taskkill /T` follows the family while the
+    launcher is still alive to name it -- so it runs first.
+    """
+    try:
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                       capture_output=True, timeout=15,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:
+        pass                    # the check below still stops what we hold
+    if process.poll() is None:
+        process.kill()
+
+
 @dataclass
 class Job:
     id: str
@@ -155,7 +174,7 @@ class Queue:
             job.state = CANCELLED
             process = job.process
         if process and process.poll() is None:
-            process.terminate()     # the worker sees CANCELLED and stays quiet
+            stop_tree(process)      # the worker sees CANCELLED and stays quiet
         self._pump()
         return True
 
@@ -208,7 +227,7 @@ class Queue:
                 job.process = process
                 # Cancelled while it was still starting up.
                 if job.state == CANCELLED:
-                    process.terminate()
+                    stop_tree(process)
 
         def on_percent(percent: int) -> None:
             """The specialist tools give a bare number, not yt-dlp's three fields."""
