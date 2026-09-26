@@ -77,6 +77,13 @@ _PROMPTS: tuple[tuple[str, str], ...] = (
 
 _READY = "uvicorn running"
 _START_TIMEOUT = 120.0                      # it unpacks itself on a cold start
+# curl's own error, printed by TikTokDownloader when a connection fails while
+# it starts -- and then it waits forever. Seen with a dead proxy 2026-09-23
+# and 2026-09-26 (the line at 4.2 s, the wait ended by our limit at 122 s);
+# never printed on a normal start. The port gets a few more seconds after it,
+# in case a start ever goes on past such a line.
+_STUCK = "curl: ("
+_STUCK_GRACE = 10.0
 
 
 class ToolServerError(RuntimeError):
@@ -149,7 +156,15 @@ class _Server:
                 seen = seen[-2000:]
 
     def _wait_for_port(self, deadline: float) -> None:
+        stuck_at = None
         while time.time() < deadline:
+            if stuck_at is None and any(_STUCK in line for line in list(self._said)):
+                stuck_at = time.time()
+            if stuck_at is not None and time.time() - stuck_at > _STUCK_GRACE:
+                raise ToolServerError(
+                    f"{self.name} could not connect while starting, and did not go on."
+                    + self._last_words()
+                )
             if not self._alive():
                 # The disclaimer advice is TikTokDownloader's own case; for
                 # another tool we know nothing more than that it stopped.

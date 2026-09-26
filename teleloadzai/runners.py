@@ -351,11 +351,16 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
     # One site's cookies only, and only when this job may use cookies at all.
     cookie = cookies.header_for(site, True) if request.cookie_header else ""
 
+    # Said on the row: starting its server can take seconds, and reading
+    # the post more (decision 33 -- a step, not only a clock).
+    _say(on_step, "starting TikTokDownloader")
     toolservers.TIKTOK.start()
     try:
+        _say(on_step, "reading the post")
         data = toolservers.detail(request.url, douyin, cookie)
     finally:
         toolservers.TIKTOK.release()
+    _say(on_step, "")                   # the download's own percentage next
 
     # MP3 is the sound of THIS video, as with yt-dlp and Kuaishou. It used to
     # be `music_url` -- the post's background music, another recording --
@@ -401,11 +406,14 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
     # Kuaishou's cookies only, and only when this job may use cookies at all.
     cookie = cookies.header_for("kuaishou.com", True) if request.cookie_header else ""
 
+    _say(on_step, "starting KS-Downloader")
     toolservers.KS.start()
     try:
+        _say(on_step, "reading the post")
         data = toolservers.ks_detail(request.url, cookie)
     finally:
         toolservers.KS.release()
+    _say(on_step, "")
 
     address = data.get("download")
     if not isinstance(address, str) or not address.startswith("http"):
@@ -432,6 +440,11 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
         target = request.out_dir / (name + ".mp4")
         _fetch(address, target, "kuaishou.com", on_progress)
     return RunResult([target], [f"KS-Downloader: {str(data.get('caption', ''))[:80]}"])
+
+
+def _say(on_step: Callable[[str], None] | None, step: str) -> None:
+    if on_step:
+        on_step(step)
 
 
 def _already_there(target: Path, request: Request) -> str:
