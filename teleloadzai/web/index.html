@@ -565,6 +565,11 @@ function applyChoices(tool) {
     fillQualities();
   }
   const hasQuality = Boolean(can[mode]);
+  // An MP3 is made from the site's own sound: asking more gives a bigger
+  // file, never better sound.
+  $("quality").title = mode === "mp3"
+    ? "An MP3 is never better than the site's own sound: 320 kbps from a 128 kbps source only makes a bigger file."
+    : "";
   $("quality").classList.toggle("hidden", !hasQuality);
   $("quality-label").classList.toggle("hidden", !hasQuality);
 }

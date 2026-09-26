@@ -326,7 +326,9 @@ RECIPES: dict[str, Recipe] = {
 }
 
 
-def _tiktok(request: Request, on_progress: Callable[[int], None] | None) -> RunResult:
+def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
+            on_start: Callable[[subprocess.Popen], None] | None = None,
+            on_step: Callable[[str], None] | None = None) -> RunResult:
     """TikTokDownloader: ask its local server where the file is, then fetch it.
 
     It has no command line, so there is no recipe to build. Its Web API hands
@@ -366,6 +368,9 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None) -> RunR
             "It may be a photo post, or a live stream that has ended.")
 
     name = request.out_name or _clean_name(data)
+    reason = _already_there(request.out_dir / (name + "." + request.mode), request)
+    if reason:
+        return RunResult([], [], skip_reason=reason)
     if not douyin:
         cookie = _with_page_cookies(request.url, cookie)
     if request.mode == "mp3":
@@ -373,14 +378,17 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None) -> RunR
         # same post is never overwritten, then deleted (the Kuaishou bug).
         video = request.out_dir / (name + ".teleloadzai-audio.mp4")
         _fetch(address, video, site, on_progress, cookie)
-        target = _to_mp3(video, request.out_dir / (name + ".mp3"))
+        target = _to_mp3(video, request.out_dir / (name + ".mp3"), request.quality,
+                         on_start=on_start, on_step=on_step)
     else:
         target = request.out_dir / (name + ".mp4")
         _fetch(address, target, site, on_progress, cookie)
     return RunResult([target], [f"TikTokDownloader: {data.get('desc', '')[:80]}"])
 
 
-def _kuaishou(request: Request, on_progress: Callable[[int], None] | None) -> RunResult:
+def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
+              on_start: Callable[[subprocess.Popen], None] | None = None,
+              on_step: Callable[[str], None] | None = None) -> RunResult:
     """KS-Downloader: the same road as TikTokDownloader, on port 5557.
 
     Proven 2026-09-23 on a real video: 2.43 MB, 960x720, 10.0 s, decoded
@@ -409,45 +417,116 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None) -> Ru
 
     name = request.out_name or _clean_name(
         {"nickname": data.get("name", ""), "desc": data.get("caption", "")})
+    reason = _already_there(request.out_dir / (name + "." + request.mode), request)
+    if reason:
+        return RunResult([], [], skip_reason=reason)
     if request.mode == "mp3":
         # The video is only a step, so it gets a name of its own. Fetched as
         # `<name>.mp4` it overwrote -- then deleted -- the user's own MP4 of
         # the same post (seen 2026-09-23: MP4, then MP3, left only the MP3).
         video = request.out_dir / (name + ".teleloadzai-audio.mp4")
         _fetch(address, video, "kuaishou.com", on_progress)
-        target = _to_mp3(video, request.out_dir / (name + ".mp3"))
+        target = _to_mp3(video, request.out_dir / (name + ".mp3"), request.quality,
+                         on_start=on_start, on_step=on_step)
     else:
         target = request.out_dir / (name + ".mp4")
         _fetch(address, target, "kuaishou.com", on_progress)
     return RunResult([target], [f"KS-Downloader: {str(data.get('caption', ''))[:80]}"])
 
 
-def _to_mp3(video: Path, target: Path) -> Path:
+def _already_there(target: Path, request: Request) -> str:
+    """Why this file must not be written, or "" -- decision 24, road (b).
+
+    When the user picked the name in "Save as" (``out_name``), Windows has
+    already asked about replacing it; "Download again" (``force``) is the
+    user asking. Otherwise a file of the same name is his, and it stays:
+    FFmpeg's ``-y`` and our own fetch used to replace it without a word
+    (found 2026-09-26).
+    """
+    if request.force or request.out_name or not target.exists():
+        return ""
+    return (f"\"{target.name}\" is already in this folder, and Teleloadzai "
+            "never replaces a file without asking.")
+
+
+def _to_mp3(video: Path, target: Path, quality: str = "best", remove: bool = True,
+            on_start: Callable[[subprocess.Popen], None] | None = None,
+            on_step: Callable[[str], None] | None = None) -> Path:
     """Keep only the sound of a downloaded video, as an MP3.
 
     Kuaishou has no separate music link to ask for, so MP3 means "the sound
-    of this video". ``video`` is a temporary file of ours and is removed once
-    the MP3 exists; if FFmpeg is missing or fails, the user is told and keeps
-    the video.
+    of this video". ``quality`` is the window's kbps ("320", "192", "128"), or
+    "best" -- LAME's top variable setting, as yt-dlp's own "best" MP3.
+    ``video`` is removed once the MP3 exists, only when ``remove`` says it is
+    ours; if FFmpeg is missing or fails, the user is told and keeps the video.
+    FFmpeg is handed to ``on_start`` so Stop reaches it too: a 60-minute
+    recording takes a while to convert.
     """
     ffmpeg = tools.installed_path("ffmpeg")
     if ffmpeg is None:
         raise RunnerError(
             f"The video was downloaded ({video.name}), but FFmpeg is not "
             "installed, so it could not be turned into an MP3.")
-    done = subprocess.run(
+    if on_step:
+        on_step("making the MP3")       # the row says it, never a frozen 100%
+    rate = ["-q:a", "0"] if quality == "best" else ["-b:a", f"{int(quality)}k"]
+    process = subprocess.Popen(
         [str(ffmpeg), "-y", "-i", str(video), "-vn", "-c:a", "libmp3lame",
-         "-q:a", "0", str(target)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        stdin=subprocess.DEVNULL, timeout=1800, creationflags=_NO_WINDOW,
+         *rate, str(target)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
     )
-    if done.returncode != 0 or not target.is_file() or target.stat().st_size == 0:
+    if on_start:
+        on_start(process)
+    code = process.wait()
+    if code != 0 or not target.is_file() or target.stat().st_size == 0:
         target.unlink(missing_ok=True)
         raise RunnerError(
             f"The video was downloaded ({video.name}), but turning it into an "
             "MP3 failed. The video is kept.")
-    video.unlink(missing_ok=True)
+    if remove:
+        video.unlink(missing_ok=True)
     return target
+
+
+# What a tool can hand back that holds sound. Pictures are left alone.
+_SOUND_SUFFIXES = {".mp4", ".m4v", ".mkv", ".webm", ".mov", ".avi", ".flv", ".ts",
+                   ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus"}
+
+
+def _sound_of(written: list[Path], before: dict, request: Request,
+              on_start: Callable[[subprocess.Popen], None] | None,
+              on_step: Callable[[str], None] | None = None) -> tuple[list[Path], str]:
+    """MP3 for the tools that only hand back a video (streamlink, XHS-Downloader,
+    N_m3u8DL-RE): our FFmpeg keeps the sound, at the kbps the user chose.
+
+    A video this run CREATED is replaced by its MP3. One that was already in
+    the folder and was rewritten stays: it may be the user's own MP4 of the
+    same post (the Kuaishou bug of 2026-09-23 -- an MP3 that deleted it).
+    Returns the files, and the reason when an MP3 of the same name is
+    already there (decision 24): then nothing is converted, and the videos
+    this run created go -- they were only a step.
+    """
+    sources = [p for p in written if p.suffix.lower() in _SOUND_SUFFIXES and p.is_file()]
+    if not sources:
+        raise RunnerError(
+            "The tool downloaded no video or sound file, so there is no MP3 to "
+            "make. What it downloaded is kept in the folder.")
+    # The "Save as" name fits one file; several keep the tool's own names.
+    chosen = request.out_name if len(sources) == 1 else ""
+    targets = [s.with_name((chosen or s.stem) + ".mp3") for s in sources]
+    reason = next(filter(None, (_already_there(t, request) for t in targets)), "")
+    if reason:
+        for source in sources:
+            if source not in before:
+                source.unlink(missing_ok=True)
+        return [], reason
+    final = [p for p in written if p not in sources]
+    for source, target in zip(sources, targets):
+        final.append(_to_mp3(source, target, request.quality,
+                             remove=source not in before, on_start=on_start,
+                             on_step=on_step))
+    return final, ""
 
 
 def _with_page_cookies(page: str, cookie: str) -> str:
@@ -567,15 +646,18 @@ CHOICES: dict[str, dict] = {
     # 320/192/128 kbps each came out as asked.
     "yt-dlp": {"mp3": "kbps", "mp4": "height"},
     # Heights passed as its own stream names (_STREAMLINK_QUALITY); not
-    # measured on a live stream. Its "MP3" gave an audio .mp4: no MP3 button.
-    "streamlink": {"mp4": "height"},
-    # MP3 really made, by our ffmpeg at its best setting; no quality passed.
-    "tiktokdownloader": {"mp3": "", "mp4": ""},
-    "ks-downloader": {"mp3": "", "mp4": ""},
-    # Neither the mode nor the quality reaches these three.
+    # measured on a live stream.
+    # MP3, for the five below: the tool's video, then our FFmpeg keeps the
+    # sound at the kbps asked (_to_mp3 / _sound_of). Measured 2026-09-26 with
+    # ffprobe on real links, 128 and 320 each came out as asked.
+    "streamlink": {"mp3": "kbps", "mp4": "height"},
+    "tiktokdownloader": {"mp3": "kbps", "mp4": ""},
+    "ks-downloader": {"mp3": "kbps", "mp4": ""},
+    # Neither the MP4 choice nor the quality reaches these: the post's own
+    # files, as they are. gallery-dl and f2 make no MP3.
     "gallery-dl": {"mp4": "", "label": "Original files"},
-    "xhs-downloader": {"mp4": "", "label": "Original files"},
-    "n-m3u8dl-re": {"mp4": "", "label": "Original file"},
+    "xhs-downloader": {"mp3": "kbps", "mp4": "", "label": "Original files"},
+    "n-m3u8dl-re": {"mp3": "kbps", "mp4": "", "label": "Original file"},
     "f2": {"mp4": "", "label": "Original files"},
 }
 
@@ -639,13 +721,14 @@ def run(
     request: Request,
     on_progress: Callable[[int], None] | None = None,
     on_start: Callable[[subprocess.Popen], None] | None = None,
+    on_step: Callable[[str], None] | None = None,
 ) -> RunResult:
     """Run one specialist tool and report what it actually wrote."""
     if tool_id == "tiktokdownloader":
         # No command line exists for this one; it is driven over HTTP.
-        return _tiktok(request, on_progress)
+        return _tiktok(request, on_progress, on_start, on_step)
     if tool_id == "ks-downloader":
-        return _kuaishou(request, on_progress)
+        return _kuaishou(request, on_progress, on_start, on_step)
 
     recipe = RECIPES.get(tool_id)
     if recipe is None:
@@ -751,7 +834,13 @@ def run(
         raise RunnerError(f"{tool_id} finished without downloading anything, "
                           "and said nothing about why.")
 
-    if recipe.after:
+    if request.mode == "mp3":
+        # The sound only, straight from what the tool wrote: a .ts recording
+        # is not repackaged to .mp4 first.
+        written, reason = _sound_of(written, before, request, on_start, on_step)
+        if reason:
+            return RunResult([], tail, skip_reason=reason)
+    elif recipe.after:
         written = recipe.after(written)
     return RunResult(written, tail)
 

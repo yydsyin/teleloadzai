@@ -303,7 +303,7 @@ class Queue:
                         # ask for one.
                         cookie_header=job.cookie_header,
                     ),
-                    on_progress=on_percent, on_start=on_start,
+                    on_progress=on_percent, on_start=on_start, on_step=on_step,
                 )
 
             with self._lock:
