@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import cookies, explain, toolservers, tools
+from .dialogs import without_media_ending
 from .paths import BIN_DIR, make_folder
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -484,8 +485,11 @@ def _with_page_cookies(page: str, cookie: str) -> str:
 
 
 def _clean_name(data: dict) -> str:
-    """A file name from what the site says, safe for Windows."""
-    raw = f"{data.get('nickname', '')} {data.get('desc', '')}".strip() or "video"
+    """A file name from what the site says, safe for Windows.
+
+    A caption ending in ".mp4" would give "….mp4.mp4" (dialogs.MEDIA_ENDING).
+    """
+    raw = without_media_ending(f"{data.get('nickname', '')} {data.get('desc', '')}".strip()) or "video"
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", raw)[:120].strip() or "video"
 
 

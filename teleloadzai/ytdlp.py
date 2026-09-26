@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import cookies, explain
+from .dialogs import MEDIA_ENDING
 from .paths import BIN_DIR, make_folder
 
 # Keeps the black console window from flashing when the GUI runs a tool.
@@ -215,13 +216,18 @@ def _output_arguments(
     """
     if out_path is not None:
         target = str(out_path.with_suffix("")) + ".%(ext)s"
+        tidy: list[str] = []
     else:
         target = str(out_dir / "%(title)s.%(ext)s")
+        # yt-dlp names the file from the title: "… VIDEO.mp4" came out
+        # "… VIDEO.mp4.mp4". Its own option drops that ending first.
+        tidy = ["--replace-in-metadata", "title", MEDIA_ENDING, ""]
 
     if mode == "mp3":
         # yt-dlp: 0 = best variable bitrate, or a fixed rate like "192K".
         audio_quality = "0" if quality == "best" else f"{quality}K"
         return [
+            *tidy,
             "-x",
             "--audio-format", "mp3",
             "--audio-quality", audio_quality,
@@ -250,6 +256,7 @@ def _output_arguments(
             )
             sort = ["-S", f"res:{quality}"]
         return [
+            *tidy,
             "-f", selector,
             *sort,
             "--merge-output-format", "mp4",

@@ -71,6 +71,20 @@ _FILTERS = {
 }
 
 
+# A title that already ends like a file: "UHDTV TEST 8K VIDEO.mp4" is a real
+# YouTube title, and the file came out "….mp4.mp4" -- ".mp3.mp3" too, and
+# the mixed ".mp4.mp3" (seen 2026-09-26, through the app's own download and
+# "Save as" code). That ending goes before the real one is added. The same
+# pattern is handed to yt-dlp (`--replace-in-metadata`), which names the
+# file itself when there is no "Save as".
+MEDIA_ENDING = r"(?i)\.(?:mp4|m4v|mkv|webm|mov|avi|flv|ts|mp3|m4a|aac|wav|flac|ogg|opus)\s*$"
+
+
+def without_media_ending(title: str) -> str:
+    """'song.mp3' -> 'song'. A title with no such ending is left alone."""
+    return re.sub(MEDIA_ENDING, "", title or "")
+
+
 def safe_filename(name: str, fallback: str = "download") -> str:
     """Turn a video title into something Windows accepts as a file name."""
     clean = _ILLEGAL.sub("_", name or "").strip().rstrip(".")
@@ -155,7 +169,7 @@ def save_file(suggested_name: str, mode: str, start: Path) -> Path | None:
     comes back the user has already agreed to overwrite it.
     """
     extension = "mp3" if mode == "mp3" else "mp4"
-    name = f"{safe_filename(suggested_name)}.{extension}"
+    name = f"{safe_filename(without_media_ending(suggested_name))}.{extension}"
     script = _SAVE_FILE.format(
         start=_quote(start),
         name=_quote(name),
