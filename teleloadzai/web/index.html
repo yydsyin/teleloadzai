@@ -12,6 +12,9 @@
        white measured 3.49:1 (critique of 2026-09-26). */
     --ok-text: #16733e;
     --radius: 10px;
+    /* Windows' own parts (scrollbar, list pop-up, checkbox) follow the theme:
+       in dark mode they were drawn light (round 1, 2026-09-26). */
+    color-scheme: light dark;
     /* Filled buttons carry white text: they need a darker blue than the
        one used for links and outlines. */
     --accent-fill: #2f6df6;
@@ -33,6 +36,12 @@
     font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
   }
   .wrap { max-width: 720px; margin: 0 auto; }
+  /* A short window: the space above the title went before Download did --
+     Download ended 14 px below a 421 px window on TikTok (round 1). */
+  @media (max-height: 520px) {
+    body { padding-top: 14px; }
+    .topbar { margin-bottom: 12px !important; }
+  }
   h1 { font-size: 20px; margin: 0 0 2px; letter-spacing: -.01em; }
   .sub { color: var(--soft); font-size: 13px; }
   .topbar {
@@ -58,6 +67,9 @@
     border-radius: 8px; outline: none; min-width: 0;
   }
   input[type=text] { flex: 1; }
+  /* Chromium's own grey was 4.22:1 here (3.86:1 in dark) -- measured in
+     round 1 of the loop, 2026-09-26. */
+  input::placeholder { color: var(--soft); opacity: 1; }
   input[type=text]:focus, select:focus { border-color: var(--accent); }
   button {
     padding: 11px 16px; font-size: 15px; font-weight: 600; cursor: pointer;
@@ -82,6 +94,10 @@
     padding-top: 18px; border-top: 1px solid var(--line);
   }
   h2.section:first-of-type { margin-top: 12px; padding-top: 0; border-top: 0; }
+  .settings-nav { font-size: 14px; color: var(--soft); margin-bottom: 4px; }
+  .settings-nav a { text-decoration: none; font-weight: 600; }
+  .settings-nav a:hover { text-decoration: underline; }
+  h2.section:focus { outline: none; }
   .label { font-weight: 500; }
   details.more > summary {
     cursor: pointer; color: var(--accent); font-size: 13px; margin-top: 10px;
@@ -101,6 +117,8 @@
 
   .hint { color: var(--soft); font-size: 13px; }
   .hidden { display: none !important; }
+  /* Read aloud by a screen reader, never drawn. */
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
   /* Which SCREEN is on. Two different questions were being answered by one
      mechanism, and they kept fighting:
@@ -111,6 +129,38 @@
      link box, and there was nowhere to say "this one replaces the others". */
   .wrap[data-showing="main"]     [data-view="settings"] { display: none !important; }
   .wrap[data-showing="settings"] [data-view="main"]     { display: none !important; }
+
+  /* A maximised window (asked by the user 2026-09-26: "if I turn into full
+     screen it seems weird"). Measured at 1920x1040: one 720 px column, 62 %
+     of the width empty grey, everything in the top tenth, and the Downloads
+     list pushed BELOW the card while the right half stayed empty. From
+     1200 px: two columns -- what you do on the left, what is downloading on
+     the right, always in sight -- and a slightly larger text. Below 1200 px
+     nothing changes: the small window is the one the page was made for. */
+  @media (min-width: 1200px) {
+    body { font-size: 16px; }
+    .wrap { max-width: 1280px; }
+    .wrap[data-showing="main"] {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: 20px; align-items: start;
+    }
+    .wrap[data-showing="main"] > * { grid-column: 1; }
+    .wrap[data-showing="main"] > .topbar { grid-column: 1 / -1; }
+    .wrap[data-showing="main"] > #jobs-card {
+      grid-column: 2; grid-row: 2 / span 20; position: sticky; top: 16px;
+    }
+    /* The right column is never an empty hole: it says what will be there. */
+    .wrap[data-showing="main"] > #jobs-card.hidden { display: block !important; }
+    #jobs:empty::before { content: "Your downloads will appear here."; color: var(--soft); font-size: 14px; }
+    #jobs-card:has(#jobs:empty) #clear { display: none; }
+    /* Settings is read top to bottom: one column, wider than before -- but
+       not so wide that a help line runs to 146 characters (measured at
+       900 px, round 1): 820 px and 14 px help text. */
+    .wrap[data-showing="settings"] { max-width: 820px; }
+    .hint { font-size: 14px; }
+    /* The picture stayed 132x76 in a 630 px card. */
+    .thumb { width: 200px; height: 112px; }
+  }
 
   .preview { display: flex; gap: 14px; align-items: flex-start; }
   .thumb {
@@ -151,10 +201,14 @@
   /* "Selected" looks the same everywhere: filled, as on the tool switch. The
      MP3/MP4 pair was an outline next to the switch's fill -- two styles for
      one meaning (critique of 2026-09-26). */
+  /* ...and a TINT, not a fill. Round 1 of the loop (2026-09-26): filled, the
+     selected tool, the selected format and Download were three identical
+     blue blocks, and Download was no longer the obvious next step. Only
+     Download is filled now. */
   .choice[aria-pressed="true"] {
-    background: var(--accent-fill); border-color: var(--accent-fill); color: #fff; font-weight: 600;
+    background: color-mix(in srgb, var(--accent) 12%, var(--card));
+    border-color: var(--accent); color: var(--ink); font-weight: 600;
   }
-  .choice[aria-pressed="true"]:focus-visible { outline-color: var(--accent); }
   /* One format only (gallery-dl): said as text, not a toggle with nothing
      to toggle against. */
   .choice.only, .choice.only[aria-pressed="true"] {
@@ -180,8 +234,10 @@
   .switch button:focus-visible { outline-offset: -3px; }
   /* Inside the filled (selected) button a blue ring vanished into the blue:
      white there -- seen with the keyboard on TikTokDownloader. */
-  .switch button[aria-pressed="true"]:focus-visible { outline-color: #fff; }
-  .switch button[aria-pressed="true"] { background: var(--accent-fill); color: #fff; font-weight: 600; }
+  .switch button[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--ink);
+    font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent);
+  }
 
   .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .job { border-top: 1px solid var(--line); padding: 12px 0; }
@@ -195,6 +251,7 @@
   .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .7s linear; }
   .state-done .bar > i { background: var(--ok); }
   .state-error .bar > i, .state-cancelled .bar > i { background: var(--bad); }
+  .state-error .job-right .small { color: var(--bad); font-weight: 600; }
   .state-waiting .bar > i, .state-skipped .bar > i { background: var(--soft); }
   .small { font-size: 12px; color: var(--soft); white-space: nowrap; }
 
@@ -230,13 +287,14 @@
       <h1>__APP_NAME__</h1>
       <div class="sub">Paste a link. __APP_NAME__ finds the site and the right tool.</div>
     </div>
-    <button class="ghost" id="settings-toggle" aria-expanded="false">Settings</button>
+    <button class="ghost" id="settings-toggle" aria-pressed="false">Settings</button>
   </div>
 
   <!-- Every message the app says, on every screen. It used to live inside
        the link card, which meant a message sent while Settings was open
        went to something nobody could see. -->
   <div class="hidden" id="status" role="status" aria-live="polite"></div>
+  <div class="sr-only" id="announce" aria-live="polite"></div>
 
   <div class="card" data-view="main">
     <div class="row">
@@ -273,6 +331,10 @@
            (critique of 2026-09-26). -->
       <label class="hint" id="quality-label" for="quality" style="margin-left:6px">Quality</label>
       <select id="quality"></select>
+      <!-- On the same row as the choices: below them, it ended at 483 px in
+           a 421 px window, and the one action that matters needed a scroll
+           (round 1 of the loop, 2026-09-26). -->
+      <button id="go" style="margin-left:auto">Download</button>
     </div>
 
     <div class="hidden" id="need-tool" style="margin-bottom:12px">
@@ -281,8 +343,6 @@
         <button class="tiny" id="need-tool-install">Install and continue</button>
       </div>
     </div>
-
-    <button id="go">Download</button>
   </div>
 
   <div class="card hidden warn" data-view="main" id="unsupported">
@@ -314,13 +374,20 @@
       Teleloadzai offers to install it right there, the first time.
     </div>
     <div class="row" style="margin-top:10px">
-      <button id="welcome-done">Got it</button>
+      <button class="ghost" id="welcome-done">Got it</button>
       <button class="ghost" id="welcome-tools-open">Manage tools</button>
     </div>
   </div>
 
   <div class="card" data-view="settings" id="settings">
-    <h2 class="section">Downloads</h2>
+    <!-- Three jumps: Settings is several screens tall, and Accounts -- the
+         section a failed download sends people to -- was at the very bottom
+         (round 1 of the loop, 2026-09-26). -->
+    <nav class="settings-nav" aria-label="Settings sections">
+      <a href="#set-downloads">Downloads</a> · <a href="#set-tools">Tools</a> ·
+      <a href="#set-accounts">Accounts</a>
+    </nav>
+    <h2 class="section" id="set-downloads" tabindex="-1">Downloads</h2>
 
     <div class="field">
       <label class="label" for="folder" style="display:block; margin-bottom:8px">Default folder</label>
@@ -374,20 +441,22 @@
       </div>
     </div>
 
-    <h2 class="section">Tools</h2>
+    <h2 class="section" id="set-tools" tabindex="-1">Tools</h2>
 
     <!-- Decision 13, first level: the user's own default tool per site.
          Only the sites with a real choice are listed; a site with one tool
          has nothing to choose. The download page still lets him switch for
          one download. -->
-    <div class="field">
-      <div class="label" style="margin-bottom:8px">Tool for each site</div>
-      <div id="tool-choices" class="hint">Loading…</div>
+    <!-- Folded: seven lists named after programs, open on every visit, stood
+         between the user and Accounts (round 1 of the loop, 2026-09-26). -->
+    <details class="field more">
+      <summary class="label">Tool for each site</summary>
+      <div id="tool-choices" class="hint" style="margin-top:8px">Loading…</div>
       <div class="hint" style="margin-top:6px">
         The tool used when you paste a link from that site. You can still pick
         another one for a single download.
       </div>
-    </div>
+    </details>
 
     <div class="field">
       <div class="head">
@@ -412,7 +481,7 @@
          it, and the risk -- before any switch. Those four stay visible; only
          the longer explanation and the file road are folded (2026-09-25:
          the section showed about twelve blocks at once). -->
-    <h2 class="section">Accounts</h2>
+    <h2 class="section" id="set-accounts" tabindex="-1">Accounts</h2>
     <div class="field">
       <div class="head">
         <span class="label">Use my log-ins for downloads</span>
@@ -680,10 +749,15 @@ function needText(tool) {
   }
   if (n.kind === "visit") {
     // A reminder, not a refusal: TikTokDownloader often works without it.
-    return `Tip: if ${tool.name} is refused, open ${site} once with the button below — no log-in needed.`;
+    // "with the button below" only when there is one (hidden where the
+    // log-in window cannot open -- seen in round 1 of the loop).
+    return `Tip: if ${tool.name} is refused, open ${site} once`
+      + (loginIsBlocked ? "" : " with the button below") + " — no log-in needed.";
   }
   if (n.kind === "asked") {
-    return `${tool.name} asked for a ${site} account on every link we tried.`;
+    // In the user's words, not the audit's ("on every link we tried"); and
+    // honest: a Vimeo download with a log-in has not been seen yet.
+    return `${site} asks for an account. Logging in may help — Teleloadzai has not seen it work yet.`;
   }
   return `${tool.name} needs you to be logged in to ${site}.` + orFree;
 }
@@ -813,6 +887,10 @@ let waitTimer = null;
 // also says "Ready to download" or an error, and that must never become
 // the name of the job or of the file.
 let currentTitle = "";
+// Settles when the title read ends. Download pressed before that used to go
+// on at once with no title, and the file became "unknown" although the
+// title was seconds away (round 1 of the loop, 2026-09-26).
+let titleReady = Promise.resolve();
 
 /** "Asking YouTube for the title… 4 s" -- a real measure, never an estimate (decision 33). */
 function startWaiting(text) {
@@ -963,7 +1041,14 @@ async function readLink(url, mine) {
   startWaiting(readBy.id === "yt-dlp" ? `Asking ${asking} for the title…`
     : `${readBy.name} is reading the post — this takes about 20 seconds…`);
 
-  const info = await api("/api/probe", { url: found.final_url || url });
+  let titleArrived;
+  titleReady = new Promise((resolve) => { titleArrived = resolve; });
+  let info;
+  try {
+    info = await api("/api/probe", { url: found.final_url || url });
+  } finally {
+    titleArrived();           // Download may go on, title or not
+  }
   if (mine !== readNumber) return;
   stopWaiting();
   $("thumb").classList.remove("waiting");
@@ -1030,8 +1115,8 @@ function errorExplanation(job) {
     // what happened. Calling it the tool's words would be false.
     return otherTool.trim();
   }
-  return `<b>Teleloadzai does not recognise this error.</b> The red line above is exactly `
-    + `what ${job.tool} said. Updating it is the first thing to try.`
+  return `<b>The download failed, and Teleloadzai does not recognise why.</b> `
+    + `${job.tool}'s own words are just below. Updating it is the first thing to try.`
     + otherTool
     + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
 }
@@ -1122,7 +1207,7 @@ function jobRow(job) {
       </span>
     </div>
     <div class="bar"><i style="width:${percent}%"></i></div>
-    <div class="err ${job.error ? "" : "hidden"}"></div>
+    ${job.error && !(job.state === "error" && job.error_from_tool) ? '<div class="err"></div>' : ""}
     ${job.cookie_note && job.state !== "done" ? `<div class="hint warn-text" style="margin-top:6px">
         ⚠️ Running without your cookies: ${job.cookie_note}.
       </div>` : ""}
@@ -1137,13 +1222,20 @@ function jobRow(job) {
       <div class="row" style="margin-top:6px">
         <button class="ghost tiny" data-force="${job.id}">Download again</button>
       </div>` : ""}
-    ${job.state === "error" ? `<div class="row" style="margin-top:8px; flex-wrap:wrap">
+    ${job.state === "error" ? `<div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>
+      ${job.error && job.error_from_tool ? `<details class="more" style="margin-top:4px">
+        <summary class="hint">Show ${job.tool}'s message</summary><div class="err"></div>
+      </details>` : ""}
+      <div class="row" style="margin-top:8px; flex-wrap:wrap">
         ${loginOffer(job) ? `<button class="tiny" data-login="${job.platform}">Log in to ${loginOffer(job)}</button>` : ""}
         ${job.other_tool ? `<button class="ghost tiny" data-switch="${job.id}" data-tool="${job.other_tool.id}">Try with ${job.other_tool.name}</button>` : ""}
         <button class="ghost tiny" data-update="${job.tool}">Update ${job.tool}</button>
-        <button class="ghost tiny" data-retry="${job.id}">Retry</button>
-      </div>
-      <div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>` : ""}`;
+        <button class="${loginOffer(job) ? "ghost " : ""}tiny" data-retry="${job.id}">Retry</button>
+      </div>` : ""}`;
+  // A failure used to open on the tool's raw words in red ("Use --cookies,
+  // --username…"), then four equal grey buttons, and "failed" in small grey
+  // -- the worst moment to be unclear (round 1 of the loop, 2026-09-26). Now:
+  // what happened in plain words, the tool's words folded, one filled button.
 
   // The name the user chose in "Save as"; else, once it exists, the file's
   // real name; else the title -- and when nobody could read one, that is
@@ -1152,10 +1244,20 @@ function jobRow(job) {
   const shown = job.target ? fileName(job.target)
     : (job.files || []).length ? fileName(job.files[0])
     : job.title || "Unknown title";
+  // "Me at the zoo · MP4 720" said no unit, "name.mp4 · MP4" said the format
+  // twice, and a gallery-dl job said "MP4" where the card had said "the
+  // post's original files" (round 1 of the loop, 2026-09-26).
+  const quality = job.quality === "best" ? ""
+    : job.mode === "mp3" ? job.quality + " kbps" : job.quality + "p";
+  const original = { "gallery-dl": "original files", "xhs-downloader": "original files",
+                     "n-m3u8dl-re": "original file" }[job.tool];
+  const kind = /\.[a-z0-9]{2,4}$/i.test(shown) ? ""
+    : job.mode === "mp4" && original ? original : job.mode.toUpperCase();
   row.querySelector(".job-name").textContent =
-    `${shown}  ·  ${job.mode.toUpperCase()} ${job.quality === "best" ? "" : job.quality}`.trim();
+    [shown, [kind, quality].filter(Boolean).join(" ")].filter(Boolean).join("  ·  ");
   row.querySelector(".small").textContent = right;
-  row.querySelector(".err").textContent = job.error || "";
+  const errorText = row.querySelector(".err");
+  if (errorText) errorText.textContent = job.error || "";
   const update = row.querySelector("[data-update]");
   if (update) update.addEventListener("click", async () => {
     update.disabled = true;
@@ -1244,6 +1346,14 @@ async function refresh() {
       row.querySelector(".bar > i").style.width = percent + "%";
       row.querySelector(".small").textContent = right;
     } else {
+      // An end said aloud for a screen reader: the rows themselves are not
+      // announced -- every 0.7 s would drown it (round 1 of the loop).
+      if (row && (job.state === "done" || job.state === "error")) {
+        const name = row.querySelector(".job-name").textContent.split("  ·  ")[0];
+        $("announce").textContent = job.state === "done"
+          ? (job.skipped ? `${name}: nothing was downloaded.` : `${name}: download finished.`)
+          : `${name}: download failed.`;
+      }
       const fresh = jobRow(job);
       if (row) row.replaceWith(fresh);
       jobRows.set(job.id, fresh);
@@ -1461,13 +1571,17 @@ function showView(name) {
   const wrap = document.querySelector(".wrap");
   wrap.dataset.showing = name;
   $("settings-toggle").textContent = name === "settings" ? "Back" : "Settings";
-  $("settings-toggle").setAttribute("aria-expanded", String(name === "settings"));
+  // A whole screen changes, not a panel opening: "pressed", and the keyboard
+  // moves with it -- a screen reader stayed on "Back" and heard nothing of
+  // the new screen (round 1 of the loop, 2026-09-26).
+  $("settings-toggle").setAttribute("aria-pressed", String(name === "settings"));
   if (name === "settings") {
     loadTools();      // versions come from the 24 h cache, so this is instant
     loadCookies();
     loadToolChoices();
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
+  (name === "settings" ? $("set-downloads") : $("url")).focus({ preventScroll: true });
 }
 
 async function loadToolChoices() {
@@ -1505,6 +1619,24 @@ async function loadToolChoices() {
 // Kept as a name because the rest of the page already says it, and a rename
 // is the kind of change that leaves six callers behind (see 2.2).
 const showSettings = (open) => showView(open ? "settings" : "main");
+
+// The three jumps at the top of Settings: scroll, and put the keyboard there
+// -- never a change of address in the app window.
+for (const link of document.querySelectorAll(".settings-nav a")) {
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    const target = document.querySelector(link.getAttribute("href"));
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.focus({ preventScroll: true });
+  });
+}
+
+// Esc leaves Settings, as a window's Back would (round 1 of the loop).
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.querySelector(".wrap").dataset.showing === "settings") {
+    showView("main");
+  }
+});
 
 $("settings-toggle").addEventListener("click", () => {
   showView(document.querySelector(".wrap").dataset.showing === "settings" ? "main" : "settings");
@@ -1567,6 +1699,13 @@ function twoClicks(button, question, action) {
 }
 
 $("go").addEventListener("click", async () => {
+  if (waitTimer) {            // the title is still being read: wait for it
+    $("go").disabled = true;
+    $("go").textContent = "Waiting for the title…";
+    await titleReady;
+    showChosenTool();         // the button's own words and state, as they are now
+    if ($("go").disabled) return;
+  }
   const title = currentTitle;
   let target = "";
 
