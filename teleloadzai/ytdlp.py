@@ -34,10 +34,17 @@ _FILE_TAG = "TLZ_F"
 # from 86% back to 41% with nothing to say why (seen 2026-09-25). Probed the
 # same day: the picture part reports `vcodec=av01 acodec=none`, the sound
 # part `vcodec=none acodec=opus`.
+# The numbers are yt-dlp's RAW ones (bytes, bytes per second, seconds), so
+# every tool's row speaks one unit: its own strings said "MiB". Seen
+# 2026-09-26: a plain download gives the exact total (Bilibili's picture,
+# 15,317,730 bytes); a stream cut in pieces gives only an estimate, "NA" for
+# the total -- 16.6 MB after its first piece, 22.4 MB at the end.
 _PROGRESS_TEMPLATE = (
     f"download:{_PROGRESS_TAG}\t%(progress._percent_str)s"
-    "\t%(progress._speed_str)s\t%(progress._eta_str)s"
+    "\t%(progress.speed)s\t%(progress.eta)s"
     "\t%(info.vcodec)s\t%(info.acodec)s"
+    "\t%(progress.downloaded_bytes)s\t%(progress.total_bytes)s"
+    "\t%(progress.total_bytes_estimate)s"
 )
 
 # The steps after the download, as yt-dlp announces them (both seen
@@ -60,10 +67,34 @@ class DownloadFailed(RuntimeError):
 
 @dataclass(frozen=True)
 class Progress:
-    percent: str      # "  42.1%"
-    speed: str        # "3.20MiB/s"
-    eta: str          # "00:12"
-    part: str = ""    # "picture", "sound", or "" when it cannot be told
+    percent: str            # "  42.1%"
+    speed: float = 0.0      # bytes per second, 0 when unknown
+    eta: int | None = None  # seconds left, None when unknown
+    part: str = ""          # "picture", "sound", or "" when it cannot be told
+    done: int = 0           # bytes of this part so far
+    total: int = 0          # its size, 0 when unknown
+    estimated: bool = False  # the size is yt-dlp's estimate, not the file's
+
+
+def _number(text: str) -> float | None:
+    """yt-dlp's raw value, or None for its "NA"."""
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _progress(parts: list[str]) -> Progress:
+    """One progress line, split on tabs, as numbers."""
+    parts = parts + [""] * (9 - len(parts))
+    speed, eta = _number(parts[2]), _number(parts[3])
+    done, total, guess = _number(parts[6]), _number(parts[7]), _number(parts[8])
+    return Progress(
+        percent=parts[1].strip(), speed=speed or 0.0,
+        eta=int(eta) if eta is not None else None, part=_part(parts[4], parts[5]),
+        done=int(done or 0), total=int(total or guess or 0),
+        estimated=not total and bool(guess),
+    )
 
 
 def _part(vcodec: str, acodec: str) -> str:
@@ -351,11 +382,7 @@ def download(
         line = line.rstrip("\n")
         if line.startswith(_PROGRESS_TAG):
             if on_progress:
-                parts = line.split("\t")
-                while len(parts) < 6:
-                    parts.append("")
-                on_progress(Progress(parts[1].strip(), parts[2].strip(), parts[3].strip(),
-                                     _part(parts[4], parts[5])))
+                on_progress(_progress(line.split("\t")))
         elif line.startswith(_FILE_TAG):
             files.append(Path(line.split("\t", 1)[1].strip()))
         elif line.strip():

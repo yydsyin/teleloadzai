@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -328,7 +329,8 @@ RECIPES: dict[str, Recipe] = {
 
 def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
             on_start: Callable[[subprocess.Popen], None] | None = None,
-            on_step: Callable[[str], None] | None = None) -> RunResult:
+            on_step: Callable[[str], None] | None = None,
+            on_bytes: Callable[[int, int], None] | None = None) -> RunResult:
     """TikTokDownloader: ask its local server where the file is, then fetch it.
 
     It has no command line, so there is no recipe to build. Its Web API hands
@@ -382,18 +384,19 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
         # The video is only a step: its own name, so the user's MP4 of the
         # same post is never overwritten, then deleted (the Kuaishou bug).
         video = request.out_dir / (name + ".teleloadzai-audio.mp4")
-        _fetch(address, video, site, on_progress, cookie)
+        _fetch(address, video, site, on_progress, cookie, on_bytes)
         target = _to_mp3(video, request.out_dir / (name + ".mp3"), request.quality,
                          on_start=on_start, on_step=on_step)
     else:
         target = request.out_dir / (name + ".mp4")
-        _fetch(address, target, site, on_progress, cookie)
+        _fetch(address, target, site, on_progress, cookie, on_bytes)
     return RunResult([target], [f"TikTokDownloader: {data.get('desc', '')[:80]}"])
 
 
 def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
               on_start: Callable[[subprocess.Popen], None] | None = None,
-              on_step: Callable[[str], None] | None = None) -> RunResult:
+              on_step: Callable[[str], None] | None = None,
+              on_bytes: Callable[[int, int], None] | None = None) -> RunResult:
     """KS-Downloader: the same road as TikTokDownloader, on port 5557.
 
     Proven 2026-09-23 on a real video: 2.43 MB, 960x720, 10.0 s, decoded
@@ -433,12 +436,12 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
         # `<name>.mp4` it overwrote -- then deleted -- the user's own MP4 of
         # the same post (seen 2026-09-23: MP4, then MP3, left only the MP3).
         video = request.out_dir / (name + ".teleloadzai-audio.mp4")
-        _fetch(address, video, "kuaishou.com", on_progress)
+        _fetch(address, video, "kuaishou.com", on_progress, on_bytes=on_bytes)
         target = _to_mp3(video, request.out_dir / (name + ".mp3"), request.quality,
                          on_start=on_start, on_step=on_step)
     else:
         target = request.out_dir / (name + ".mp4")
-        _fetch(address, target, "kuaishou.com", on_progress)
+        _fetch(address, target, "kuaishou.com", on_progress, on_bytes=on_bytes)
     return RunResult([target], [f"KS-Downloader: {str(data.get('caption', ''))[:80]}"])
 
 
@@ -593,7 +596,8 @@ def _clean_name(data: dict) -> str:
 
 
 def _fetch(address: str, target: Path, site: str,
-           on_progress: Callable[[int], None] | None, cookie: str = "") -> None:
+           on_progress: Callable[[int], None] | None, cookie: str = "",
+           on_bytes: Callable[[int, int], None] | None = None) -> None:
     """Download a direct link, reporting a real percentage.
 
     What the file servers demand, measured 2026-09-23 on a real TikTok video
@@ -634,6 +638,8 @@ def _fetch(address: str, target: Path, site: str,
                     done += len(block)
                     if on_progress and total:
                         on_progress(min(100, int(done * 100 / total)))
+                    if on_bytes:
+                        on_bytes(done, total)       # the size the site sent
         if partial.stat().st_size == 0:
             raise RunnerError("The download came back empty.")
         partial.replace(target)
@@ -719,6 +725,44 @@ def _snapshot(folder: Path) -> dict[Path, tuple[int, float]]:
     return found
 
 
+def _grown(folder: Path, before: dict[Path, tuple[int, float]],
+           ignore: tuple[str, ...] = ()) -> int:
+    """Bytes of the files that are new or changed since `before`.
+
+    Only the folder itself and the folders that are new are opened: a user's
+    Downloads folder can hold thousands of files, read once a second. A
+    tool's own bookkeeping (`Recipe.ignore`) is not a download: without that,
+    XHS-Downloader's 12 KB database read "12 KB so far" for 84 s while its
+    video was being written elsewhere (seen 2026-09-26).
+    """
+    known = {path.parent for path in before}
+    total = 0
+    waiting = [folder]
+    while waiting:
+        current = waiting.pop()
+        try:
+            entries = list(os.scandir(current))
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                path = Path(entry.path)
+                if entry.is_dir(follow_symlinks=False):
+                    if path not in known:
+                        waiting.append(path)
+                elif entry.is_file(follow_symlinks=False):
+                    # The file itself, not the folder listing: Windows lists a
+                    # file still being written at its old size -- gallery-dl's
+                    # growing video read 0 bytes the whole way (2026-09-26).
+                    info = path.stat()
+                    if (before.get(path) != (info.st_size, info.st_mtime)
+                            and not any(path.match(pattern) for pattern in ignore)):
+                        total += info.st_size
+            except OSError:
+                continue            # a piece removed while we looked
+    return total
+
+
 def _child_environment(module: str) -> dict:
     """UTF-8 forced, and our own package folder when we run a module."""
     env = dict(os.environ)
@@ -736,13 +780,14 @@ def run(
     on_progress: Callable[[int], None] | None = None,
     on_start: Callable[[subprocess.Popen], None] | None = None,
     on_step: Callable[[str], None] | None = None,
+    on_bytes: Callable[[int, int], None] | None = None,
 ) -> RunResult:
     """Run one specialist tool and report what it actually wrote."""
     if tool_id == "tiktokdownloader":
         # No command line exists for this one; it is driven over HTTP.
-        return _tiktok(request, on_progress, on_start, on_step)
+        return _tiktok(request, on_progress, on_start, on_step, on_bytes)
     if tool_id == "ks-downloader":
-        return _kuaishou(request, on_progress, on_start, on_step)
+        return _kuaishou(request, on_progress, on_start, on_step, on_bytes)
 
     recipe = RECIPES.get(tool_id)
     if recipe is None:
@@ -785,6 +830,18 @@ def run(
     if on_start:
         on_start(process)
 
+    # These tools never say a size, but what they write grows in the folder
+    # (seen 2026-09-26: gallery-dl's file 6.5 -> 53.4 MB, streamlink's .ts,
+    # N_m3u8DL-RE's pieces). Measured once a second, never guessed.
+    stop_watching = threading.Event()
+    if on_bytes:
+        def watch() -> None:
+            while not stop_watching.wait(1.0):
+                grown = _grown(request.out_dir, before, recipe.ignore)
+                if grown:                   # nothing yet: "Working…" stays
+                    on_bytes(grown, 0)
+        threading.Thread(target=watch, daemon=True).start()
+
     assert process.stdout is not None
     for line in process.stdout:
         line = line.rstrip("\n")
@@ -806,6 +863,7 @@ def run(
             del tail[:-40]
 
     code = process.wait()
+    stop_watching.set()
 
     # What is new or changed since before the tool ran.
     #

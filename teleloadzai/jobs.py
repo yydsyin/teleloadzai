@@ -102,8 +102,16 @@ class Job:
     platform: str = ""          # which site, so a failure can offer its log-in
     state: str = WAITING
     percent: str = ""
-    speed: str = ""
-    eta: str = ""
+    speed: float = 0.0          # bytes per second, 0 when unknown
+    eta: int | None = None      # seconds left, None when unknown
+    # Bytes so far and the size, so the row can say "12.3 MB / 45.6 MB"
+    # (asked by the user 2026-09-26). `total` 0 = not known -- a live stream,
+    # or a tool that never says: then "12.3 MB so far", never a guessed size.
+    done_bytes: int = 0
+    total_bytes: int = 0
+    estimated: bool = False     # the size is yt-dlp's estimate ("~")
+    # (time, bytes) of the last few seconds, for the specialist tools' speed.
+    samples: list[tuple[float, int]] = field(default_factory=list, repr=False)
     files: list[str] = field(default_factory=list)
     error: str = ""
     error_from_tool: bool = False   # is `error` the tool's own words? (decision 38)
@@ -127,7 +135,8 @@ class Job:
             "tool": self.tool, "force": self.force, "skipped": self.skipped,
             "skip_reason": self.skip_reason,
             "state": self.state, "percent": self.percent, "speed": self.speed,
-            "eta": self.eta, "files": self.files, "error": self.error,
+            "eta": self.eta, "done_bytes": self.done_bytes, "total_bytes": self.total_bytes,
+            "estimated": self.estimated, "files": self.files, "error": self.error,
             # The PATH never leaves this module -- only whether cookies were
             # used, and the reason when they were not.
             # Either road counts. Saying "no cookies" after a job that used
@@ -253,6 +262,8 @@ class Queue:
             with self._lock:
                 job.percent, job.speed, job.eta = progress.percent, progress.speed, progress.eta
                 job.part = progress.part
+                job.done_bytes, job.total_bytes = progress.done, progress.total
+                job.estimated = progress.estimated
 
         def on_step(step: str) -> None:
             with self._lock:
@@ -273,6 +284,22 @@ class Queue:
             """The specialist tools give a bare number, not yt-dlp's three fields."""
             with self._lock:
                 job.percent = f"{percent}%"
+
+        def on_bytes(done: int, total: int) -> None:
+            """Bytes from a specialist tool: our own fetch (with the size the
+            site sent) or what grew in the folder (no size). The speed is
+            measured over the last 5 s; the time left only with a size."""
+            now = time.time()
+            with self._lock:
+                if done < job.done_bytes:
+                    job.samples = []        # pieces joined into one file: restart
+                job.samples = [s for s in job.samples if now - s[0] <= 5] + [(now, done)]
+                first_time, first_done = job.samples[0]
+                job.done_bytes, job.total_bytes = done, total
+                if now - first_time >= 1:
+                    job.speed = max(0.0, (done - first_done) / (now - first_time))
+                if total and job.speed > 0:
+                    job.eta = int((total - done) / job.speed)
 
         cookie_file = Path(job.cookie_file) if job.cookie_file else None
 
@@ -304,6 +331,7 @@ class Queue:
                         cookie_header=job.cookie_header,
                     ),
                     on_progress=on_percent, on_start=on_start, on_step=on_step,
+                    on_bytes=on_bytes,
                 )
 
             with self._lock:
