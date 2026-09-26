@@ -126,6 +126,13 @@ _SESSION_COOKIES = {
     # `kuaishou.web.api_st` on .kuaishou.com. Neither was among the 9
     # cookies of a visit without an account, recorded the same afternoon.
     "kuaishou": ("userId", "kuaishou.web.api_st"),
+    # 2026-09-26, the user's own QR log-in, cookie NAMES recorded every 2 s:
+    # 33 cookies from the visit and the QR pop-up, then at the log-in 18 at
+    # once, `sessionid` and `sid_tt` among them -- neither existed before.
+    # Douyin's QR sits on its front page, so without these the window never
+    # closed by itself (the user had to close it, and the log-in had in fact
+    # not finished: his file held no `sessionid`).
+    "douyin": ("sessionid", "sid_tt"),
 }
 
 # Each site's "badge": the cookie it hands only to a logged-in user. The
@@ -144,6 +151,7 @@ _BADGES = {
     "twitch": ("auth-token",),                    # twitch.py, gql_auth
     "niconico": ("user_session",),                # niconico.py, is_logged_in
     "kuaishou": _SESSION_COOKIES["kuaishou"],     # seen on the user's log-in
+    "douyin": _SESSION_COOKIES["douyin"],         # seen on the user's log-in
 }
 
 _lock = threading.Lock()        # one login window at a time, never two
