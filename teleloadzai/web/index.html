@@ -712,8 +712,11 @@ function applyChoices(tool) {
   const can = (tool && tool.choices) || { mp3: "kbps", mp4: "height" };
   const mp3 = document.querySelector('.choice[data-mode="mp3"]');
   const mp4 = document.querySelector('.choice[data-mode="mp4"]');
-  mp3.classList.toggle("hidden", !("mp3" in can));
-  const only = !("mp3" in can);
+  // MP3 shows when ANY tool of this site makes one: pressing it picks that
+  // tool (the user's decision, 2026-09-26). On Weibo it existed only after
+  // clicking a program called "yt-dlp", and nothing said so.
+  const only = !("mp3" in can) && !mp3Maker();
+  mp3.classList.toggle("hidden", only);
   mp4.classList.toggle("only", only);
   mp4.textContent = only && can.label ? `You get: ${can.label.toLowerCase()}`
     : can.label || "MP4";
@@ -723,7 +726,7 @@ function applyChoices(tool) {
     mp4.setAttribute("aria-pressed", "true");
     fillQualities();
   }
-  const hasQuality = Boolean(can[mode]);
+  const hasQuality = Boolean(can[mode]) && $("quality").dataset.single !== "true";
   // An MP3 is made from the site's own sound: asking more gives a bigger
   // file, never better sound.
   $("quality").title = mode === "mp3"
@@ -794,9 +797,10 @@ function showChosenTool() {
   // What the chosen tool gives, in words anyone sees -- it lived only in a
   // hover tooltip, which touch and keyboard never reach (loop round 2).
   const why = several && chosen ? `${chosen.name}: ${chosen.why}.` : "";
-  const mp3Elsewhere = chosen && !("mp3" in (chosen.choices || {}))
-    ? currentTools.find((t) => t.id !== chosen.id && "mp3" in (t.choices || {})) : null;
-  $("tool-why").textContent = why + (mp3Elsewhere ? ` Need an MP3? Choose ${mp3Elsewhere.name} above.` : "");
+  // Said when the MP3 button changed the tool, so the switch never moves
+  // silently; MP4 gives the user's tool back.
+  const from = formatFrom && currentTools.find((t) => t.id === formatFrom);
+  $("tool-why").textContent = why + (from ? ` Chosen for the MP3 — ${from.name} makes none.` : "");
   $("tool-why").classList.toggle("hidden", !$("tool-why").textContent);
   // Started on another tool because the usual one needs a log-in: say which,
   // and why, with the log-in button -- one click puts the usual one back.
@@ -866,11 +870,21 @@ function qualityLabel(value) {
   return mode === "mp3" ? value + " kbps" : value + "p";
 }
 
+// The tallest picture this video has (from the title read), or 0 when not
+// known. The MP4 list offers nothing above it (the user's decision,
+// 2026-09-26: "Me at the zoo", 240p at most, was offered 1080p). The MP3
+// list stays whole: those are our own FFmpeg settings, all really applied.
+let maxHeight = 0;
+
 function fillQualities() {
-  const list = qualityLists[mode] || ["best"];
+  let list = qualityLists[mode] || ["best"];
+  if (mode === "mp4" && maxHeight) list = list.filter((v) => v === "best" || Number(v) <= maxHeight);
   $("quality").innerHTML = list
-    .map((v) => `<option value="${v}">${qualityLabel(v)}</option>`)
+    .map((v) => `<option value="${v}">${v === "best" && mode === "mp4" && maxHeight
+      ? `Best (${maxHeight}p)` : qualityLabel(v)}</option>`)
     .join("");
+  // Only "Best" left: a list with one choice is not a choice.
+  $("quality").dataset.single = String(list.length < 2);
 }
 
 function formatTime(seconds) {
@@ -881,14 +895,33 @@ function formatTime(seconds) {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
 }
 
+// The tool the FORMAT chose, and the one it replaced ("" when none): MP4
+// gives the user's tool back.
+let formatFrom = "";
+
+/** The first tool of this site that makes an MP3, or undefined. */
+function mp3Maker() {
+  return currentTools.find((t) => "mp3" in (t.choices || {}));
+}
+
 for (const button of document.querySelectorAll(".choice")) {
   button.addEventListener("click", () => {
     mode = button.dataset.mode;
     for (const other of document.querySelectorAll(".choice")) {
       other.setAttribute("aria-pressed", String(other === button));
     }
+    const chosen = chosenTool();
+    if (mode === "mp3" && chosen && !("mp3" in (chosen.choices || {})) && mp3Maker()) {
+      formatFrom = chosen.id;             // gallery-dl makes no MP3: yt-dlp does
+      pickedTool = mp3Maker().id;
+      userPicked = true;
+      autoPicked = null;
+    } else if (mode === "mp4" && formatFrom) {
+      pickedTool = formatFrom;            // back to the tool the user had
+      formatFrom = "";
+    }
     fillQualities();
-    applyChoices(chosenTool());     // MP3 and MP4 may differ in having a quality
+    showChosenTool();                     // the switch, the needs, the choices
   });
 }
 
@@ -994,6 +1027,7 @@ async function readLink(url, mine) {
   // Each new link starts on the default; the switch changes this download
   // only, and Settings changes the default (the user, 2026-09-25).
   userPicked = false;
+  formatFrom = "";
   $("tool-pick").innerHTML = "";
   for (const tool of currentTools) {
     const button = document.createElement("button");
@@ -1005,6 +1039,7 @@ async function readLink(url, mine) {
       pickedTool = tool.id;
       userPicked = true;
       autoPicked = null;
+      formatFrom = "";        // a tool chosen by hand stands
       showChosenTool();
     });
     $("tool-pick").appendChild(button);
@@ -1024,6 +1059,8 @@ async function readLink(url, mine) {
   // second -- instead of after the 6 to 14 s it takes to read the title.
   probeProblem = false;
   probeReason = "";
+  maxHeight = 0;              // not known for this link yet: the whole list
+  fillQualities();
   $("probe-words").classList.add("hidden");
   currentTitle = "";
   $("thumb").removeAttribute("src");
@@ -1089,6 +1126,9 @@ async function readLink(url, mine) {
   } else {
     $("title").textContent = info.title;
     currentTitle = info.title || "";
+    maxHeight = info.max_height || 0;
+    fillQualities();
+    applyChoices(chosenTool());
     const bits = [];
     if (info.uploader) bits.push(info.uploader);
     if (info.duration) bits.push(formatTime(info.duration));

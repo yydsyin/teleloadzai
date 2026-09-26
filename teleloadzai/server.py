@@ -537,7 +537,7 @@ class Handler(BaseHTTPRequestHandler):
                 "title": info.title, "uploader": info.uploader,
                 "duration": info.duration, "thumbnail": info.thumbnail,
                 "extractor": info.extractor, "is_playlist": info.is_playlist,
-                "entries": info.entries,
+                "entries": info.entries, "max_height": info.max_height,
             })
             return
 

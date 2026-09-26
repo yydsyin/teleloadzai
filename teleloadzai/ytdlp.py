@@ -124,6 +124,10 @@ class MediaInfo:
     webpage_url: str
     is_playlist: bool
     entries: int               # 1 for a single video
+    # The tallest picture the site offers, or None. The Quality list shows
+    # nothing above it: "Me at the zoo" (240p at most) was offered 1080p
+    # (the user's decision, 2026-09-26: a list from each video's real sizes).
+    max_height: int | None = None
 
 
 @dataclass(frozen=True)
@@ -218,6 +222,10 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
     data = json.loads(finished.stdout)
     entries = data.get("entries")
     is_playlist = isinstance(entries, list)
+    # Heights of the formats that carry a picture (seen 2026-09-26: YouTube
+    # "Me at the zoo" 144/240, TikTok 576/720, Bilibili up to 1080).
+    heights = [f.get("height") for f in data.get("formats") or []
+               if isinstance(f.get("height"), int) and f.get("vcodec") != "none"]
 
     return MediaInfo(
         title=data.get("title") or "(no title)",
@@ -228,6 +236,7 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
         webpage_url=data.get("webpage_url") or url,
         is_playlist=is_playlist,
         entries=len(entries) if is_playlist else 1,
+        max_height=max(heights) if heights else None,
     )
 
 
