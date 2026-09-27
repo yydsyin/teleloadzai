@@ -94,6 +94,21 @@ KNOWN: tuple[Known, ...] = (
               "post has not been tested."),
     ),
     Known(
+        words=("there is no video in this post",),
+        tools=("yt-dlp",),
+        title="yt-dlp found no video in this post: it downloads videos only.",
+        # Updating does not change it: yt-dlp builds nothing for a photo.
+        retry=False,
+        next_step=("If the post holds photos, gallery-dl can save them — it "
+                   "needs you to be logged in to Instagram. Not tested yet "
+                   "on such a post."),
+        seen=("2026-09-27, no cookies: instagram.com/p/DDhF_64RGd9 and "
+              "/p/DGDRzmvALJW (named in gallery-dl issue 6688 and yt-dlp "
+              "issue 12439) -- 'There is no video in this post'. The card offered "
+              "a filled 'Update yt-dlp' under it. What the posts hold was "
+              "not seen; gallery-dl was not tried (it needs a log-in)."),
+    ),
+    Known(
         words=("http error 403",),
         tools=("yt-dlp",),
         title="The site refused the download.",
