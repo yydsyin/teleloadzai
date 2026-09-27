@@ -842,15 +842,20 @@ function showChosenTool() {
   // and why, with the log-in button -- one click puts the usual one back.
   const stepped = autoPicked && chosen && chosen.id !== autoPicked.id ? autoPicked : null;
   const need = stepped ? steppedText(chosen, stepped) : needText(chosen);
-  $("tool-need-text").textContent = need;
-  $("tool-need").classList.toggle("hidden", !need);
   // The log-in, right where it is asked for (the user, 2026-09-26) -- not
-  // "go to Settings → Accounts". Hidden when a log-in would not help: the
-  // user IS logged in and only the cookie switch is off.
+  // "go to Settings → Accounts". Not offered when a log-in would not help:
+  // the user IS logged in and only the cookie switch is off.
   const n = (stepped || chosen) && (stepped || chosen).need;
+  const wouldHelp = Boolean(need && n && !(n.logged_in && !n.cookies_on));
   // Never offered when the log-in window cannot open here at all (the
-  // failed-job button already checked this through loginOffer).
-  const helps = Boolean(need && n && !(n.logged_in && !n.cookies_on) && !loginIsBlocked);
+  // failed-job button already checked this through loginOffer) -- but SAID:
+  // in a browser tab the button vanished without a word, and the user took
+  // Vimeo's card for broken (2026-09-27).
+  const helps = wouldHelp && !loginIsBlocked;
+  const where = " works only in the Teleloadzai window, not in a browser tab.";
+  $("tool-need-text").textContent = need + (wouldHelp && loginIsBlocked
+    ? " " + (n.kind === "visit" ? `Opening ${currentPlatform}` : "Logging in") + where : "");
+  $("tool-need").classList.toggle("hidden", !need);
   $("tool-need-login").classList.toggle("hidden", !helps);
   // Pink only when the tool in use WILL be refused. A tip -- the tool was
   // swapped for one that works, or a "visit" that may never be needed --
