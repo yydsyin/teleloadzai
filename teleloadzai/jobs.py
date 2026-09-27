@@ -228,6 +228,18 @@ class Queue:
     # read. Copying the failed attempt's choice made a Retry after a log-in
     # run without the log-in (found 2026-09-23).
 
+    def remove(self, job_id: str) -> bool:
+        """Take ONE finished row off the list. A failed row whose link is the
+        problem ("This video is private") had no button at all, and "Clear
+        finished" took every other row with it (review of 2026-09-27)."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job.state in ACTIVE_STATES:
+                return False
+            del self._jobs[job_id]
+            self._order.remove(job_id)
+            return True
+
     def clear_finished(self) -> int:
         with self._lock:
             finished = [i for i in self._order if self._jobs[i].state not in ACTIVE_STATES]

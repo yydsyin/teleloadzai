@@ -754,8 +754,14 @@ function applyChoices(tool) {
   const only = !("mp3" in can) && !mp3Maker();
   mp3.classList.toggle("hidden", only);
   mp4.classList.toggle("only", only);
-  mp4.textContent = only && can.label ? `You get: ${can.label.toLowerCase()}`
-    : can.label || "MP4";
+  // While the MP3 borrowed another tool, this button gives the user's tool
+  // back, so it keeps THAT tool's name: on Weibo "Original files" became
+  // "MP4" after MP3 was pressed, and pressing "MP4" brought back "Original
+  // files" (review of 2026-09-27).
+  const back = formatFrom && currentTools.find((t) => t.id === formatFrom);
+  const label = back ? (back.choices || {}).label : can.label;
+  mp4.textContent = only && label ? `You get: ${label.toLowerCase()}`
+    : label || "MP4";
   if (!(mode in can)) {                 // MP3 was chosen, this tool makes none
     mode = "mp4";
     mp3.setAttribute("aria-pressed", "false");
@@ -832,11 +838,13 @@ function showChosenTool() {
   applyChoices(chosen);
   // What the chosen tool gives, in words anyone sees -- it lived only in a
   // hover tooltip, which touch and keyboard never reach (loop round 2).
-  const why = several && chosen ? `${chosen.name}: ${chosen.why}.` : "";
+  // Not for an MP3: every reason is about the picture ("higher quality",
+  // "smaller file", "video only"), and an MP3 has none (review of 2026-09-27).
+  const why = several && chosen && mode !== "mp3" ? `${chosen.name}: ${chosen.why}.` : "";
   // Said when the MP3 button changed the tool, so the switch never moves
   // silently; MP4 gives the user's tool back.
   const from = formatFrom && currentTools.find((t) => t.id === formatFrom);
-  $("tool-why").textContent = why + (from ? ` Chosen for the MP3 — ${from.name} makes none.` : "");
+  $("tool-why").textContent = (why + (from ? ` Chosen for the MP3 — ${from.name} makes none.` : "")).trim();
   $("tool-why").classList.toggle("hidden", !$("tool-why").textContent);
   // Started on another tool because the usual one needs a log-in: say which,
   // and why, with the log-in button -- one click puts the usual one back.
@@ -1239,10 +1247,11 @@ function errorExplanation(job) {
     // what happened. Calling it the tool's words would be false.
     return other.trim();
   }
+  // Two sentences: the buttons carry the rest (Update is always one of
+  // them), and the fold right below is seen without a sentence pointing at
+  // it -- the row was four sentences, 180-200 px tall (review of 2026-09-27).
   return `<b>The download failed, and Teleloadzai does not recognise why.</b>`
     + (other || ` Updating ${job.tool} is the first thing to try.`)
-    + (other ? ` Updating ${job.tool} may help too.` : "")
-    + ` Its own words are under "Show ${job.tool}'s message".`
     + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
 }
 
@@ -1271,6 +1280,9 @@ function failButtons(job) {
     job.other_tool && `<button class="${cls("switch")}" data-switch="${job.id}" data-tool="${job.other_tool.id}">Try with ${job.other_tool.name}</button>`,
     !hopeless && `<button class="${cls("update")}" data-update="${job.tool}">Update ${job.tool}</button>`,
     !hopeless && `<button class="${cls("retry")}" data-retry="${job.id}">Retry</button>`,
+    // Nothing to retry: the row still gets a way out of the list, without
+    // "Clear finished" taking every other row with it (review of 2026-09-27).
+    hopeless && `<button class="ghost tiny" data-dismiss="${job.id}">Remove</button>`,
   ].filter(Boolean).join("\n");
 }
 
@@ -1456,6 +1468,12 @@ function jobRow(job) {
   const retry = row.querySelector("[data-retry]");
   if (retry) retry.addEventListener("click", async () => {
     await api("/api/job/" + retry.dataset.retry + "/retry", {});
+    refresh();
+  });
+
+  const dismiss = row.querySelector("[data-dismiss]");
+  if (dismiss) dismiss.addEventListener("click", async () => {
+    await api("/api/job/" + dismiss.dataset.dismiss + "/remove", {});
     refresh();
   });
 

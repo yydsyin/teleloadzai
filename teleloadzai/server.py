@@ -626,6 +626,11 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"cancelled": QUEUE.cancel(job_id)})
             return
 
+        if path.startswith("/api/job/") and path.endswith("/remove"):
+            job_id = path[len("/api/job/"):-len("/remove")]
+            self._json({"removed": QUEUE.remove(job_id)})
+            return
+
         if path.startswith("/api/job/") and path.endswith(("/open", "/reveal")):
             # Only a file this job itself saved -- never a path the page
             # sends, or any web page could make us open anything.
