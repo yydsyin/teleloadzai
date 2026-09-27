@@ -701,7 +701,10 @@ function updateGoLabel() {
   // (critique, 2026-09-25). The "…" is kept only when a Windows "Save as"
   // window will open first.
   $("go").textContent = doubtful ? "Try anyway" : askWhere ? "Download…" : "Download";
-  const updateFirst = doubtful && !probeKnown;
+  // Not when the reader is already the newest version: the same answer
+  // would come back (upToDate) -- said instead, below.
+  const newest = doubtful && !probeKnown && upToDate(reader.id);
+  const updateFirst = doubtful && !probeKnown && !newest;
   $("probe-update").classList.toggle("hidden", !updateFirst);
   $("probe-update").textContent = `Update ${reader.name}`;
   $("probe-update").dataset.tool = reader.id;
@@ -720,6 +723,7 @@ function updateGoLabel() {
     // keeps only what it adds -- the file name (loop round 2: Vimeo said it twice).
     const reason = $("tool-need").classList.contains("warn") ? "" : probeReason.trim();
     $("meta").textContent = (reason ? reason + (/[.!?]$/.test(reason) ? " " : ". ") : "")
+      + (newest ? `${reader.name} is already the newest version, so updating will not help. ` : "")
       + unknownNameText(chosen);
   }
 }
@@ -1224,6 +1228,18 @@ async function readLink(url, mine) {
 let loginablePlatforms = {};
 let loginIsBlocked = "";
 
+/**
+ * The tool is known to be the newest version: then "Update" cannot change
+ * the answer, and is not offered. TED's crash offered a filled "Update
+ * yt-dlp" to a yt-dlp already up to date, again after every press (review of
+ * 2026-09-27). Unknown -- GitHub not reached, a version with no number
+ * (decision 30), the list not loaded yet -- keeps Update offered (decision 8).
+ */
+function upToDate(id) {
+  const tool = (toolsData.tools || []).find((t) => t.id === id);
+  return Boolean(tool && tool.installed && tool.version && tool.latest && !tool.update_available);
+}
+
 function loginOffer(job) {
   if (loginIsBlocked || !job.platform) return "";
   return loginablePlatforms[job.platform] || "";
@@ -1237,7 +1253,8 @@ function loginOffer(job) {
 // was a number nobody had measured.
 function errorExplanation(job) {
   const ex = job.explain || {};
-  if (ex.known) return `<b>${ex.title}</b> ${ex.next_step}`;
+  const newest = upToDate(job.tool) ? ` ${job.tool} is already the newest version.` : "";
+  if (ex.known) return `<b>${ex.title}</b> ${ex.next_step}` + (ex.action === "update" ? newest : "");
   if (job.needs_login) {
     return `<b>${job.tool} says you need to be logged in for this one.</b> Log in, then press Retry.`;
   }
@@ -1255,7 +1272,8 @@ function errorExplanation(job) {
   // them), and the fold right below is seen without a sentence pointing at
   // it -- the row was four sentences, 180-200 px tall (review of 2026-09-27).
   return `<b>The download failed, and Teleloadzai does not recognise why.</b>`
-    + (other || ` Updating ${job.tool} is the first thing to try.`)
+    + (other || (newest ? newest + " Updating will not help."
+      : ` Updating ${job.tool} is the first thing to try.`))
     + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
 }
 
@@ -1275,14 +1293,16 @@ function failButtons(job) {
   // on every failure, it topped a region-blocked video too (loop round 2).
   // A known error names its own button (explain.py `action`): a 403 said
   // "Update it first" above a filled Retry (review of 2026-09-27).
+  // No Update for a tool already the newest (upToDate).
+  const canUpdate = !hopeless && !upToDate(job.tool);
   const primary = (job.needs_login || ex.action === "login") && loginOffer(job) ? "login"
-    : ex.action === "update" ? "update" : job.other_tool ? "switch"
-    : !ex.known && job.error_from_tool ? "update" : hopeless ? "" : "retry";
+    : ex.action === "update" && canUpdate ? "update" : job.other_tool ? "switch"
+    : !ex.known && job.error_from_tool && canUpdate ? "update" : hopeless ? "" : "retry";
   const cls = (name) => (primary === name ? "" : "ghost ") + "tiny";
   return [
     loginOffer(job) && `<button class="${cls("login")}" data-login="${job.platform}">Log in to ${loginOffer(job)}</button>`,
     job.other_tool && `<button class="${cls("switch")}" data-switch="${job.id}" data-tool="${job.other_tool.id}">Try with ${job.other_tool.name}</button>`,
-    !hopeless && `<button class="${cls("update")}" data-update="${job.tool}">Update ${job.tool}</button>`,
+    canUpdate && `<button class="${cls("update")}" data-update="${job.tool}">Update ${job.tool}</button>`,
     !hopeless && `<button class="${cls("retry")}" data-retry="${job.id}">Retry</button>`,
     // Nothing to retry: the row still gets a way out of the list, without
     // "Clear finished" taking every other row with it (review of 2026-09-27).
@@ -1666,6 +1686,7 @@ async function loadTools(refresh) {
   toolsData = { ...toolsData, ...data };
   if (!data.progress) toolsData.progress = (await api("/api/tools/progress")).progress;
   renderTools();
+  updateGoLabel();          // the card's Update follows the versions (upToDate)
   const busy = Object.values(toolsData.progress || {}).some((p) => p.state === "running");
   if (busy && !toolsPolling) { toolsPolling = true; setTimeout(pollTools, 800); }
 }
@@ -2292,6 +2313,9 @@ async function forgetCookies() {
   // before the user has ever been in there, and the failure must already know
   // which log-in to offer.
   loadCookies();
+  // The same for the versions: a failure offers "Update" only when a newer
+  // one exists (upToDate). GitHub is asked at most once a day (decision 18).
+  loadTools();
   $("ask-where").checked = askWhere;
   updateGoLabel();
 
