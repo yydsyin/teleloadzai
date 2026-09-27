@@ -1207,7 +1207,11 @@ async function readLink(url, mine) {
     const bits = [];
     if (info.uploader) bits.push(info.uploader);
     if (info.duration) bits.push(formatTime(info.duration));
-    if (info.is_playlist) bits.push(info.entries + " items (only the first one for now)");
+    // "only the first one" was false: yt-dlp downloads a post's items all
+    // (Instagram ignores --no-playlist), now each under its own number
+    // (seen 2026-09-27). The title read uses the download's own rule, so
+    // "N items" is what the download gets.
+    if (info.is_playlist) bits.push(`${info.entries} items — you get all ${info.entries}`);
     $("meta").textContent = bits.join(" · ");
     if (info.thumbnail) { $("thumb").src = info.thumbnail; $("thumb").classList.remove("hidden"); }
     else { $("thumb").classList.add("hidden"); }
@@ -1401,7 +1405,11 @@ function jobRow(job) {
   // real name; else the title -- and when nobody could read one, that is
   // said, not the raw link (the user, 2026-09-26).
   const fileName = (path) => path.split("\\").pop();
-  const shown = job.target ? fileName(job.target)
+  // Several files (a post's items, numbered): the chosen name exists on no
+  // disk -- "Post.mp4" was shown for "Post 1.mp4", "Post 2.mp4"… (2026-09-27).
+  const files = job.files || [];
+  const shown = files.length > 1 ? `${fileName(files[0])} and ${files.length - 1} more`
+    : job.target ? fileName(job.target)
     : (job.files || []).length ? fileName(job.files[0])
     : job.title || "Unknown title";
   // "Me at the zoo · MP4 720" said no unit, "name.mp4 · MP4" said the format

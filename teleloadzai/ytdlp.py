@@ -11,6 +11,7 @@ functions raise ``ToolMissing`` and the caller decides what to tell the user.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -207,6 +208,11 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
         str(tool),
         "--dump-single-json",
         "--flat-playlist",       # do not open every video of a playlist
+        # The same as the download, so "N items" means what the download
+        # gets: a YouTube video opened from a list is one video, while an
+        # Instagram post with 3 videos stays 3 -- yt-dlp ignores this there
+        # and downloads all 3 (seen 2026-09-27, "Downloading 3 items of 3").
+        "--no-playlist",
         # yt-dlp writes in the code page Windows gives old programs. On this
         # PC that is GBK (Chinese) while Windows itself speaks French, so a
         # French error came through as "n¡¯a pu ¨ºtre"
@@ -274,11 +280,20 @@ def _output_arguments(
     Its extension is dropped and left to yt-dlp, so extracting audio cannot
     produce ``name.mp3.mp3``.
     """
+    # A post of several items (an Instagram post of 3 videos) is downloaded
+    # whole, even with --no-playlist: each item gets its number, " 1", " 2"…,
+    # and a single video none. Without it the 3 videos shared ONE name: with
+    # "Save as" each overwrote the last (the user got video 3), without it
+    # videos 2 and 3 were skipped as already there (he got video 1) -- and
+    # the row said "done" (seen 2026-09-27).
+    number = "%(playlist_index& {}|)s"
     if out_path is not None:
-        target = str(out_path.with_suffix("")) + ".%(ext)s"
+        # The user's name is text, not a template: a "%" in it is doubled.
+        target = str(out_path.with_suffix("")).replace("%", "%%") + number + ".%(ext)s"
         tidy: list[str] = []
     else:
-        target = str(out_dir / "%(title)s.%(ext)s")
+        folder = str(out_dir).replace("%", "%%")
+        target = str(Path(folder) / f"%(title)s{number}.%(ext)s")
         # yt-dlp names the file from the title: "… VIDEO.mp4" came out
         # "… VIDEO.mp4.mp4". Its own option drops that ending first.
         tidy = ["--replace-in-metadata", "title", MEDIA_ENDING, ""]
@@ -333,6 +348,26 @@ def _output_arguments(
     raise ValueError(f"unknown mode: {mode!r}")
 
 
+def _only_chosen_name(out_path: Path | None) -> bool:
+    """May this run replace files? Only the one Windows asked about.
+
+    "Save as" asked about "name.mp4"; the items of a post are written as
+    "name 1.mp4", "name 2.mp4"…, which nobody asked about. yt-dlp's
+    --force-overwrites is all or nothing, so it is given only when no such
+    numbered file is there: then it can only ever replace the chosen one.
+    Otherwise nothing is replaced and the row says "already there", with
+    "Download again" (decision 24).
+    """
+    if out_path is None:
+        return False
+    stem = out_path.with_suffix("").name
+    numbered = re.compile(re.escape(stem) + r" \d+\.[^.]+", re.IGNORECASE)
+    try:
+        return not any(numbered.fullmatch(p.name) for p in out_path.parent.iterdir())
+    except OSError:
+        return True             # no folder yet: nothing there to replace
+
+
 def download(
     url: str,
     mode: str,
@@ -380,7 +415,7 @@ def download(
         # file still reported either way.
         "--no-quiet",
         *(["--yes-playlist"] if playlist else ["--no-playlist"]),
-        *(["--force-overwrites"] if (out_path is not None or force) else []),
+        *(["--force-overwrites"] if (force or _only_chosen_name(out_path)) else []),
         *_cookie_arguments(cookie_file),
         *_ffmpeg_arguments(),
         *_output_arguments(mode, out_dir, quality, out_path),
