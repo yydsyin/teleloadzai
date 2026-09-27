@@ -128,6 +128,9 @@ class MediaInfo:
     # nothing above it: "Me at the zoo" (240p at most) was offered 1080p
     # (the user's decision, 2026-09-26: a list from each video's real sizes).
     max_height: int | None = None
+    # Every picture height the site really has, up to max_height. A smaller
+    # choice is offered only if it exists: TikTok's "480p" gave 576p.
+    heights: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -212,6 +215,9 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
         "--encoding", "utf-8",
         "--no-warnings",
         "--no-colors",
+        # The download's own MP4 rule: the answer's "height" is then what
+        # "Best" will really give (see _MP4_BEST).
+        "-f", _MP4_BEST,
         *_cookie_arguments(cookie_file),
         url,
     ]
@@ -224,8 +230,11 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
     is_playlist = isinstance(entries, list)
     # Heights of the formats that carry a picture (seen 2026-09-26: YouTube
     # "Me at the zoo" 144/240, TikTok 576/720, Bilibili up to 1080).
-    heights = [f.get("height") for f in data.get("formats") or []
-               if isinstance(f.get("height"), int) and f.get("vcodec") != "none"]
+    heights = sorted({f.get("height") for f in data.get("formats") or []
+                      if isinstance(f.get("height"), int) and f.get("vcodec") != "none"})
+    # What "Best" delivers: the height of the format the rule picked. Not the
+    # tallest listed -- TikTok lists 720p, the rule gives 576p.
+    picked = data.get("height") if isinstance(data.get("height"), int) else None
 
     return MediaInfo(
         title=data.get("title") or "(no title)",
@@ -236,13 +245,24 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
         webpage_url=data.get("webpage_url") or url,
         is_playlist=is_playlist,
         entries=len(entries) if is_playlist else 1,
-        max_height=max(heights) if heights else None,
+        max_height=picked,
+        heights=tuple(h for h in heights if picked is None or h <= picked),
     )
 
 
 # What the quality dropdown offers. "best" is always first and is the default.
 AUDIO_QUALITIES = ("best", "320", "192", "128")     # kbps
 VIDEO_QUALITIES = ("best", "1080", "720", "480", "360")   # max height
+
+
+# The MP4 rule for "Best" -- shared by the download AND the title read, so
+# the Quality list names what the download will really pick. They differed:
+# TikTok lists a 720p version, this rule (a real .mp4 first) picks 576p, and
+# the list said "Best (720p)" over a 1024x576 file; "480p" gave the same
+# 576p file (both measured 2026-09-27, ffprobe, 18,277,961 bytes).
+_REAL = "[ext!=jpg][ext!=png][ext!=webp][ext!=mhtml]"
+_MP4_BEST = (f"bestvideo[ext=mp4]{_REAL}+bestaudio[ext=m4a]/bestvideo{_REAL}+bestaudio/"
+             f"best[ext=mp4]{_REAL}/best{_REAL}")
 
 
 def _output_arguments(
@@ -288,8 +308,7 @@ def _output_arguments(
         # .mp4 now comes first, at the closest height; another format only
         # when the site has no .mp4 at all.
         if quality == "best":
-            selector = (f"bestvideo[ext=mp4]{real}+bestaudio[ext=m4a]/bestvideo{real}+bestaudio/"
-                        f"best[ext=mp4]{real}/best{real}")
+            selector = _MP4_BEST
             sort = []
         else:
             # The best not taller than the chosen height; when there is none,

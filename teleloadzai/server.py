@@ -463,6 +463,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"sites": tool_choices()})
                 return
 
+            if path == "/api/sites":
+                # The empty main screen said nothing about which sites work
+                # (review of 2026-09-27). Counted from the table, never
+                # written by hand.
+                self._json({"sites": [p.name for p in PLATFORMS
+                                      if p.is_supported and p.domains]})
+                return
+
             if path == "/api/qualities":
                 self._json({
                     "mp3": list(ytdlp.AUDIO_QUALITIES),
@@ -538,6 +546,7 @@ class Handler(BaseHTTPRequestHandler):
                 "duration": info.duration, "thumbnail": info.thumbnail,
                 "extractor": info.extractor, "is_playlist": info.is_playlist,
                 "entries": info.entries, "max_height": info.max_height,
+                "heights": list(info.heights),
             })
             return
 

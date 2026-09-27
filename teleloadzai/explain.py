@@ -34,6 +34,10 @@ class Known:
     # -- it showed a filled Retry under "check the link" (loop round 2,
     # 2026-09-26).
     retry: bool = True
+    # The button the words point to, filled on the failed row: "update",
+    # "login", or "" (then Retry). A 403 said "Update it first" above a
+    # filled Retry (review of 2026-09-27).
+    action: str = ""
 
 
 KNOWN: tuple[Known, ...] = (
@@ -54,9 +58,9 @@ KNOWN: tuple[Known, ...] = (
         words=("only works when logged-in",),
         tools=("yt-dlp",),
         title="Vimeo shows this video only to a logged-in account.",
-        next_step=("Log in to Vimeo in Settings → Accounts, then try again. "
-                   "Teleloadzai has not yet seen a Vimeo download work with "
-                   "a log-in, so this is advice, not a promise."),
+        next_step=("Log in to Vimeo, then try again. A download with a "
+                   "log-in has not been tested yet."),
+        action="login",
         seen=("2026-09-26: vimeo.com/56015672 and vimeo.com/68375962, no "
               "cookies -- yt-dlp: 'The web client only works when "
               "logged-in'. It then listed its own command-line options "
@@ -78,6 +82,7 @@ KNOWN: tuple[Known, ...] = (
         words=("for the authentication",),
         tools=("yt-dlp",),
         title="Instagram gave nothing for this post without a log-in.",
+        action="login",
         next_step=("It may be private, or it may not exist: we have seen "
                    "this answer for a post that does not exist. If you can "
                    "see it in your browser while logged in, log in to "
@@ -92,8 +97,9 @@ KNOWN: tuple[Known, ...] = (
         words=("http error 403",),
         tools=("yt-dlp",),
         title="The site refused the download.",
-        next_step=("The one time this happened here, yt-dlp was six weeks "
-                   "old and updating it fixed it. Update it first."),
+        next_step=("Update yt-dlp, then try again: the one time this was "
+                   "seen, that fixed it."),
+        action="update",
         seen=("2026-09-20: HTTP 403 with a six-week-old yt-dlp; after "
               "updating to 2026.08.19 the same link downloaded."),
     ),
@@ -154,6 +160,7 @@ KNOWN: tuple[Known, ...] = (
         words=("http redirect to login page",),
         tools=("gallery-dl",),
         title="Instagram sent gallery-dl to its log-in page.",
+        action="login",
         next_step=("The post may be private, or it may not exist: we have "
                    "seen this answer for a post that does not exist. If you "
                    "can see it while logged in, log in to Instagram here, "
@@ -273,5 +280,6 @@ def explain(error: str, tool: str) -> dict:
     for entry in KNOWN:
         if tool in entry.tools and all(w in low for w in entry.words):
             return {"known": True, "title": entry.title,
-                    "next_step": entry.next_step, "retry": entry.retry}
+                    "next_step": entry.next_step, "retry": entry.retry,
+                    "action": entry.action}
     return {"known": False}

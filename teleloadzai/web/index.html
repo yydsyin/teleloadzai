@@ -122,6 +122,8 @@
   .hidden { display: none !important; }
   /* One filled button on screen: once a card is shown, Read only reads
      again, and Download is the step (loop round 2). */
+  .wrap:has(#result:not(.hidden)) #sites-hint, .wrap:has(#unsupported:not(.hidden)) #sites-hint,
+  .wrap:has(#url-error:not(.hidden)) #sites-hint { display: none; }
   .wrap:has(#result:not(.hidden)) #read, .wrap:has(#unsupported:not(.hidden)) #read {
     background: transparent; color: var(--soft); border: 1px solid var(--line); font-weight: 500;
   }
@@ -254,6 +256,13 @@
   .job:first-child { border-top: 0; }
   .job-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
   .job-name { font-weight: 500; word-break: break-word; }
+  /* At the smallest window a long name was squeezed into an 83 px column,
+     8 lines tall, beside a progress line that never wrapped (review of
+     2026-09-27): below 640 px the progress goes under the name. */
+  @media (max-width: 640px) {
+    .job-top { flex-wrap: wrap; }
+    .job-right { width: 100%; justify-content: space-between; }
+  }
   .job-right { display: flex; gap: 8px; align-items: center; flex: none; }
   .bar { height: 6px; background: var(--bg); border-radius: 99px; overflow: hidden; margin-top: 8px; }
   /* 0.7 s, the refresh rhythm: one update glides into the next. Before
@@ -310,13 +319,16 @@
   <div class="card" data-view="main">
     <div class="row">
       <input type="text" id="url" placeholder="https://..." autocomplete="off" spellcheck="false"
-             aria-label="Link to a video or a post">
+             aria-label="Link to a video or a post" aria-describedby="url-error">
       <button id="read">Read</button>
     </div>
     <!-- A problem with what was typed is said HERE, where the eyes are: it
          was a message at the bottom of the window, 600 px away (review of
          2026-09-27). -->
     <div class="err hidden" id="url-error" role="alert"></div>
+    <!-- Which sites work, while nothing else is on screen: the empty window
+         said nothing about it (review of 2026-09-27). -->
+    <div class="hint" id="sites-hint" style="margin-top:8px"></div>
   </div>
 
   <div class="card hidden" data-view="main" id="result">
@@ -325,7 +337,7 @@
       <div style="min-width:0">
         <div class="title" id="title">…</div>
         <div class="meta" id="meta"></div>
-        <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span><span class="switch hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span></div>
+        <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span><span class="hint hidden" id="tool-pick-label" style="margin-left:8px">Tool</span><span class="switch hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span></div>
         <div class="hint hidden" id="tool-why" style="margin-top:6px"></div>
         <div class="hint hidden" id="tool-need" style="margin-top:8px;padding:6px 10px;border-width:1px;border-style:solid;border-radius:8px">
           <span id="tool-need-text"></span>
@@ -350,6 +362,10 @@
       <!-- On the same row as the choices: below them, it ended at 483 px in
            a 421 px window, and the one action that matters needed a scroll
            (round 1 of the loop, 2026-09-26). -->
+      <!-- A link its own tool could not read, for a reason nobody knows:
+           updating is the first thing to try (decision 8) -- the card offered
+           only a grey "Try anyway" (review of 2026-09-27). -->
+      <button class="hidden" id="probe-update" style="margin-left:auto"></button>
       <button id="go" style="margin-left:auto">Download</button>
     </div>
 
@@ -637,6 +653,8 @@ let currentPlatformId = "";
 let probeProblem = false;
 // Why the title could not be read, in words, while probeProblem is true.
 let probeReason = "";
+// The failed read's error is one explain.py knows (then its words guide).
+let probeKnown = false;
 // Which tool read the title ({id, name}), or null when nobody did.
 let readBy = null;
 
@@ -683,6 +701,11 @@ function updateGoLabel() {
   // (critique, 2026-09-25). The "…" is kept only when a Windows "Save as"
   // window will open first.
   $("go").textContent = doubtful ? "Try anyway" : askWhere ? "Download…" : "Download";
+  const updateFirst = doubtful && !probeKnown;
+  $("probe-update").classList.toggle("hidden", !updateFirst);
+  $("probe-update").textContent = `Update ${reader.name}`;
+  $("probe-update").dataset.tool = reader.id;
+  $("go").style.marginLeft = updateFirst ? "0" : "auto";
   // The preview is yt-dlp's; when another tool downloads, its failure is
   // information about yt-dlp, not a verdict on this download (decision 38).
   const other = probeProblem && chosen && !sameTool;
@@ -779,7 +802,7 @@ function needText(tool) {
   if (n.kind === "asked") {
     // In the user's words, not the audit's ("on every link we tried"); and
     // honest: a Vimeo download with a log-in has not been seen yet.
-    return `${site} asks for an account. Logging in may help — not proven yet.`;
+    return `${site} asks for an account. Logging in may help — not tested yet.`;
   }
   return `${tool.name} needs you to be logged in to ${site}.` + orFree;
 }
@@ -888,6 +911,8 @@ function qualityLabel(value) {
 // 2026-09-26: "Me at the zoo", 240p at most, was offered 1080p). The MP3
 // list stays whole: those are our own FFmpeg settings, all really applied.
 let maxHeight = 0;
+// Every picture height the video really has, up to what "Best" gives.
+let videoHeights = [];
 
 function fillQualities() {
   let list = qualityLists[mode] || ["best"];
@@ -896,12 +921,17 @@ function fillQualities() {
   // offer 1080p there, and a choice made during the read was reset under the
   // user; "Best (1080p)" and "1080p" also said the same thing twice (review
   // of 2026-09-27).
+  // A smaller size only if the video HAS it exactly: TikTok's "480p" gave
+  // its 576p file. And "Best" without a number: TikTok answers 720p to one
+  // request and 576p to the next (3 of 5 / 2 of 5, measured 2026-09-27), so
+  // no number read beforehand is a promise the download can keep.
   if (mode === "mp4") {
-    list = maxHeight ? list.filter((v) => v === "best" || Number(v) < maxHeight) : ["best"];
+    list = maxHeight
+      ? list.filter((v) => v === "best" || (Number(v) < maxHeight && videoHeights.includes(Number(v))))
+      : ["best"];
   }
   $("quality").innerHTML = list
-    .map((v) => `<option value="${v}">${v === "best" && mode === "mp4" && maxHeight
-      ? `Best (${maxHeight}p)` : qualityLabel(v)}</option>`)
+    .map((v) => `<option value="${v}">${qualityLabel(v)}</option>`)
     .join("");
   // Only "Best" left: a list with one choice is not a choice.
   $("quality").dataset.single = String(list.length < 2);
@@ -1070,6 +1100,9 @@ async function readLink(url, mine) {
     $("tool-pick").appendChild(button);
   }
   $("tool-pick").classList.toggle("hidden", currentTools.length < 2);
+  // Said as a choice: the switch sat among the tags and read as one more tag
+  // (review of 2026-09-27).
+  $("tool-pick-label").classList.toggle("hidden", currentTools.length < 2);
   pickWorkingTool();
 
   // Say what exists but cannot be used, instead of offering it and failing
@@ -1084,7 +1117,9 @@ async function readLink(url, mine) {
   // second -- instead of after the 6 to 14 s it takes to read the title.
   probeProblem = false;
   probeReason = "";
-  maxHeight = 0;              // not known for this link yet: the whole list
+  probeKnown = false;
+  maxHeight = 0;              // not known for this link yet: no list
+  videoHeights = [];
   fillQualities();
   $("probe-words").classList.add("hidden");
   currentTitle = "";
@@ -1142,6 +1177,7 @@ async function readLink(url, mine) {
     // command-line options on the card (Vimeo's "--cookies, --username…",
     // critique of 2026-09-26).
     probeReason = ex.known ? ex.title : `${readBy.name} could not read this link.`;
+    probeKnown = Boolean(ex.known);
     $("probe-words-text").textContent = ex.known ? "" : info.error;
     $("probe-words").classList.toggle("hidden", ex.known || !info.error);
     $("probe-words").open = false;
@@ -1152,6 +1188,7 @@ async function readLink(url, mine) {
     $("title").textContent = info.title;
     currentTitle = info.title || "";
     maxHeight = info.max_height || 0;
+    videoHeights = info.heights || [];
     fillQualities();
     applyChoices(chosenTool());
     const bits = [];
@@ -1218,7 +1255,10 @@ function failButtons(job) {
   const hopeless = ex.known && ex.retry === false;
   // Log in leads only when the tool itself said a log-in is needed: filled
   // on every failure, it topped a region-blocked video too (loop round 2).
-  const primary = job.needs_login && loginOffer(job) ? "login" : job.other_tool ? "switch"
+  // A known error names its own button (explain.py `action`): a 403 said
+  // "Update it first" above a filled Retry (review of 2026-09-27).
+  const primary = (job.needs_login || ex.action === "login") && loginOffer(job) ? "login"
+    : ex.action === "update" ? "update" : job.other_tool ? "switch"
     : !ex.known && job.error_from_tool ? "update" : hopeless ? "" : "retry";
   const cls = (name) => (primary === name ? "" : "ghost ") + "tiny";
   return [
@@ -1750,6 +1790,23 @@ $("settings-toggle").addEventListener("click", () => {
   showView(document.querySelector(".wrap").dataset.showing === "settings" ? "main" : "settings");
 });
 
+// "Update yt-dlp" on a card whose title the tool could not read: update,
+// then read the link again -- said on the button while it works.
+$("probe-update").addEventListener("click", async () => {
+  const id = $("probe-update").dataset.tool;
+  $("probe-update").disabled = true;
+  $("probe-update").textContent = "Updating…";
+  await installTool(id);
+  const result = await waitForInstall(id);
+  $("probe-update").disabled = false;
+  if (!result || result.state === "error") {
+    $("probe-update").textContent = "Update failed — try again";
+    setStatus(`The update did not finish: ${(result && result.error) || "no answer after 6 minutes"}.`);
+    return;
+  }
+  read();                     // the same link, with the new version
+});
+
 $("need-tool-install").addEventListener("click", async () => {
   const id = $("need-tool-install").dataset.tool;
   $("need-tool-install").disabled = true;
@@ -2189,6 +2246,9 @@ async function forgetCookies() {
 
 (async function start() {
   qualityLists = await api("/api/qualities");
+  const sites = (await api("/api/sites")).sites || [];
+  $("sites-hint").textContent = sites.length > 5
+    ? `Works with ${sites.slice(0, 5).join(", ")} and ${sites.length - 5} other sites.` : "";
   fillQualities();
   const settings = await api("/api/settings");
   $("folder").value = settings.download_folder || "";
