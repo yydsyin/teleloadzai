@@ -89,6 +89,15 @@
   }
   h2.section:first-of-type { margin-top: 12px; padding-top: 0; border-top: 0; }
   .settings-nav { font-size: 14px; color: var(--soft); margin-bottom: 4px; }
+  /* Help lines reached 120 characters at 860 px: a comfortable line is
+     shorter (review of 2026-09-27). */
+  #settings .hint { max-width: 72ch; }
+  /* The tip box's border took the text colour and it looked like a second
+     text field; the pink one keeps its own (review of 2026-09-27). */
+  #tool-need:not(.warn) { border-color: var(--line); background: var(--bg); }
+  /* A finished row said "done" in the same small grey as nothing: a success
+     reads as one (review of 2026-09-27). */
+  .state-done .job-right .small { color: var(--ok-text); font-weight: 600; }
   .settings-nav a { text-decoration: none; font-weight: 600; }
   .settings-nav a:hover { text-decoration: underline; }
   h2.section:focus { outline: none; }
@@ -304,6 +313,10 @@
              aria-label="Link to a video or a post">
       <button id="read">Read</button>
     </div>
+    <!-- A problem with what was typed is said HERE, where the eyes are: it
+         was a message at the bottom of the window, 600 px away (review of
+         2026-09-27). -->
+    <div class="err hidden" id="url-error" role="alert"></div>
   </div>
 
   <div class="card hidden" data-view="main" id="result">
@@ -501,7 +514,7 @@
 
       <div class="hint" style="margin:8px 0 0; line-height:1.6">
         Some links only work when you are logged in: a private Instagram post,
-        an age-restricted YouTube video, anything on Weibo. Log in to that site
+        an age-restricted YouTube video, a Kuaishou video. Log in to that site
         below, and Teleloadzai keeps its proof of log-in — a <b>cookie</b> — for
         the download tools. <b>You never type a password into Teleloadzai</b>,
         and the cookies stay on this PC.
@@ -878,7 +891,14 @@ let maxHeight = 0;
 
 function fillQualities() {
   let list = qualityLists[mode] || ["best"];
-  if (mode === "mp4" && maxHeight) list = list.filter((v) => v === "best" || Number(v) <= maxHeight);
+  // MP4: only sizes the video HAS. While the title is read, and on a link
+  // nobody could read, no size is known: no list ("Best" is sent). It used to
+  // offer 1080p there, and a choice made during the read was reset under the
+  // user; "Best (1080p)" and "1080p" also said the same thing twice (review
+  // of 2026-09-27).
+  if (mode === "mp4") {
+    list = maxHeight ? list.filter((v) => v === "best" || Number(v) < maxHeight) : ["best"];
+  }
   $("quality").innerHTML = list
     .map((v) => `<option value="${v}">${v === "best" && mode === "mp4" && maxHeight
       ? `Best (${maxHeight}p)` : qualityLabel(v)}</option>`)
@@ -971,12 +991,17 @@ async function read() {
   const typed = $("url").value.trim();
   if (!typed) return;
   const url = linkIn(typed);
+  $("url").removeAttribute("aria-invalid");
+  $("url-error").classList.add("hidden");
   if (!url) {
     readNumber++;           // an older read still running must not come back
     $("result").classList.add("hidden");
     $("unsupported").classList.add("hidden");
     stopWaiting();
-    setStatus("That is not a link. Copy the address of the video — it starts with https:// — and paste it here.");
+    $("url-error").textContent =
+      "That is not a link. Copy the address of the video — it starts with https:// — and paste it here.";
+    $("url-error").classList.remove("hidden");
+    $("url").setAttribute("aria-invalid", "true");
     return;
   }
   if (url !== typed) $("url").value = url;    // show the link we took out
@@ -1162,15 +1187,20 @@ function errorExplanation(job) {
   if (job.needs_login) {
     return `<b>${job.tool} says you need to be logged in for this one.</b> Log in, then press Retry.`;
   }
-  const otherTool = job.other_tool ? ` You can also try another tool.` : "";
+  // The words follow the filled button (failButtons): when another tool
+  // exists, it is the first advice -- the text said "updating is the first
+  // thing to try" above a filled "Try with…" (review of 2026-09-27).
+  const other = job.other_tool
+    ? ` ${job.other_tool.name} also downloads from this site: try it.` : "";
   if (!job.error_from_tool) {
     // The red line is a sentence Teleloadzai wrote itself: it already says
     // what happened. Calling it the tool's words would be false.
-    return otherTool.trim();
+    return other.trim();
   }
-  return `<b>The download failed, and Teleloadzai does not recognise why.</b> `
-    + `${job.tool}'s own words are just below. Updating it is the first thing to try.`
-    + otherTool
+  return `<b>The download failed, and Teleloadzai does not recognise why.</b>`
+    + (other || ` Updating ${job.tool} is the first thing to try.`)
+    + (other ? ` Updating ${job.tool} may help too.` : "")
+    + ` Its own words are under "Show ${job.tool}'s message".`
     + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
 }
 
@@ -1331,6 +1361,11 @@ function jobRow(job) {
   row.querySelector(".small").textContent = right;
   const errorText = row.querySelector(".err");
   if (errorText) errorText.textContent = job.error || "";
+  // Three rows gave three buttons all called "Retry" or "Stop" to a screen
+  // reader: each says which download it acts on (review of 2026-09-27).
+  for (const button of row.querySelectorAll("button")) {
+    button.setAttribute("aria-label", `${button.textContent.trim()}: ${shown}`);
+  }
   const update = row.querySelector("[data-update]");
   if (update) update.addEventListener("click", async () => {
     update.disabled = true;
@@ -1798,7 +1833,12 @@ $("go").addEventListener("click", async () => {
     platform: currentPlatformId,
   });
   if (job.error) { setStatus("Error: " + job.error); return; }
-  setStatus("");
+  // The card goes: it stayed with a bright Download for the SAME video,
+  // beside an empty link box -- an invitation to download it twice
+  // (review of 2026-09-27). The row in Downloads is where it lives now.
+  $("result").classList.add("hidden");
+  currentUrl = "";
+  notify("Added to Downloads.");
   $("url").value = "";
   $("url").focus();
   refresh();

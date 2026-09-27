@@ -1,7 +1,8 @@
 """The cookie file: import it, describe it, hand it to the tools that can take it.
 
 A cookie is the proof that you are logged in. Some links need it: a private
-Instagram post, an age-restricted YouTube video, anything on Weibo.
+Instagram post, an age-restricted YouTube video, a Kuaishou video. (Weibo was
+named here until 2026-09-27; it works with no log-in -- §4 audit.)
 
 **Why a file and not the browser.** yt-dlp can read a browser directly, and on
 this developer's PC it failed on all four browsers installed (2026-09-22):
