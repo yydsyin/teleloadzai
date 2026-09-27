@@ -12,8 +12,10 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import socket
 import subprocess
 import threading
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -808,21 +810,58 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
 
-def start_background(port: int = 8777) -> tuple[ThreadingHTTPServer, str]:
+class _OwnPort(ThreadingHTTPServer):
+    """A server whose port is ours alone.
+
+    Python's server asks for "reuse address", and on Windows that lets a
+    SECOND program take a port already in use: a second Teleloadzai started
+    without an error, and netstat showed two listeners on 8777 (seen
+    2026-09-27). Windows' own option refuses it.
+    """
+    allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+        if exclusive is not None:
+            self.socket.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+        super().server_bind()
+
+
+def claim(port: int = 8777) -> ThreadingHTTPServer:
+    """Take the port, or raise OSError when something else holds it.
+
+    Done FIRST, before anything touches the data folder: a second copy used
+    to run "forget the log-ins" at start, under the first copy's feet.
+    """
+    ensure_dirs()
+    return _OwnPort(("127.0.0.1", port), Handler)
+
+
+def holder_is_us(port: int) -> bool:
+    """Is the program on this port another Teleloadzai? Asked, not guessed."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=2) as answer:
+            return f"<title>{APP_NAME}".encode() in answer.read(4096)
+    except Exception:
+        return False
+
+
+def start_background(port: int = 8777,
+                     httpd: ThreadingHTTPServer | None = None) -> tuple[ThreadingHTTPServer, str]:
     """Start the server in a thread and return it with its address.
 
     The native window (see ``__main__``) needs the server running while it
     keeps the main thread for itself, so starting must not block.
     """
-    ensure_dirs()
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    httpd = httpd or claim(port)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, f"http://127.0.0.1:{port}/"
+    return httpd, f"http://127.0.0.1:{httpd.server_address[1]}/"
 
 
-def serve(port: int = 8777, open_browser: bool = True) -> None:
+def serve(port: int = 8777, open_browser: bool = True,
+          httpd: ThreadingHTTPServer | None = None) -> None:
     """Run in a browser tab instead of the native window."""
-    httpd, url = start_background(port)
+    httpd, url = start_background(port, httpd)
     print(f"{APP_NAME} {APP_VERSION}")
     print(f"  open: {url}")
     print("  stop: Ctrl+C")

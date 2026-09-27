@@ -15,22 +15,36 @@ import sys
 
 from . import cookies, login, toolservers
 from .config import APP_NAME, APP_VERSION
-from .server import forget_if_once, serve, start_background
+from .server import claim, forget_if_once, holder_is_us, serve, start_background
 
 WINDOW_SIZE = (860, 900)
 WINDOW_MINIMUM = (520, 560)
 
 
-def open_window(port: int) -> None:
+def say_port_taken(port: int, show_box: bool) -> None:
+    """The second copy says why it opens nothing -- never a silent exit
+    (decision 34). In a Windows box, because the app has no other screen."""
+    if holder_is_us(port):
+        text = f"{APP_NAME} is already open. Look for its window in the taskbar."
+    else:
+        text = (f"{APP_NAME} cannot start: another program is using port {port}. "
+                f"Close it, or start {APP_NAME} with --port and another number.")
+    print(text)
+    if show_box and sys.platform == "win32":
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x40)   # "i" icon
+
+
+def open_window(port: int, httpd=None) -> None:
     """Open the native window. Falls back to the browser if it cannot."""
     try:
         import webview
     except ImportError:
         print("The window engine (pywebview) is missing -- using the browser.")
-        serve(port=port, open_browser=True)
+        serve(port=port, open_browser=True, httpd=httpd)
         return
 
-    httpd, url = start_background(port)
+    httpd, url = start_background(port, httpd)
     print(f"{APP_NAME} {APP_VERSION}  -  close the window to stop.")
     try:
         webview.create_window(
@@ -73,6 +87,14 @@ def main() -> int:
                         help="only run the server, open nothing")
     args = parser.parse_args()
 
+    # The port FIRST: one Teleloadzai at a time. A second copy stops here,
+    # before the lines below touch the first copy's log-ins.
+    try:
+        httpd = claim(args.port)
+    except OSError:
+        say_port_taken(args.port, show_box=not args.no_browser)
+        return 1
+
     # "Forget when I close" also has to survive NOT being closed properly.
     # A crash, Task Manager, or a PC switched off at the wall all skip the
     # shutdown path, and the cookies would then outlive the session they were
@@ -92,11 +114,11 @@ def main() -> int:
         print(f"Could not tidy the cookie file: {problem}")
 
     if args.no_browser:
-        serve(port=args.port, open_browser=False)
+        serve(port=args.port, open_browser=False, httpd=httpd)
     elif args.browser:
-        serve(port=args.port, open_browser=True)
+        serve(port=args.port, open_browser=True, httpd=httpd)
     else:
-        open_window(args.port)
+        open_window(args.port, httpd)
     return 0
 
 
