@@ -116,7 +116,16 @@
     padding: 10px 16px; border-radius: 10px; font-size: 15px;
     background: var(--ink); color: var(--card);
     box-shadow: 0 6px 20px rgba(0, 0, 0, .18);
+    display: flex; align-items: baseline; gap: 12px;
   }
+  /* A real button, so the keyboard can close it too: the message closed on
+     a mouse click only (review of 2026-09-28). */
+  #status-close {
+    background: none; border: 0; padding: 0 2px; margin: 0; color: inherit;
+    font-size: 18px; line-height: 1; cursor: pointer; opacity: .8;
+  }
+  #status-close:hover, #status-close:focus-visible { opacity: 1; }
+  #status-close:focus-visible { outline: 2px solid var(--card); outline-offset: 2px; }
 
   .hint { color: var(--soft); font-size: 13px; }
   .hidden { display: none !important; }
@@ -313,7 +322,7 @@
   <!-- Every message the app says, on every screen. It used to live inside
        the link card, which meant a message sent while Settings was open
        went to something nobody could see. -->
-  <div class="hidden" id="status" role="status" aria-live="polite"></div>
+  <div class="hidden" id="status" role="status" aria-live="polite"><span id="status-text"></span><button type="button" id="status-close" aria-label="Close this message">×</button></div>
   <div class="sr-only" id="announce" aria-live="polite"></div>
 
   <div class="card" data-view="main">
@@ -928,7 +937,7 @@ const setStatus = (text) => {
   // any scroll. It hides itself when empty. A message set this way STAYS:
   // errors and questions must not vanish before they are read.
   clearTimeout(statusTimer);
-  $("status").textContent = text || "";
+  $("status-text").textContent = text || "";
   $("status").classList.toggle("hidden", !text);
 };
 
@@ -1448,6 +1457,9 @@ function jobRow(job) {
       <div class="row" style="margin-top:6px">
         <button class="ghost tiny" data-force="${job.id}">Download again</button>
       </div>` : ""}
+    ${job.state === "cancelled" ? `<div class="row" style="margin-top:6px">
+        <button class="ghost tiny" data-dismiss="${job.id}">Remove</button>
+      </div>` : ""}
     ${job.state === "error" ? `<div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>
       ${job.error && job.error_from_tool ? `<details class="more" style="margin-top:4px">
         <summary class="hint">Show ${job.tool_name || job.tool}'s message</summary><div class="err"></div>
@@ -1634,7 +1646,12 @@ function toolRow(tool, progress) {
   else if (tool.installed) badges.push('<span class="badge ok">installed</span>');
   if (tool.update_available) badges.push('<span class="badge alert">update</span>');
   for (const need of tool.requires || []) {
-    const missing = tool.blocked && need === "Python";
+    const missing = need === "Python" ? tool.blocked
+      : !(toolsData.tools.find((t) => t.name === need) || {}).installed;
+    // Said BEFORE an install (decision 28), and whenever it is missing; an
+    // installed tool whose need is met said "needs FFmpeg" next to an
+    // installed FFmpeg (review of 2026-09-28).
+    if (tool.installed && !missing) continue;
     badges.push(`<span class="badge ${missing ? "alert" : ""}">needs ${need}</span>`);
   }
 
@@ -1871,10 +1888,11 @@ for (const link of document.querySelectorAll(".settings-nav a")) {
 }
 
 // Esc leaves Settings, as a window's Back would (round 1 of the loop).
+// A message at the bottom goes first: Esc closes it, the next Esc leaves.
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && document.querySelector(".wrap").dataset.showing === "settings") {
-    showView("main");
-  }
+  if (event.key !== "Escape") return;
+  if (!$("status").classList.contains("hidden")) { setStatus(""); return; }
+  if (document.querySelector(".wrap").dataset.showing === "settings") showView("main");
 });
 
 $("settings-toggle").addEventListener("click", () => {
@@ -2087,7 +2105,7 @@ function renderCookies(state) {
     : "";
   $("cookies-summary").innerHTML =
     `<b>${state.total} cookies</b> for ${sites}.${stale}`
-    + (when ? `<br>The soonest ${when}.` : "")
+    + (when ? `<br>The first to end is a ${state.expires_site || "site's"} cookie: it ${when}.` : "")
     + `<br>Used by: ${state.used_by.join(", ")}.`;
 }
 

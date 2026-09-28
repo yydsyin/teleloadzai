@@ -250,6 +250,7 @@ def inspect(path: Path, keep_all: bool = False) -> dict:
     dropped_domains: dict[str, int] = {}
     expired = 0
     soonest_useful: float | None = None
+    soonest_site = ""                    # whose cookie ends first -- said by name
 
     for domain, when, raw in rows:
         clean = domain.lstrip(".").lower()
@@ -267,6 +268,7 @@ def inspect(path: Path, keep_all: bool = False) -> dict:
             expired += 1
         elif soonest_useful is None or when < soonest_useful:
             soonest_useful = when
+            soonest_site = label
 
     if not kept:
         others = sorted(dropped_domains)[:4]
@@ -289,6 +291,7 @@ def inspect(path: Path, keep_all: bool = False) -> dict:
         "expired": expired,
         "sites": [name for name, _count in top],
         "expires_at": soonest_useful,
+        "expires_site": soonest_site,
         # What never entered the app. Counted, so the card can prove it.
         "ignored": sum(dropped_domains.values()),
         "ignored_sites": len(dropped_domains),
@@ -603,6 +606,8 @@ def state(enabled: bool) -> dict:
         "more_sites": max(0, len(summary["sites"]) - 6),
         "imported_at": saved,
         "expires_at": summary["expires_at"],
+        # "The soonest expires today" named no site (review of 2026-09-28).
+        "expires_site": summary.get("expires_site", ""),
         # Both roads: the file tools AND the server tools. Until 2026-09-25
         # this named the file tools only, while TikTokDownloader and
         # KS-Downloader received the cookies too (seen by the critique).
