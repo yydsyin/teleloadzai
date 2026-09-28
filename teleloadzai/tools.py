@@ -556,6 +556,30 @@ def _install_pip(tool: ToolSpec, on_progress: ProgressFn | None) -> None:
     if finished.returncode != 0:
         last = (finished.stderr or finished.stdout or "").strip().splitlines()
         raise InstallError(last[-1] if last else "pip failed")
+    _drop_old_records(tool)
+
+
+def _drop_old_records(tool: ToolSpec) -> None:
+    """Keep only the newest version record of this package in our folder.
+
+    `pip install --target --upgrade` replaces the package but ADDS its new
+    record (`gallery_dl-1.32.14.dist-info`) beside the old one
+    (`gallery_dl-1.32.13.dist-info`), and Python then reads the old one: the
+    code was 1.32.14, the Tools page said 1.32.13 with "update", and pressing
+    Update seemed to do nothing (seen 2026-09-28). Only folders named
+    `<this package>-<version>.dist-info` inside `libs_dir()` are touched.
+    """
+    wanted = re.sub(r"[-_.]+", "_", tool.pip_name).lower()
+    records = []
+    for folder in libs_dir().glob("*.dist-info"):
+        name, _, version = folder.name[: -len(".dist-info")].rpartition("-")
+        if re.sub(r"[-_.]+", "_", name).lower() == wanted and _numbers(version):
+            records.append((_numbers(version), folder))
+    for _, folder in sorted(records)[:-1]:
+        try:
+            shutil.rmtree(folder)
+        except OSError:
+            pass        # the version shown stays old; the tool itself is new
 
 
 def remove(tool_id: str) -> bool:
