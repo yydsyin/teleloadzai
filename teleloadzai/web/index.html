@@ -846,9 +846,21 @@ function needText(tool) {
   return `${tool.name} needs you to be logged in to ${site}.` + orFree;
 }
 
+// What the user GETS, said once, for a site whose card starts on another
+// tool for want of a log-in: three sentences about programs ("yt-dlp: video
+// only." / "Using yt-dlp: gallery-dl, the usual tool…") had to be put
+// together by the reader (review of 2026-09-28). Each claim is one already
+// made: yt-dlp got public posts with no cookies (audit of 2026-09-26),
+// gallery-dl's own line says "photos, carousels, stories", and it was
+// refused without a log-in ("redirect to login page").
+const STEPPED_GETS = {
+  instagram: "Videos work without a log-in. Photos and stories need gallery-dl, and a log-in to Instagram.",
+};
+
 /** "Using yt-dlp: gallery-dl, the usual tool for Instagram, needs a log-in." */
 function steppedText(chosen, usual) {
   const site = currentPlatform;
+  if (!usual.need.logged_in && STEPPED_GETS[currentPlatformId]) return STEPPED_GETS[currentPlatformId];
   const why = usual.need.logged_in
     ? `needs your ${site} cookies, and cookies are switched off in Settings → Accounts.`
     : `needs you to be logged in to ${site}.`;
@@ -873,15 +885,17 @@ function showChosenTool() {
   // hover tooltip, which touch and keyboard never reach (loop round 2).
   // Not for an MP3: every reason is about the picture ("higher quality",
   // "smaller file", "video only"), and an MP3 has none (review of 2026-09-27).
-  const why = several && chosen && mode !== "mp3" ? `${chosen.name}: ${chosen.why}.` : "";
+  // Started on another tool because the usual one needs a log-in: say which,
+  // and why, with the log-in button -- one click puts the usual one back.
+  const stepped = autoPicked && chosen && chosen.id !== autoPicked.id ? autoPicked : null;
+  // Not when the card stepped away: its sentence already says what each
+  // tool gives (STEPPED_GETS).
+  const why = several && chosen && mode !== "mp3" && !stepped ? `${chosen.name}: ${chosen.why}.` : "";
   // Said when the MP3 button changed the tool, so the switch never moves
   // silently; MP4 gives the user's tool back.
   const from = formatFrom && currentTools.find((t) => t.id === formatFrom);
   $("tool-why").textContent = (why + (from ? ` Chosen for the MP3 — ${from.name} makes none.` : "")).trim();
   $("tool-why").classList.toggle("hidden", !$("tool-why").textContent);
-  // Started on another tool because the usual one needs a log-in: say which,
-  // and why, with the log-in button -- one click puts the usual one back.
-  const stepped = autoPicked && chosen && chosen.id !== autoPicked.id ? autoPicked : null;
   const need = stepped ? steppedText(chosen, stepped) : needText(chosen);
   // The log-in, right where it is asked for (the user, 2026-09-26) -- not
   // "go to Settings → Accounts". Not offered when a log-in would not help:
