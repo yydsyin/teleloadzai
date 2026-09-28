@@ -195,18 +195,25 @@ _NEEDS = {
 def need(platform_id: str, tool_id: str, cookies_on: bool) -> dict | None:
     """What this tool needs on this site before it can work, or None.
 
-    `met` is True only on the proven sign: the site's log-in cookie is in our
-    file AND cookies are switched on. A visit leaves no proven sign, so a
-    "visit" need is always said -- as a reminder, not a refusal.
+    `met` is True when the site is logged in by the same rule as its sign in
+    Settings (`_sign`: the badge, or for a site with none the finished
+    log-in window) AND cookies are switched on. A "visit" need is said as a
+    reminder only while the site has no cookie at all (`visited`).
     """
     kind = _NEEDS.get((platform_id, tool_id))
     if kind is None:
         return None
     platform = next((p for p in PLATFORMS if p.id == platform_id), None)
-    badge = _BADGES.get(platform_id)
-    logged_in = bool(platform and badge and cookies.badge_dates(platform.domains, badge))
+    dates = cookies.site_dates()
+    state = (_sign(platform, dates, _history().get(platform_id, {}), time.time())[0]
+             if platform else "none")
+    logged_in = state == "logged_in"
+    # Any cookie of the site at all: for a "visit" need, the visit is done
+    # -- the TikTok tip showed on every link with TikTok cookies saved
+    # (review of 2026-09-28).
+    visited = bool(platform and any(d in dates for d in platform.domains))
     return {"kind": kind, "logged_in": logged_in, "cookies_on": cookies_on,
-            "met": logged_in and cookies_on}
+            "visited": visited, "met": logged_in and cookies_on}
 
 
 _lock = threading.Lock()        # one login window at a time, never two
@@ -260,28 +267,34 @@ def choices() -> list[dict]:
         if not url:
             continue
         seen = history.get(platform.id, {})
-        if platform.id in _BADGES:
-            ends = cookies.badge_dates(platform.domains, _BADGES[platform.id])
-            latest = max(ends or [0.0])
-            if ends is None:
-                state = "none"
-            elif all(0 < when < now for when in ends):
-                state = "expired"
-            else:
-                state = "logged_in"
-        else:
-            mine = [dates[d] for d in platform.domains if d in dates]
-            latest = max((m["latest"] for m in mine), default=0.0)
-            if not mine or seen.get("how") not in ("auto", "button"):
-                state = "none"
-            elif latest and latest < now:
-                state = "expired"
-            else:
-                state = "logged_in"
+        state, latest = _sign(platform, dates, seen, now)
         offered.append({"id": platform.id, "name": platform.name, "url": url,
                         "state": state, "since": seen.get("at", 0),
                         "ends": latest, "badge": platform.id in _BADGES})
     return offered
+
+
+def _sign(platform, dates: dict, seen: dict, now: float) -> tuple[str, float]:
+    """One site's log-in state -- "logged_in", "expired" or "none" -- and the
+    latest end date it rests on. ONE rule for the Settings sign and the
+    download card: the card read the badge only, so Vimeo (no known badge,
+    the window saw the log-in finish) was green in Settings while its card
+    said "log in" -- a loop (review of 2026-09-28)."""
+    if platform.id in _BADGES:
+        ends = cookies.badge_dates(platform.domains, _BADGES[platform.id])
+        latest = max(ends or [0.0])
+        if ends is None:
+            return "none", latest
+        if all(0 < when < now for when in ends):
+            return "expired", latest
+        return "logged_in", latest
+    mine = [dates[d] for d in platform.domains if d in dates]
+    latest = max((m["latest"] for m in mine), default=0.0)
+    if not mine or seen.get("how") not in ("auto", "button"):
+        return "none", latest
+    if latest and latest < now:
+        return "expired", latest
+    return "logged_in", latest
 
 
 # How each site's last log-in ended: {platform id: {"how": ..., "at": ...}}.

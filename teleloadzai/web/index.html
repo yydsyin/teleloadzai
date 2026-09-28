@@ -121,9 +121,15 @@
   /* A real button, so the keyboard can close it too: the message closed on
      a mouse click only (review of 2026-09-28). */
   #status-close {
-    background: none; border: 0; padding: 0 2px; margin: 0; color: inherit;
+    background: none; border: 0; padding: 0; margin: 0; color: inherit;
     font-size: 18px; line-height: 1; cursor: pointer; opacity: .8;
+    /* 24 x 24, the smallest target a finger or a shaky hand hits
+       (WCAG 2.5.8): it was 17 x 18 (review of 2026-09-28). */
+    min-width: 24px; min-height: 24px; display: inline-flex;
+    align-items: center; justify-content: center; align-self: center;
   }
+  #result.dead-end .choice, #result.dead-end #quality,
+  #result.dead-end #quality-label { display: none; }
   #status-close:hover, #status-close:focus-visible { opacity: 1; }
   #status-close:focus-visible { outline: 2px solid var(--card); outline-offset: 2px; }
 
@@ -715,6 +721,10 @@ function updateGoLabel() {
   // its title and what to do instead (another tool stays on the switch).
   const hopeless = doubtful && probeKnown && probeExplain.retry === false;
   $("go").classList.toggle("hidden", hopeless);
+  // With no Download, MP3 / MP4 and the Quality list acted on nothing
+  // (decision 40; review of 2026-09-28). The tool switch stays: it is the
+  // way out.
+  $("result").classList.toggle("dead-end", hopeless);
   $("result").classList.toggle("is-error", doubtful);
   $("go").classList.toggle("ghost", doubtful);
   // The button names what happens: "Add…" did not say "download"
@@ -743,7 +753,9 @@ function updateGoLabel() {
     // keeps only what it adds -- the file name (loop round 2: Vimeo said it twice).
     $("title").textContent = hopeless ? probeReason : "No title found";
     const reason = $("tool-need").classList.contains("warn") || hopeless ? "" : probeReason.trim();
-    $("meta").textContent = hopeless ? probeExplain.next_step || ""
+    // The next step once: not under the title when the box above Download
+    // already says it (Instagram said the gallery-dl advice twice).
+    $("meta").textContent = hopeless ? ($("tool-need").classList.contains("hidden") ? probeExplain.next_step || "" : "")
       : (reason ? reason + (/[.!?]$/.test(reason) ? " " : ". ") : "")
         + (newest ? `${reader.name} is already the newest version, so updating will not help. ` : "")
         + unknownNameText(chosen);
@@ -804,14 +816,27 @@ function applyChoices(tool) {
   $("quality-label").classList.toggle("hidden", !hasQuality);
 }
 
+/** The title read, with this very tool, failed with a known log-in answer. */
+function stillRefused(tool) {
+  return Boolean(probeProblem && probeKnown && probeExplain.action === "login"
+    && readBy && tool && tool.id === readBy.id);
+}
+
 /**
  * What the chosen tool needs on this site BEFORE Download, or "" -- only
  * what the 2026-09-26 audit proved (the server sends it, login._NEEDS).
  */
 function needText(tool) {
   const n = tool && tool.need;
-  if (!n || n.met) return "";
+  if (!n) return "";
   const site = currentPlatform;
+  // Logged in, and the site refused anyway: said as a fact, with no "log
+  // in" -- the Vimeo card asked for a log-in Settings showed as done, after
+  // a title read that had used it (review of 2026-09-28).
+  if (n.met) return stillRefused(tool) ? `Teleloadzai has your ${site} log-in, and ${site} still refused this video.` : "";
+  // A visit is done once the site has cookies: the tip showed on every
+  // TikTok link, cookies saved or not (review of 2026-09-28).
+  if (n.kind === "visit" && n.visited && n.cookies_on) return "";
   // Another tool of this site with nothing to ask for (yt-dlp on Instagram
   // and TikTok downloaded the same public posts with no cookies at all).
   // Never the tool that just failed to read this very link: the card said
@@ -916,11 +941,14 @@ function showChosenTool() {
   // swapped for one that works, or a "visit" that may never be needed --
   // was pink too, with a filled button above Download, and a new user read
   // "this will fail" on links that work (critique of 2026-09-26).
-  const refused = Boolean(!stepped && n && !n.met && (n.kind === "login" || n.kind === "asked"));
+  const still = Boolean(!stepped && n && n.met && stillRefused(chosen));
+  const refused = still || Boolean(!stepped && n && !n.met && (n.kind === "login" || n.kind === "asked"));
   $("tool-need").classList.toggle("warn", refused);
-  $("tool-need-login").classList.toggle("ghost", !refused);
-  $("tool-need-login").textContent = n && n.kind === "visit"
-    ? `Open ${currentPlatform} once` : `Log in to ${currentPlatform}`;
+  // Logged in already: "Log in again" is a second chance (the log-in may
+  // have been incomplete), grey, not the answer.
+  $("tool-need-login").classList.toggle("ghost", !refused || still);
+  $("tool-need-login").textContent = still ? "Log in again"
+    : n && n.kind === "visit" ? `Open ${currentPlatform} once` : `Log in to ${currentPlatform}`;
 
   // Never answer "not supported" when a tool exists: offer it (decision 6).
   // FFmpeg counts too: every download uses it, and installing the tool
@@ -1472,6 +1500,7 @@ function jobRow(job) {
         <button class="ghost tiny" data-force="${job.id}">Download again</button>
       </div>` : ""}
     ${job.state === "cancelled" ? `<div class="row" style="margin-top:6px">
+        <button class="ghost tiny" data-retry="${job.id}">Download again</button>
         <button class="ghost tiny" data-dismiss="${job.id}">Remove</button>
       </div>` : ""}
     ${job.state === "error" ? `<div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>

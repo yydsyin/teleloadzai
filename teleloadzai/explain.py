@@ -96,7 +96,8 @@ KNOWN: tuple[Known, ...] = (
     Known(
         words=("there is no video in this post",),
         tools=("yt-dlp",),
-        title="yt-dlp found no video in this post: it downloads videos only.",
+        # What happened first, the program second (review of 2026-09-28).
+        title="This post has no video — yt-dlp downloads videos only.",
         # Updating does not change it: yt-dlp builds nothing for a photo.
         retry=False,
         next_step=("If the post holds photos, gallery-dl can save them — it "
