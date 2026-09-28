@@ -484,6 +484,9 @@ class Handler(BaseHTTPRequestHandler):
                 jobs = QUEUE.all()
                 for job in jobs:
                     job["other_tool"] = other_tool(job)
+                    # Said with its real name: rows read "Update
+                    # tiktokdownloader" (review of 2026-09-28).
+                    job["tool_name"] = tool_name(job["tool"])
                 self._json({"jobs": jobs})
                 return
 

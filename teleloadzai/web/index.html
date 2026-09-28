@@ -657,6 +657,11 @@ let probeReason = "";
 let probeKnown = false;
 // Which tool read the title ({id, name}), or null when nobody did.
 let readBy = null;
+// The failed read's explanation (explain.py), or {} -- its `retry`,
+// `next_step` and `action` shape the card.
+let probeExplain = {};
+// A transparent 1x1 GIF: the picture frame while a title is read.
+const BLANK_PICTURE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 // The tool the switch is on. "" = the first one, which is the default.
 let pickedTool = "";
@@ -695,6 +700,12 @@ function updateGoLabel() {
   // but no longer a bright button inviting a job that will fail
   // (critique of 2026-09-25: Spotify's "[DRM]" error sat next to it).
   const doubtful = probeProblem && sameTool;
+  // A known answer that no retry changes ("There is no video in this post"):
+  // "Try anyway" led to a "Save as" window and a failure the card already
+  // knew (review of 2026-09-28). No button; the card says what happened as
+  // its title and what to do instead (another tool stays on the switch).
+  const hopeless = doubtful && probeKnown && probeExplain.retry === false;
+  $("go").classList.toggle("hidden", hopeless);
   $("result").classList.toggle("is-error", doubtful);
   $("go").classList.toggle("ghost", doubtful);
   // The button names what happens: "Add…" did not say "download"
@@ -721,10 +732,12 @@ function updateGoLabel() {
     // into the next sentence ("…manually pass cookies The "Save as"…").
     // The pink box already says the refusal: the line under the title
     // keeps only what it adds -- the file name (loop round 2: Vimeo said it twice).
-    const reason = $("tool-need").classList.contains("warn") ? "" : probeReason.trim();
-    $("meta").textContent = (reason ? reason + (/[.!?]$/.test(reason) ? " " : ". ") : "")
-      + (newest ? `${reader.name} is already the newest version, so updating will not help. ` : "")
-      + unknownNameText(chosen);
+    $("title").textContent = hopeless ? probeReason : "No title found";
+    const reason = $("tool-need").classList.contains("warn") || hopeless ? "" : probeReason.trim();
+    $("meta").textContent = hopeless ? probeExplain.next_step || ""
+      : (reason ? reason + (/[.!?]$/.test(reason) ? " " : ". ") : "")
+        + (newest ? `${reader.name} is already the newest version, so updating will not help. ` : "")
+        + unknownNameText(chosen);
   }
 }
 
@@ -812,6 +825,13 @@ function needText(tool) {
   if (n.kind === "asked") {
     // In the user's words, not the audit's ("on every link we tried"); and
     // honest: a Vimeo download with a log-in has not been seen yet.
+    // Once the title read has failed with a known log-in answer, its plain
+    // title says it better ("Vimeo shows this video only to a logged-in
+    // account") -- it was hidden behind this box (review of 2026-09-28).
+    // "may": a download with a log-in has not been seen yet (decision 38).
+    if (probeKnown && probeExplain.action === "login" && probeReason) {
+      return `${probeReason} Logging in may let you download it.`;
+    }
     return `${site} asks for an account. Logging in may help — not tested yet.`;
   }
   return `${tool.name} needs you to be logged in to ${site}.` + orFree;
@@ -1121,6 +1141,17 @@ async function readLink(url, mine) {
   // (review of 2026-09-27).
   $("tool-pick-label").classList.toggle("hidden", currentTools.length < 2);
   pickWorkingTool();
+  // MP3 stays from one link to the next (on purpose): where the usual tool
+  // makes none, the format picks the tool, as the MP3 button does. It fell
+  // back to MP4 in silence -- on Weibo, and for every link after it
+  // (review of 2026-09-28).
+  const usual = chosenTool();
+  if (mode === "mp3" && usual && !("mp3" in (usual.choices || {})) && mp3Maker()) {
+    formatFrom = usual.id;
+    pickedTool = mp3Maker().id;
+    userPicked = true;
+    autoPicked = null;
+  }
 
   // Say what exists but cannot be used, instead of offering it and failing
   // on the button (decisions 6 and 15).
@@ -1135,12 +1166,16 @@ async function readLink(url, mine) {
   probeProblem = false;
   probeReason = "";
   probeKnown = false;
+  probeExplain = {};
   maxHeight = 0;              // not known for this link yet: no list
   videoHeights = [];
   fillQualities();
   $("probe-words").classList.add("hidden");
   currentTitle = "";
-  $("thumb").removeAttribute("src");
+  // An empty picture, not no picture: an <img> that loses its address draws
+  // the browser's "broken image" icon, and did for the whole read from the
+  // second link on (review of 2026-09-28).
+  $("thumb").src = BLANK_PICTURE;
   showChosenTool();
 
   // Who reads the title: yt-dlp where it is one of the site's tools; on
@@ -1195,6 +1230,7 @@ async function readLink(url, mine) {
     // critique of 2026-09-26).
     probeReason = ex.known ? ex.title : `${readBy.name} could not read this link.`;
     probeKnown = Boolean(ex.known);
+    probeExplain = ex;
     $("probe-words-text").textContent = ex.known ? "" : info.error;
     $("probe-words").classList.toggle("hidden", ex.known || !info.error);
     $("probe-words").open = false;
@@ -1253,10 +1289,11 @@ function loginOffer(job) {
 // was a number nobody had measured.
 function errorExplanation(job) {
   const ex = job.explain || {};
-  const newest = upToDate(job.tool) ? ` ${job.tool} is already the newest version.` : "";
+  const name = job.tool_name || job.tool;       // "TikTokDownloader", not its id
+  const newest = upToDate(job.tool) ? ` ${name} is already the newest version.` : "";
   if (ex.known) return `<b>${ex.title}</b> ${ex.next_step}` + (ex.action === "update" ? newest : "");
   if (job.needs_login) {
-    return `<b>${job.tool} says you need to be logged in for this one.</b> Log in, then press Retry.`;
+    return `<b>${name} says you need to be logged in for this one.</b> Log in, then press Retry.`;
   }
   // The words follow the filled button (failButtons): when another tool
   // exists, it is the first advice -- the text said "updating is the first
@@ -1273,7 +1310,7 @@ function errorExplanation(job) {
   // it -- the row was four sentences, 180-200 px tall (review of 2026-09-27).
   return `<b>The download failed, and Teleloadzai does not recognise why.</b>`
     + (other || (newest ? newest + " Updating will not help."
-      : ` Updating ${job.tool} is the first thing to try.`))
+      : ` Updating ${name} is the first thing to try.`))
     + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
 }
 
@@ -1302,7 +1339,7 @@ function failButtons(job) {
   return [
     loginOffer(job) && `<button class="${cls("login")}" data-login="${job.platform}">Log in to ${loginOffer(job)}</button>`,
     job.other_tool && `<button class="${cls("switch")}" data-switch="${job.id}" data-tool="${job.other_tool.id}">Try with ${job.other_tool.name}</button>`,
-    canUpdate && `<button class="${cls("update")}" data-update="${job.tool}">Update ${job.tool}</button>`,
+    canUpdate && `<button class="${cls("update")}" data-update="${job.tool}">Update ${job.tool_name || job.tool}</button>`,
     !hopeless && `<button class="${cls("retry")}" data-retry="${job.id}">Retry</button>`,
     // Nothing to retry: the row still gets a way out of the list, without
     // "Clear finished" taking every other row with it (review of 2026-09-27).
@@ -1413,7 +1450,7 @@ function jobRow(job) {
       </div>` : ""}
     ${job.state === "error" ? `<div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>
       ${job.error && job.error_from_tool ? `<details class="more" style="margin-top:4px">
-        <summary class="hint">Show ${job.tool}'s message</summary><div class="err"></div>
+        <summary class="hint">Show ${job.tool_name || job.tool}'s message</summary><div class="err"></div>
       </details>` : ""}
       <div class="row" style="margin-top:8px; flex-wrap:wrap">${failButtons(job)}</div>` : ""}`;
   // A failure used to open on the tool's raw words in red ("Use --cookies,
@@ -1439,7 +1476,9 @@ function jobRow(job) {
     : job.mode === "mp3" ? job.quality + " kbps" : job.quality + "p";
   const original = { "gallery-dl": "original files", "xhs-downloader": "original files",
                      "n-m3u8dl-re": "original file" }[job.tool];
-  const kind = /\.[a-z0-9]{2,4}$/i.test(shown) ? ""
+  // A name with its ending already says the format -- "name 1.mp4 and 2
+  // more" too, which the ending test missed (review of 2026-09-28).
+  const kind = files.length > 1 || /\.[a-z0-9]{2,4}$/i.test(shown) ? ""
     : job.mode === "mp4" && original ? original : job.mode.toUpperCase();
   row.querySelector(".job-name").textContent =
     [shown, [kind, quality].filter(Boolean).join(" ")].filter(Boolean).join("  ·  ");
@@ -1462,7 +1501,7 @@ function jobRow(job) {
     if (!result || result.state === "error") {
       update.disabled = false;
       update.textContent = "Update failed — try again";
-      setStatus(`The update of ${update.dataset.update} did not finish: `
+      setStatus(`The update of ${job.tool_name || update.dataset.update} did not finish: `
         + (result && result.error ? result.error : "no answer after 6 minutes") + ".");
       return;
     }
