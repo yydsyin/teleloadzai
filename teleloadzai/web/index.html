@@ -764,7 +764,11 @@ function updateGoLabel() {
     $("meta").textContent = hopeless ? ($("tool-need").classList.contains("hidden") ? probeExplain.next_step || "" : "")
       : (reason ? reason + (/[.!?]$/.test(reason) ? " " : ". ") : "")
         + (newest ? `${reader.name} is already the newest version, so updating will not help. ` : "")
-        + unknownNameText(chosen);
+        // The file name only where a download is the likely next step: on
+        // a "Try anyway" or a pink card it was one block too many (review
+        // of 2026-10-05).
+        + (doubtful || refusedBox ? "" : unknownNameText(chosen));
+    $("meta").textContent = $("meta").textContent.trim();
   }
 }
 
@@ -833,10 +837,10 @@ let titleReading = false;
 
 function qualityWhy() {
   if (titleReading) return "Quality: after the title is read";
-  // The site refused the video: the box says so, a size line would be noise
-  // (Vimeo, review of 2026-10-05).
-  if (probeProblem && probeKnown && probeExplain.action === "login") return "";
-  if (probeProblem) return "Quality: Best only — the sizes could not be read";
+  // The title read failed: the card already says it, and a size line was
+  // one block too many on a card that will likely fail (Vimeo, TED --
+  // reviews of 2026-10-05).
+  if (probeProblem) return "";
   if (maxHeight) return "Quality: Best only — this video has no other size";
   // "not read" was false after a read that returned no size (Instagram,
   // a stream link -- review of 2026-10-05).
@@ -945,7 +949,13 @@ function showChosenTool() {
   // "smaller file", "video only"), and an MP3 has none (review of 2026-09-27).
   // Started on another tool because the usual one needs a log-in: say which,
   // and why, with the log-in button -- one click puts the usual one back.
-  const stepped = autoPicked && chosen && chosen.id !== autoPicked.id ? autoPicked : null;
+  // The same words when the user pressed that other tool himself: yt-dlp
+  // on Instagram said "Videos work without a log-in…" when the card chose
+  // it, "yt-dlp: video only." when the user did (review of 2026-10-05).
+  const usual = currentTools[0];
+  const usualRefused = Boolean(usual && usual.need && usual.need.kind === "login" && !usual.need.met);
+  const stepped = autoPicked && chosen && chosen.id !== autoPicked.id ? autoPicked
+    : chosen && usual && chosen.id !== usual.id && usualRefused ? usual : null;
   // Not when the card stepped away: its sentence already says what each
   // tool gives (STEPPED_GETS).
   // A card with no way through (a known answer no retry changes): ONE
@@ -1085,9 +1095,11 @@ function formatTime(seconds) {
 // gives the user's tool back.
 let formatFrom = "";
 
-/** The first tool of this site that makes an MP3, or undefined. */
+/** The first tool of this site that makes an MP3, or undefined. Never one
+ * that already failed on this link for good: MP3 pressed on gallery-dl led
+ * into yt-dlp's "no video" dead end (review of 2026-10-05). */
 function mp3Maker() {
-  return currentTools.find((t) => "mp3" in (t.choices || {}));
+  return currentTools.find((t) => "mp3" in (t.choices || {}) && !deadEnd(t));
 }
 
 for (const button of document.querySelectorAll(".choice")) {

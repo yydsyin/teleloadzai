@@ -109,6 +109,31 @@ KNOWN: tuple[Known, ...] = (
               "a filled 'Update yt-dlp' under it. What the posts hold was "
               "not seen; gallery-dl was not tried (it needs a log-in)."),
     ),
+    # The PC could not find the site's address. Not "your internet is down":
+    # a domain typed wrong says exactly the same.
+    Known(
+        words=("could not resolve host",),
+        tools=("yt-dlp",),
+        title="This PC could not find the site's address.",
+        next_step=("Check your internet connection, then read the link again. "
+                   "If you typed the link by hand, check its spelling too."),
+        seen=("2026-10-05, the review agent, in the app: Instagram "
+              "BQ0eAlwhDrw failed once with 'Could not resolve host: "
+              "www.instagram.com'; curl reached the site seconds later. The "
+              "card said 'yt-dlp could not read this link', nothing about "
+              "the connection."),
+    ),
+    Known(
+        words=("failed to resolve", "getaddrinfo failed"),
+        tools=("yt-dlp",),
+        title="This PC could not find the site's address.",
+        next_step=("Check your internet connection, then read the link again. "
+                   "If you typed the link by hand, check its spelling too."),
+        seen=("2026-10-05: three made-up addresses (…tlz-4821.invalid, "
+              "…tlz-4821.com, instagram.invalid) -- 'Failed to resolve '…' "
+              "([Errno 11001] getaddrinfo failed)'. The other wording of the "
+              "same failure."),
+    ),
     Known(
         words=("http error 403",),
         tools=("yt-dlp",),
