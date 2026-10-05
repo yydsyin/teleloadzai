@@ -129,7 +129,7 @@
     align-items: center; justify-content: center; align-self: center;
   }
   #result.dead-end .choice, #result.dead-end #quality,
-  #result.dead-end #quality-label { display: none; }
+  #result.dead-end #quality-label, #result.dead-end #quality-why { display: none; }
   #status-close:hover, #status-close:focus-visible { opacity: 1; }
   #status-close:focus-visible { outline: 2px solid var(--card); outline-offset: 2px; }
 
@@ -374,6 +374,9 @@
            (critique of 2026-09-26). -->
       <label class="hint" id="quality-label" for="quality" style="margin-left:6px">Quality</label>
       <select id="quality"></select>
+      <!-- Where the list is missing, why (the user, 2026-10-05: a YouTube
+           MP4 with no Quality list looked like a bug). -->
+      <span class="hint hidden" id="quality-why" style="margin-left:6px"></span>
       <!-- On the same row as the choices: below them, it ended at 483 px in
            a 421 px window, and the one action that matters needed a scroll
            (round 1 of the loop, 2026-09-26). -->
@@ -814,6 +817,22 @@ function applyChoices(tool) {
     : "";
   $("quality").classList.toggle("hidden", !hasQuality);
   $("quality-label").classList.toggle("hidden", !hasQuality);
+  // A tool that does take a size, and no list: say why, instead of a gap
+  // that looks like a bug (the user, 2026-10-05). The MP3 list is always
+  // whole, and a tool with no size choice says "You get: …" already.
+  const why = mode === "mp4" && can.mp4 && !hasQuality ? qualityWhy() : "";
+  $("quality-why").textContent = why;
+  $("quality-why").classList.toggle("hidden", !why);
+}
+
+// The title read is running (its answer brings the sizes).
+let titleReading = false;
+
+function qualityWhy() {
+  if (titleReading) return "Quality: after the title is read";
+  if (probeProblem) return "Quality: Best only — the sizes could not be read";
+  if (maxHeight) return "Quality: Best only — this video has no other size";
+  return "Quality: Best only — this site's sizes are not read before the download";
 }
 
 /** The title read, with this very tool, failed with a known log-in answer. */
@@ -1218,6 +1237,7 @@ async function readLink(url, mine) {
   probeReason = "";
   probeKnown = false;
   probeExplain = {};
+  titleReading = true;        // until the read below answers (qualityWhy)
   maxHeight = 0;              // not known for this link yet: no list
   videoHeights = [];
   fillQualities();
@@ -1235,6 +1255,8 @@ async function readLink(url, mine) {
   // and the card says so rather than wait seconds for a red herring.
   readBy = found.read_by || null;
   if (!readBy) {
+    titleReading = false;     // nobody reads it: no sizes will come
+    applyChoices(chosenTool());
     const tool = currentTools[0];
     $("title").textContent = "Ready to download";
     $("meta").textContent =
@@ -1263,6 +1285,7 @@ async function readLink(url, mine) {
     titleArrived();           // Download may go on, title or not
   }
   if (mine !== readNumber) return;
+  titleReading = false;       // only the newest read may end it
   stopWaiting();
   $("thumb").classList.remove("waiting");
   if (info.error) {
