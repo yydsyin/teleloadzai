@@ -729,7 +729,10 @@ function updateGoLabel() {
   // way out.
   $("result").classList.toggle("dead-end", hopeless);
   $("result").classList.toggle("is-error", doubtful);
-  $("go").classList.toggle("ghost", doubtful);
+  // Grey next to a pink box too: the box said "this will be refused" while
+  // Download stayed the bright button (review of 2026-10-05).
+  const refusedBox = !$("tool-need").classList.contains("hidden") && $("tool-need").classList.contains("warn");
+  $("go").classList.toggle("ghost", doubtful || refusedBox);
   // The button names what happens: "Add…" did not say "download"
   // (critique, 2026-09-25). The "…" is kept only when a Windows "Save as"
   // window will open first.
@@ -830,9 +833,20 @@ let titleReading = false;
 
 function qualityWhy() {
   if (titleReading) return "Quality: after the title is read";
+  // The site refused the video: the box says so, a size line would be noise
+  // (Vimeo, review of 2026-10-05).
+  if (probeProblem && probeKnown && probeExplain.action === "login") return "";
   if (probeProblem) return "Quality: Best only — the sizes could not be read";
   if (maxHeight) return "Quality: Best only — this video has no other size";
-  return "Quality: Best only — this site's sizes are not read before the download";
+  // "not read" was false after a read that returned no size (Instagram,
+  // a stream link -- review of 2026-10-05).
+  return "Quality: Best only — the sizes are not known before the download";
+}
+
+/** The title read, with this very tool, gave a known answer no retry changes. */
+function deadEnd(tool) {
+  return Boolean(probeProblem && probeKnown && probeExplain.retry === false
+    && readBy && tool && tool.id === readBy.id);
 }
 
 /** The title read, with this very tool, failed with a known log-in answer. */
@@ -934,17 +948,31 @@ function showChosenTool() {
   const stepped = autoPicked && chosen && chosen.id !== autoPicked.id ? autoPicked : null;
   // Not when the card stepped away: its sentence already says what each
   // tool gives (STEPPED_GETS).
-  const why = several && chosen && mode !== "mp3" && !stepped ? `${chosen.name}: ${chosen.why}.` : "";
+  // A card with no way through (a known answer no retry changes): ONE
+  // message, its way out -- the same whichever way the tool was reached. It
+  // showed "Videos work without a log-in" under "This post has no video",
+  // and another text when yt-dlp was pressed by hand (review of 2026-10-05).
+  const dead = deadEnd(chosen);
+  const why = several && chosen && mode !== "mp3" && !stepped && !dead ? `${chosen.name}: ${chosen.why}.` : "";
   // Said when the MP3 button changed the tool, so the switch never moves
   // silently; MP4 gives the user's tool back.
   const from = formatFrom && currentTools.find((t) => t.id === formatFrom);
-  $("tool-why").textContent = (why + (from ? ` Chosen for the MP3 — ${from.name} makes none.` : "")).trim();
-  $("tool-why").classList.toggle("hidden", !$("tool-why").textContent);
-  const need = stepped ? steppedText(chosen, stepped) : needText(chosen);
+  const whyText = (why + (from ? ` Chosen for the MP3 — ${from.name} makes none.` : "")).trim();
+  // MP3 drops the picture claim: its line keeps its room, or Download jumped
+  // 26 px up as the hand went to it (review of 2026-10-05).
+  const keepRoom = !whyText && several && !stepped && !dead && mode === "mp3";
+  $("tool-why").textContent = whyText || (keepRoom ? " " : "");
+  $("tool-why").classList.toggle("hidden", !whyText && !keepRoom);
+  $("tool-why").style.visibility = keepRoom ? "hidden" : "";
+  const need = dead ? probeExplain.next_step || ""
+    : stepped ? steppedText(chosen, stepped) : needText(chosen);
   // The log-in, right where it is asked for (the user, 2026-09-26) -- not
   // "go to Settings → Accounts". Not offered when a log-in would not help:
-  // the user IS logged in and only the cookie switch is off.
-  const n = (stepped || chosen) && (stepped || chosen).need;
+  // the user IS logged in and only the cookie switch is off. On a dead end,
+  // the log-in another tool of the site needs is the way out.
+  const n = dead
+    ? currentTools.map((t) => t.need).find((x) => x && x.kind === "login" && !x.met)
+    : (stepped || chosen) && (stepped || chosen).need;
   const wouldHelp = Boolean(need && n && !(n.logged_in && !n.cookies_on));
   // Never offered when the log-in window cannot open here at all (the
   // failed-job button already checked this through loginOffer) -- but SAID:
@@ -960,8 +988,9 @@ function showChosenTool() {
   // swapped for one that works, or a "visit" that may never be needed --
   // was pink too, with a filled button above Download, and a new user read
   // "this will fail" on links that work (critique of 2026-09-26).
-  const still = Boolean(!stepped && n && n.met && stillRefused(chosen));
-  const refused = still || Boolean(!stepped && n && !n.met && (n.kind === "login" || n.kind === "asked"));
+  const still = Boolean(!dead && !stepped && n && n.met && stillRefused(chosen));
+  // A dead end's box is advice, not a refusal: the red title already says it.
+  const refused = still || Boolean(!dead && !stepped && n && !n.met && (n.kind === "login" || n.kind === "asked"));
   $("tool-need").classList.toggle("warn", refused);
   // Logged in already: "Log in again" is a second chance (the log-in may
   // have been incomplete), grey, not the answer.
@@ -1405,7 +1434,9 @@ function failButtons(job) {
   // A known error names its own button (explain.py `action`): a 403 said
   // "Update it first" above a filled Retry (review of 2026-09-27).
   // No Update for a tool already the newest (upToDate).
-  const canUpdate = !hopeless && !upToDate(job.tool);
+  // Nor when the tool itself asked for a log-in: an update does not log in
+  // (a gallery-dl row showed 4 buttons, review of 2026-10-05).
+  const canUpdate = !hopeless && !upToDate(job.tool) && !(job.needs_login || ex.action === "login");
   const primary = (job.needs_login || ex.action === "login") && loginOffer(job) ? "login"
     : ex.action === "update" && canUpdate ? "update" : job.other_tool ? "switch"
     : !ex.known && job.error_from_tool && canUpdate ? "update" : hopeless ? "" : "retry";
@@ -1431,7 +1462,8 @@ function jobProgress(job) {
   // from its history even when the file is in no folder you chose.
   if (job.state === "done") right = job.skipped ? (job.skip_reason ? "skipped" : "already there") : "done";
   else if (job.state === "error") right = "failed";
-  else if (job.state === "cancelled") right = "cancelled";
+  // The word of the button that did it (review of 2026-10-05).
+  else if (job.state === "cancelled") right = "stopped";
   else if (job.state === "waiting") right = "waiting";
   // Running, and the tool has given no percentage yet -- or never gives one
   // (XHS-Downloader). The time it has been working is the one true thing to
@@ -1517,7 +1549,7 @@ function jobRow(job) {
       </div>` : ""}
     ${job.state === "done" && job.skipped ? `<div class="hint" style="margin-top:6px">
         ${job.skip_reason ? job.skip_reason + " <b>Nothing was downloaded.</b>"
-          : "This file was already there. <b>Nothing was downloaded.</b>"}
+          : "<b>Nothing was downloaded.</b>"}
       </div>
       <div class="row" style="margin-top:6px">
         <button class="ghost tiny" data-force="${job.id}">Download again</button>
