@@ -698,6 +698,9 @@ let readBy = null;
 // The failed read's explanation (explain.py), or {} -- its `retry`,
 // `next_step` and `action` shape the card.
 let probeExplain = {};
+// The title read got no answer at all: nothing is known about the tool,
+// so no "update" advice either.
+let probeNoAnswer = false;
 // A transparent 1x1 GIF: the picture frame while a title is read.
 const BLANK_PICTURE = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
@@ -759,8 +762,8 @@ function updateGoLabel() {
   $("go").textContent = doubtful ? "Try anyway" : askWhere ? "Download…" : "Download";
   // Not when the reader is already the newest version: the same answer
   // would come back (upToDate) -- said instead, below.
-  const newest = doubtful && !probeKnown && upToDate(reader.id);
-  const updateFirst = doubtful && !probeKnown && !newest;
+  const newest = doubtful && !probeKnown && !probeNoAnswer && upToDate(reader.id);
+  const updateFirst = doubtful && !probeKnown && !probeNoAnswer && !newest;
   $("probe-update").classList.toggle("hidden", !updateFirst);
   $("probe-update").textContent = `Update ${reader.name}`;
   $("probe-update").dataset.tool = reader.id;
@@ -1027,7 +1030,12 @@ function showChosenTool() {
   $("tool-why").textContent = whyText || (keepRoom ? " " : "");
   $("tool-why").classList.toggle("hidden", !whyText && !keepRoom);
   $("tool-why").style.visibility = keepRoom ? "hidden" : "";
-  const need = dead ? probeExplain.next_step || ""
+  // A dead end's way out is pointed to: the box said "gallery-dl can save
+  // them", and nothing said the switch above was the way (loop round 5).
+  const wayOut = dead && currentTools.length > 1
+    && currentTools.find((t) => t.id !== chosen.id && !deadEnd(t));
+  const need = dead ? (probeExplain.next_step || "")
+      + (wayOut ? ` To try ${wayOut.name}, choose it above.` : "")
     : stepped ? steppedText(chosen, stepped) : needText(chosen);
   // The log-in, right where it is asked for (the user, 2026-09-26) -- not
   // "go to Settings → Accounts". Not offered when a log-in would not help:
@@ -1238,6 +1246,9 @@ async function read() {
       "That is not a link. Copy the address of the video — it starts with https:// — and paste it here.";
     $("url-error").classList.remove("hidden");
     $("url").setAttribute("aria-invalid", "true");
+    // The error speaks for itself (role="alert"); the read announcer kept
+    // the previous card's sentence (loop round 5).
+    $("announce").textContent = "";
     return;
   }
   if (url !== typed) $("url").value = url;    // show the link we took out
@@ -1350,6 +1361,7 @@ async function readLink(url, mine) {
   probeReason = "";
   probeKnown = false;
   probeExplain = {};
+  probeNoAnswer = false;
   titleReading = true;        // until the read below answers (qualityWhy)
   maxHeight = 0;              // not known for this link yet: no list
   videoHeights = [];
@@ -1394,6 +1406,11 @@ async function readLink(url, mine) {
   let info;
   try {
     info = await api("/api/probe", { url: found.final_url || url });
+  } catch (problem) {
+    // No answer at all (the app's own server, not the site): the counter ran
+    // forever and nothing was said (decisions 33 and 34; loop round 5,
+    // 2026-10-18). Said, and the card stops waiting.
+    info = { error: String(problem), noAnswer: true, explain: {} };
   } finally {
     titleArrived();           // Download may go on, title or not
   }
@@ -1415,11 +1432,14 @@ async function readLink(url, mine) {
     // folded underneath -- still shown (decision 34), no longer a wall of
     // command-line options on the card (Vimeo's "--cookies, --username…",
     // critique of 2026-09-26).
-    probeReason = ex.known ? ex.title : `${readBy.name} could not read this link.`;
+    probeNoAnswer = Boolean(info.noAnswer);
+    probeReason = ex.known ? ex.title
+      : probeNoAnswer ? "Teleloadzai got no answer while reading the title."
+      : `${readBy.name} could not read this link.`;
     probeKnown = Boolean(ex.known);
     probeExplain = ex;
-    $("probe-words-text").textContent = ex.known ? "" : info.error;
-    $("probe-words").classList.toggle("hidden", ex.known || !info.error);
+    $("probe-words-text").textContent = ex.known || probeNoAnswer ? "" : info.error;
+    $("probe-words").classList.toggle("hidden", ex.known || probeNoAnswer || !info.error);
     $("probe-words").open = false;
     $("thumb").classList.add("hidden");
     probeProblem = true;
@@ -2175,7 +2195,11 @@ $("go").addEventListener("click", async () => {
     $("go").textContent = "Waiting for the title…";
     await titleReady;
     showChosenTool();         // the button's own words and state, as they are now
-    if (readNumber !== pressedOn) return;     // another link now: nothing asked
+    if (readNumber !== pressedOn) {           // another link now: nothing asked
+      // Said, not silent (decision 34; loop round 5).
+      setStatus("Download not started: a new link was pasted. Press Download again for it.");
+      return;
+    }
     // The read can change the answer: a dead end hides Download, a known
     // refusal greys it ("Try anyway"). Pressed during the read, it went on
     // regardless -- a "Save as" window, then a failure the card already

@@ -115,6 +115,10 @@ KNOWN: tuple[Known, ...] = (
         words=("could not resolve host",),
         tools=("yt-dlp",),
         title="This PC could not find the site's address.",
+        # No download can work until the address is found: the card offered
+        # MP3 / MP4 and "Try anyway", which led to a "Save as" window and the
+        # same failure (loop round 5, 2026-10-18). Reading again is the step.
+        retry=False,
         next_step=("Check your internet connection, then read the link again. "
                    "If you typed the link by hand, check its spelling too."),
         seen=("2026-10-05, the review agent, in the app: Instagram "
@@ -127,6 +131,10 @@ KNOWN: tuple[Known, ...] = (
         words=("failed to resolve", "getaddrinfo failed"),
         tools=("yt-dlp",),
         title="This PC could not find the site's address.",
+        # No download can work until the address is found: the card offered
+        # MP3 / MP4 and "Try anyway", which led to a "Save as" window and the
+        # same failure (loop round 5, 2026-10-18). Reading again is the step.
+        retry=False,
         next_step=("Check your internet connection, then read the link again. "
                    "If you typed the link by hand, check its spelling too."),
         seen=("2026-10-05: three made-up addresses (…tlz-4821.invalid, "
