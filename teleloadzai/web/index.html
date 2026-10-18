@@ -745,7 +745,8 @@ function updateGoLabel() {
   // "Try anyway" led to a "Save as" window and a failure the card already
   // knew (review of 2026-09-28). No button; the card says what happened as
   // its title and what to do instead (another tool stays on the switch).
-  const hopeless = doubtful && probeKnown && probeExplain.retry === false;
+  const hopeless = doubtful && probeKnown
+    && (probeExplain.retry === false || probeExplain.action === "read");
   $("go").classList.toggle("hidden", hopeless);
   // With no Download, MP3 / MP4 and the Quality list acted on nothing
   // (decision 40; review of 2026-09-28). The tool switch stays: it is the
@@ -900,7 +901,8 @@ function qualityWhy() {
 
 /** The title read, with this very tool, gave a known answer no retry changes. */
 function deadEnd(tool) {
-  return Boolean(probeProblem && probeKnown && probeExplain.retry === false
+  return Boolean(probeProblem && probeKnown
+    && (probeExplain.retry === false || probeExplain.action === "read")
     && readBy && tool && tool.id === readBy.id);
 }
 

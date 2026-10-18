@@ -556,30 +556,34 @@ def _install_pip(tool: ToolSpec, on_progress: ProgressFn | None) -> None:
     if finished.returncode != 0:
         last = (finished.stderr or finished.stdout or "").strip().splitlines()
         raise InstallError(last[-1] if last else "pip failed")
-    _drop_old_records(tool)
+    _drop_old_records()
 
 
-def _drop_old_records(tool: ToolSpec) -> None:
-    """Keep only the newest version record of this package in our folder.
+def _drop_old_records() -> None:
+    """Keep only the newest version record of EACH package in our folder.
 
-    `pip install --target --upgrade` replaces the package but ADDS its new
+    `pip install --target --upgrade` replaces a package but ADDS its new
     record (`gallery_dl-1.32.14.dist-info`) beside the old one
     (`gallery_dl-1.32.13.dist-info`), and Python then reads the old one: the
     code was 1.32.14, the Tools page said 1.32.13 with "update", and pressing
-    Update seemed to do nothing (seen 2026-09-28). Only folders named
-    `<this package>-<version>.dist-info` inside `libs_dir()` are touched.
+    Update seemed to do nothing (seen 2026-09-28). The packages a tool brings
+    along do the same: charset_normalizer had 3.5.1 and 3.5.2 side by side
+    (grids of 2026-10-18), when only the tool's own records were cleaned.
+    Only `<package>-<version>.dist-info` folders inside `libs_dir()` are
+    touched, and only when a newer record of the same package is there.
     """
-    wanted = re.sub(r"[-_.]+", "_", tool.pip_name).lower()
-    records = []
+    by_package: dict[str, list] = {}
     for folder in libs_dir().glob("*.dist-info"):
         name, _, version = folder.name[: -len(".dist-info")].rpartition("-")
-        if re.sub(r"[-_.]+", "_", name).lower() == wanted and _numbers(version):
-            records.append((_numbers(version), folder))
-    for _, folder in sorted(records)[:-1]:
-        try:
-            shutil.rmtree(folder)
-        except OSError:
-            pass        # the version shown stays old; the tool itself is new
+        if name and _numbers(version):
+            key = re.sub(r"[-_.]+", "_", name).lower()
+            by_package.setdefault(key, []).append((_numbers(version), folder))
+    for records in by_package.values():
+        for _, folder in sorted(records)[:-1]:
+            try:
+                shutil.rmtree(folder)
+            except OSError:
+                pass    # the version shown stays old; the package itself is new
 
 
 def remove(tool_id: str) -> bool:
