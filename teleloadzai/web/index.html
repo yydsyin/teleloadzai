@@ -370,7 +370,7 @@
     <div class="preview">
       <img class="thumb hidden" id="thumb" alt="">
       <div style="min-width:0">
-        <div class="title" id="title">…</div>
+        <div class="title" id="title" role="heading" aria-level="2">…</div>
         <div class="meta" id="meta"></div>
         <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span><span class="hint hidden" id="tool-pick-label" style="margin-left:8px">Tool</span><span class="switch hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span></div>
         <div class="hint hidden" id="tool-why" style="margin-top:6px"></div>
@@ -396,7 +396,7 @@
       <select id="quality"></select>
       <!-- Where the list is missing, why (the user, 2026-10-05: a YouTube
            MP4 with no Quality list looked like a bug). -->
-      <span class="hint hidden" id="quality-why" style="margin-left:6px"></span>
+      <span class="hint hidden" id="quality-why"></span>
       <!-- On the same row as the choices: below them, it ended at 483 px in
            a 421 px window, and the one action that matters needed a scroll
            (round 1 of the loop, 2026-09-26). -->
@@ -889,10 +889,10 @@ function qualityWhy() {
   if (probeProblem) return "";
   // "no other size" was false: Me at the zoo HAS 144p, the list just
   // never offers anything under 360p (loop round 2).
-  if (maxHeight) return "Quality: Best only — no smaller size to choose";
+  if (maxHeight) return "Quality: Best — no smaller size to choose";
   // "not read" was false after a read that returned no size (Instagram,
   // a stream link -- review of 2026-10-05).
-  return "Quality: Best only — the sizes are not known before the download";
+  return "Quality: Best — the sizes are not known before the download";
 }
 
 /** The title read, with this very tool, gave a known answer no retry changes. */
@@ -1443,6 +1443,10 @@ async function readLink(url, mine) {
     if (info.thumbnail) { $("thumb").src = info.thumbnail; $("thumb").classList.remove("hidden"); }
     else { $("thumb").classList.add("hidden"); }
   }
+  // Said aloud: a screen reader heard nothing when the read ended, and
+  // could not tell a finished read from a frozen one (decision 33; loop
+  // round 4, 2026-10-18).
+  $("announce").textContent = "Read: " + $("title").textContent;
 }
 
 // The name to put on a "Log in to …" button for a failed job, or "" when
@@ -2161,18 +2165,30 @@ function twoClicks(button, question, action) {
 
 $("go").addEventListener("click", async () => {
   if (waitTimer) {            // the title is still being read: wait for it
+    // What the button was when pressed, and for which link: only a CHANGE
+    // made by the read stops the press. A press on an already grey button
+    // was refused, and a link pasted during the wait was started unasked
+    // (loop round 4, 2026-10-18).
+    const pressedOn = readNumber;
+    const wasHeld = $("go").classList.contains("hidden") || $("go").classList.contains("ghost");
     $("go").disabled = true;
     $("go").textContent = "Waiting for the title…";
     await titleReady;
     showChosenTool();         // the button's own words and state, as they are now
+    if (readNumber !== pressedOn) return;     // another link now: nothing asked
     // The read can change the answer: a dead end hides Download, a known
     // refusal greys it ("Try anyway"). Pressed during the read, it went on
     // regardless -- a "Save as" window, then a failure the card already
-    // knew (loop round 3, 2026-10-18). Stop and let the card speak; a
-    // second press of a grey button is a deliberate "try anyway".
-    const changed = $("go").classList.contains("hidden") || $("go").classList.contains("ghost");
-    if ($("go").disabled || changed) {
-      if (changed) setStatus("Download not started: " + $("title").textContent);
+    // knew (loop round 3). Stop and let the card speak; a second press of a
+    // grey button is a deliberate "try anyway".
+    const held = $("go").classList.contains("hidden") || $("go").classList.contains("ghost");
+    if ($("go").disabled) return;
+    if (held && !wasHeld) {
+      // The reason, never the video's title (round 4: "Download not
+      // started: Post by instagram").
+      const why = probeProblem ? $("title").textContent
+        : $("tool-need-text").textContent.split(/(?<=\.) /)[0];
+      setStatus("Download not started: " + why);
       return;
     }
   }
