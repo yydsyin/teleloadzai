@@ -186,9 +186,12 @@
     /* A long list scrolls inside its own card: 9 rows made it 1014 px in a
        768 px window, and reaching the last row pushed the link card off the
        screen (loop round 2, 2026-10-18). The card starts under the top bar
-       (102 px at 1366x768), plus its head and padding (about 70 px). */
+       (102 px at 1366x768), plus its head and padding (about 70 px), plus
+       the page's 60 px foot and the card's 14 px margin -- without those the
+       page scrolled 54 px too, and its scrollbar pushed the left card 7 px
+       (loop round 3). */
     .wrap[data-showing="main"] > #jobs-card #jobs {
-      max-height: calc(100vh - 190px); overflow-y: auto;
+      max-height: calc(100vh - 264px); overflow-y: auto;
     }
     #jobs-card:has(#jobs:empty) #clear { display: none; }
     /* Settings is read top to bottom: one column, wider than before -- but
@@ -768,8 +771,11 @@ function updateGoLabel() {
   $("probe-note").classList.toggle("hidden", !other);
   // A known fact is kept when the user follows the card's advice and
   // changes tool; "preview" was a word nobody explained (loop round 2).
-  $("probe-note").textContent = !other ? ""
-    : probeKnown ? probeReason
+  // A known fact stays the headline on any tool (below); the note is only
+  // for an unknown failure (loop round 3: the fact had dropped to the last
+  // line under "No title found").
+  $("probe-note").classList.toggle("hidden", !other || probeKnown);
+  $("probe-note").textContent = !other || probeKnown ? ""
     : `${reader.name} could not read the title. ${chosen.name} reads the post when it downloads it.`;
   if (probeProblem) {
     // A tool's own words often end without a full stop, and ran straight
@@ -788,7 +794,7 @@ function updateGoLabel() {
     // An unknown error too: what happened is the headline, not "No title
     // found" (loop round 2: TED).
     $("title").textContent = refusedLoggedIn ? `${site} refused this video, even with your ${site} log-in.`
-      : hopeless || doubtful ? probeReason : "No title found";
+      : hopeless || doubtful || probeKnown ? probeReason : "No title found";
     const advice = knownHere && !hopeless && $("tool-need").classList.contains("hidden")
       && !/retry/i.test(probeExplain.next_step || "") ? probeExplain.next_step || "" : "";
     const reason = $("tool-need").classList.contains("warn") || hopeless || doubtful ? advice : probeReason.trim();
@@ -796,7 +802,9 @@ function updateGoLabel() {
     // already says it (Instagram said the gallery-dl advice twice).
     $("meta").textContent = hopeless ? ($("tool-need").classList.contains("hidden") ? probeExplain.next_step || "" : "")
       : (reason ? reason + (/[.!?]$/.test(reason) ? " " : ". ") : "")
-        + (newest ? `${reader.name} is already the newest version, so updating will not help. ` : "")
+        // What to do, not only what will not help: advice, not a cause
+        // (decision 38; loop round 3).
+        + (newest ? `${reader.name} is already the newest version. Its next version may fix this: try again in a few days. ` : "")
         // The file name only where a download is the likely next step: on
         // a "Try anyway" or a pink card it was one block too many (review
         // of 2026-10-05).
@@ -860,7 +868,12 @@ function applyChoices(tool) {
   // A tool that does take a size, and no list: say why, instead of a gap
   // that looks like a bug (the user, 2026-10-05). The MP3 list is always
   // whole, and a tool with no size choice says "You get: …" already.
-  const why = mode === "mp4" && can.mp4 && !hasQuality ? qualityWhy() : "";
+  // A tool that takes no size and names no format (TikTokDownloader,
+  // KS-Downloader: runners.CHOICES) left the place blank, while yt-dlp
+  // explained it -- the line came and went with the switch (loop round 3).
+  const why = mode !== "mp4" ? ""
+    : can.mp4 ? (!hasQuality ? qualityWhy() : "")
+    : !can.label && tool && !deadEnd(tool) ? `Quality: Best — ${tool.name} has no size choice` : "";
   $("quality-why").textContent = why;
   $("quality-why").classList.toggle("hidden", !why);
 }
@@ -1484,7 +1497,7 @@ function errorExplanation(job) {
   // it -- the row was four sentences, 180-200 px tall (review of 2026-09-27).
   return `<b>The download failed, and Teleloadzai does not recognise why.</b>`
     // One sentence, not "newest. Updating will not help." (loop round 2).
-    + (other || (newest ? newest.replace(/\.$/, ", so updating will not help.")
+    + (other || (newest ? newest + " Its next version may fix this: try again in a few days."
       : ` Updating ${name} is the first thing to try.`))
     + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
 }
@@ -2152,7 +2165,16 @@ $("go").addEventListener("click", async () => {
     $("go").textContent = "Waiting for the title…";
     await titleReady;
     showChosenTool();         // the button's own words and state, as they are now
-    if ($("go").disabled) return;
+    // The read can change the answer: a dead end hides Download, a known
+    // refusal greys it ("Try anyway"). Pressed during the read, it went on
+    // regardless -- a "Save as" window, then a failure the card already
+    // knew (loop round 3, 2026-10-18). Stop and let the card speak; a
+    // second press of a grey button is a deliberate "try anyway".
+    const changed = $("go").classList.contains("hidden") || $("go").classList.contains("ghost");
+    if ($("go").disabled || changed) {
+      if (changed) setStatus("Download not started: " + $("title").textContent);
+      return;
+    }
   }
   const title = currentTitle;
   let target = "";
