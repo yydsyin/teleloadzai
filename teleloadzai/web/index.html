@@ -183,6 +183,13 @@
     /* The right column is never an empty hole: it says what will be there. */
     .wrap[data-showing="main"] > #jobs-card.hidden { display: block !important; }
     #jobs:empty::before { content: "Your downloads will appear here."; color: var(--soft); font-size: 14px; }
+    /* A long list scrolls inside its own card: 9 rows made it 1014 px in a
+       768 px window, and reaching the last row pushed the link card off the
+       screen (loop round 2, 2026-10-18). The card starts under the top bar
+       (102 px at 1366x768), plus its head and padding (about 70 px). */
+    .wrap[data-showing="main"] > #jobs-card #jobs {
+      max-height: calc(100vh - 190px); overflow-y: auto;
+    }
     #jobs-card:has(#jobs:empty) #clear { display: none; }
     /* Settings is read top to bottom: one column, wider than before -- but
        not so wide that a help line runs to 146 characters (measured at
@@ -226,7 +233,11 @@
     background: var(--bg); border: 1px solid var(--line);
     font-size: 12px; color: var(--soft);
   }
-  .controls { display: flex; gap: 6px; margin: 14px 0 12px; flex-wrap: wrap; align-items: center; }
+  /* No bottom margin: the card's foot was 28 px under Download and 16 px
+     over the title (loop round 2, 2026-10-18). The install box below gets
+     its own space. */
+  .controls { display: flex; gap: 6px; margin: 14px 0 0; flex-wrap: wrap; align-items: center; }
+  #need-tool:not(.hidden) { margin-top: 12px; }
   .choice {
     padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 15px;
     border: 1px solid var(--line); background: transparent; color: var(--ink); font-weight: 500;
@@ -755,9 +766,11 @@ function updateGoLabel() {
   // information about yt-dlp, not a verdict on this download (decision 38).
   const other = probeProblem && chosen && !sameTool;
   $("probe-note").classList.toggle("hidden", !other);
-  $("probe-note").textContent = other
-    ? `That was ${reader.name}'s preview. ${chosen.name} downloads this site its own way.`
-    : "";
+  // A known fact is kept when the user follows the card's advice and
+  // changes tool; "preview" was a word nobody explained (loop round 2).
+  $("probe-note").textContent = !other ? ""
+    : probeKnown ? probeReason
+    : `${reader.name} could not read the title. ${chosen.name} reads the post when it downloads it.`;
   if (probeProblem) {
     // A tool's own words often end without a full stop, and ran straight
     // into the next sentence ("…manually pass cookies The "Save as"…").
@@ -767,10 +780,18 @@ function updateGoLabel() {
     // found", and its advice never reached the card (loop round 1,
     // 2026-10-18: "This PC could not find the site's address.").
     const knownHere = doubtful && probeKnown;
-    $("title").textContent = hopeless || knownHere ? probeReason : "No title found";
+    // Logged in, refused anyway: ONE sentence. The title said "only to a
+    // logged-in account" over a box saying "has your log-in" (loop round 2).
+    const site = currentPlatform;
+    const refusedLoggedIn = knownHere && probeExplain.action === "login"
+      && chosen && chosen.need && chosen.need.met;
+    // An unknown error too: what happened is the headline, not "No title
+    // found" (loop round 2: TED).
+    $("title").textContent = refusedLoggedIn ? `${site} refused this video, even with your ${site} log-in.`
+      : hopeless || doubtful ? probeReason : "No title found";
     const advice = knownHere && !hopeless && $("tool-need").classList.contains("hidden")
       && !/retry/i.test(probeExplain.next_step || "") ? probeExplain.next_step || "" : "";
-    const reason = $("tool-need").classList.contains("warn") || hopeless || knownHere ? advice : probeReason.trim();
+    const reason = $("tool-need").classList.contains("warn") || hopeless || doubtful ? advice : probeReason.trim();
     // The next step once: not under the title when the box above Download
     // already says it (Instagram said the gallery-dl advice twice).
     $("meta").textContent = hopeless ? ($("tool-need").classList.contains("hidden") ? probeExplain.next_step || "" : "")
@@ -853,7 +874,9 @@ function qualityWhy() {
   // one block too many on a card that will likely fail (Vimeo, TED --
   // reviews of 2026-10-05).
   if (probeProblem) return "";
-  if (maxHeight) return "Quality: Best only — this video has no other size";
+  // "no other size" was false: Me at the zoo HAS 144p, the list just
+  // never offers anything under 360p (loop round 2).
+  if (maxHeight) return "Quality: Best only — no smaller size to choose";
   // "not read" was false after a read that returned no size (Instagram,
   // a stream link -- review of 2026-10-05).
   return "Quality: Best only — the sizes are not known before the download";
@@ -882,7 +905,9 @@ function needText(tool) {
   // Logged in, and the site refused anyway: said as a fact, with no "log
   // in" -- the Vimeo card asked for a log-in Settings showed as done, after
   // a title read that had used it (review of 2026-09-28).
-  if (n.met) return stillRefused(tool) ? `Teleloadzai has your ${site} log-in, and ${site} still refused this video.` : "";
+  // The title says the refusal; the box gives the one thing to try --
+  // advice, not a cause (decision 38).
+  if (n.met) return stillRefused(tool) ? `If you can watch it on ${site}, log in again here.` : "";
   // A visit is done once the site has cookies: the tip showed on every
   // TikTok link, cookies saved or not (review of 2026-09-28).
   if (n.kind === "visit" && n.visited && n.cookies_on) return "";
@@ -1458,7 +1483,8 @@ function errorExplanation(job) {
   // them), and the fold right below is seen without a sentence pointing at
   // it -- the row was four sentences, 180-200 px tall (review of 2026-09-27).
   return `<b>The download failed, and Teleloadzai does not recognise why.</b>`
-    + (other || (newest ? newest + " Updating will not help."
+    // One sentence, not "newest. Updating will not help." (loop round 2).
+    + (other || (newest ? newest.replace(/\.$/, ", so updating will not help.")
       : ` Updating ${name} is the first thing to try.`))
     + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
 }
@@ -1485,7 +1511,11 @@ function failButtons(job) {
   const canUpdate = !hopeless && !upToDate(job.tool) && !(job.needs_login || ex.action === "login");
   const primary = (job.needs_login || ex.action === "login") && loginOffer(job) ? "login"
     : ex.action === "update" && canUpdate ? "update" : job.other_tool ? "switch"
-    : !ex.known && job.error_from_tool && canUpdate ? "update" : hopeless ? "" : "retry";
+    : !ex.known && job.error_from_tool && canUpdate ? "update"
+    // An unknown error from a tool already the newest: a Retry will most
+    // likely get the same answer, so nothing is pushed (loop round 2: a
+    // filled Retry under "updating will not help").
+    : hopeless || (!ex.known && job.error_from_tool) ? "" : "retry";
   const cls = (name) => (primary === name ? "" : "ghost ") + "tiny";
   return [
     loginOffer(job) && `<button class="${cls("login")}" data-login="${job.platform}">Log in to ${loginOffer(job)}</button>`,
