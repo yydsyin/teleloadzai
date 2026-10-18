@@ -92,6 +92,12 @@
   /* Help lines reached 120 characters at 860 px: a comfortable line is
      shorter (review of 2026-09-27). */
   #settings .hint { max-width: 72ch; }
+  /* A list, not a sentence: the tool rows stopped 190 px short of their
+     card's edge (loop round 1, 2026-10-18). */
+  #settings #tools-list { max-width: none; }
+  /* A dead end hides every control of its row: the row's margin left an
+     empty band at the card's foot (loop round 1). */
+  #result.dead-end .controls { margin: 0; }
   /* The tip box's border took the text colour and it looked like a second
      text field; the pink one keeps its own (review of 2026-09-27). */
   #tool-need:not(.warn) { border-color: var(--line); background: var(--bg); }
@@ -757,8 +763,14 @@ function updateGoLabel() {
     // into the next sentence ("…manually pass cookies The "Save as"…").
     // The pink box already says the refusal: the line under the title
     // keeps only what it adds -- the file name (loop round 2: Vimeo said it twice).
-    $("title").textContent = hopeless ? probeReason : "No title found";
-    const reason = $("tool-need").classList.contains("warn") || hopeless ? "" : probeReason.trim();
+    // A known answer is the news: it was one line under a red "No title
+    // found", and its advice never reached the card (loop round 1,
+    // 2026-10-18: "This PC could not find the site's address.").
+    const knownHere = doubtful && probeKnown;
+    $("title").textContent = hopeless || knownHere ? probeReason : "No title found";
+    const advice = knownHere && !hopeless && $("tool-need").classList.contains("hidden")
+      && !/retry/i.test(probeExplain.next_step || "") ? probeExplain.next_step || "" : "";
+    const reason = $("tool-need").classList.contains("warn") || hopeless || knownHere ? advice : probeReason.trim();
     // The next step once: not under the title when the box above Download
     // already says it (Instagram said the gallery-dl advice twice).
     $("meta").textContent = hopeless ? ($("tool-need").classList.contains("hidden") ? probeExplain.next_step || "" : "")
@@ -901,7 +913,9 @@ function needText(tool) {
     // account") -- it was hidden behind this box (review of 2026-09-28).
     // "may": a download with a log-in has not been seen yet (decision 38).
     if (probeKnown && probeExplain.action === "login" && probeReason) {
-      return `${probeReason} Logging in may let you download it.`;
+      // The title already says it when this tool is the one that read.
+      return (readBy && tool.id === readBy.id ? "" : probeReason + " ")
+        + "Logging in may let you download it.";
     }
     return `${site} asks for an account. Logging in may help — not tested yet.`;
   }
@@ -967,7 +981,8 @@ function showChosenTool() {
   // Said when the MP3 button changed the tool, so the switch never moves
   // silently; MP4 gives the user's tool back.
   const from = formatFrom && currentTools.find((t) => t.id === formatFrom);
-  const whyText = (why + (from ? ` Chosen for the MP3 — ${from.name} makes none.` : "")).trim();
+  const whyText = (why + (from ? ` Chosen for the MP3 — ${from.name} makes none.` : "")
+    + (mp3Waiting && chosen ? ` ${chosen.name} makes no MP3.` : "")).trim();
   // MP3 drops the picture claim: its line keeps its room, or Download jumped
   // 26 px up as the hand went to it (review of 2026-10-05).
   const keepRoom = !whyText && several && !stepped && !dead && mode === "mp3";
@@ -1102,8 +1117,13 @@ function mp3Maker() {
   return currentTools.find((t) => "mp3" in (t.choices || {}) && !deadEnd(t));
 }
 
+// MP3 was chosen, then a tool that makes none was pressed by hand: MP4 is
+// in use, and MP3 comes back on a tool that makes one.
+let mp3Waiting = false;
+
 for (const button of document.querySelectorAll(".choice")) {
   button.addEventListener("click", () => {
+    mp3Waiting = false;                   // the user chose the format himself
     mode = button.dataset.mode;
     for (const other of document.querySelectorAll(".choice")) {
       other.setAttribute("aria-pressed", String(other === button));
@@ -1231,6 +1251,7 @@ async function readLink(url, mine) {
   // only, and Settings changes the default (the user, 2026-09-25).
   userPicked = false;
   formatFrom = "";
+  mp3Waiting = false;
   $("tool-pick").innerHTML = "";
   for (const tool of currentTools) {
     const button = document.createElement("button");
@@ -1239,6 +1260,19 @@ async function readLink(url, mine) {
     button.textContent = tool.name;
     button.title = tool.why;
     button.addEventListener("click", () => {
+      const makesMp3 = "mp3" in (tool.choices || {});
+      // MP3 is kept from link to link on purpose; a program pressed by hand
+      // dropped it in silence, and going back did not bring it back (loop
+      // round 1, 2026-10-18). Said, and given back on a tool that makes one.
+      if (mode === "mp3" && !makesMp3) mp3Waiting = true;
+      if (mp3Waiting && makesMp3) {
+        mp3Waiting = false;
+        mode = "mp3";
+        for (const b of document.querySelectorAll(".choice")) {
+          b.setAttribute("aria-pressed", String(b.dataset.mode === "mp3"));
+        }
+        fillQualities();
+      }
       pickedTool = tool.id;
       userPicked = true;
       autoPicked = null;
