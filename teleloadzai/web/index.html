@@ -351,6 +351,16 @@
   <div class="hidden" id="status" role="status" aria-live="polite"><span id="status-text"></span><button type="button" id="status-close" aria-label="Close this message">×</button></div>
   <div class="sr-only" id="announce" aria-live="polite"></div>
 
+  <!-- Decisions 8 and 19, built 2026-10-21: the updates waiting, and one
+       press for all of them. Shown in "Ask me first" mode only. -->
+  <div class="card hidden" data-view="main" id="update-bar" role="region" aria-label="Tool updates">
+    <div class="row" style="flex-wrap:wrap; align-items:center; gap:8px">
+      <span id="update-bar-text" style="flex:1; min-width:220px"></span>
+      <button class="tiny" id="update-bar-all">Update all</button>
+      <button class="ghost tiny" id="update-bar-later">Later</button>
+    </div>
+  </div>
+
   <div class="card" data-view="main">
     <div class="row">
       <input type="text" id="url" placeholder="https://..." autocomplete="off" spellcheck="false"
@@ -532,9 +542,32 @@
     <div class="field">
       <div class="head">
         <span class="label">Installed programs</span>
-        <button class="ghost tiny" id="tools-refresh">Check versions</button>
+        <span class="row" style="gap:6px">
+          <button class="tiny hidden" id="tools-update-all">Update all</button>
+          <button class="ghost tiny" id="tools-refresh">Check versions</button>
+        </span>
       </div>
       <div id="tools-list" class="hint">Loading…</div>
+      <div class="row" style="margin-top:12px">
+        <label class="label" for="update-mode">Updates</label>
+        <select id="update-mode">
+          <option value="ask">Ask me first (recommended)</option>
+          <option value="auto">Automatic</option>
+          <option value="manual">Manual</option>
+        </select>
+      </div>
+      <div class="hint" id="update-mode-hint" style="margin-top:6px"></div>
+      <div class="row" style="margin-top:12px">
+        <label class="label" for="ytdlp-channel">yt-dlp version</label>
+        <select id="ytdlp-channel">
+          <option value="stable">Stable (recommended)</option>
+          <option value="preview">Preview</option>
+        </select>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        Preview gets fixes for broken sites days earlier, and is sometimes less
+        stable. Your choice takes effect when yt-dlp is updated.
+      </div>
       <div class="card warn hidden" id="python-help" style="margin:12px 0 0">
         <div class="title" id="python-help-title">Python is needed</div>
         <div class="hint" style="margin:6px 0 10px" id="python-help-text"></div>
@@ -1491,7 +1524,9 @@ let loginIsBlocked = "";
  */
 function upToDate(id) {
   const tool = (toolsData.tools || []).find((t) => t.id === id);
-  return Boolean(tool && tool.installed && tool.version && tool.latest && !tool.update_available);
+  // A tool that prints no version is judged by the release we installed.
+  return Boolean(tool && tool.installed && (tool.version || tool.release_installed)
+    && tool.latest && !tool.update_available);
 }
 
 function loginOffer(job) {
@@ -1542,7 +1577,8 @@ function errorExplanation(job) {
  * round 2, 2026-09-26: a filled Retry sat under words saying it would not
  * help).
  */
-function failButtons(job) {
+/** Which buttons a failed row gets, and which one is filled. */
+function failChoice(job) {
   const ex = job.explain || {};
   const hopeless = ex.known && ex.retry === false;
   // Log in leads only when the tool itself said a log-in is needed: filled
@@ -1560,11 +1596,21 @@ function failButtons(job) {
     // likely get the same answer, so nothing is pushed (loop round 2: a
     // filled Retry under "updating will not help").
     : hopeless || (!ex.known && job.error_from_tool) ? "" : "retry";
+  return { hopeless, canUpdate, primary };
+}
+
+function failButtons(job) {
+  const { hopeless, canUpdate, primary } = failChoice(job);
   const cls = (name) => (primary === name ? "" : "ghost ") + "tiny";
   return [
     loginOffer(job) && `<button class="${cls("login")}" data-login="${job.platform}">Log in to ${loginOffer(job)}</button>`,
     job.other_tool && `<button class="${cls("switch")}" data-switch="${job.id}" data-tool="${job.other_tool.id}">Try with ${job.other_tool.name}</button>`,
-    canUpdate && `<button class="${cls("update")}" data-update="${job.tool}">Update ${job.tool_name || job.tool}</button>`,
+    // Update, then the retry by itself: "updated — press Retry" made the
+    // user do the obvious second half (update system, 2026-10-21).
+    canUpdate && `<button class="${cls("update")}" data-update="${job.tool}">Update ${job.tool_name || job.tool} and retry</button>`,
+    // yt-dlp already the newest stable, and the error not known: its
+    // preview builds get fixes days earlier -- the next way out.
+    previewOffer(job, hopeless) && `<button class="ghost tiny" data-preview="${job.id}">Try yt-dlp's preview version</button>`,
     !hopeless && `<button class="${cls("retry")}" data-retry="${job.id}">Retry</button>`,
     // Nothing to retry: the row still gets a way out of the list, without
     // "Clear finished" taking every other row with it (review of 2026-09-27).
@@ -1642,6 +1688,7 @@ function jobShape(job) {
 
 function jobRow(job) {
   const row = document.createElement("div");
+  row._job = job;           // a failed row is drawn again when the versions change
   // "already there" is not a success: it must not look green.
   row.className = "job state-" + (job.skipped && job.state === "done" ? "skipped" : job.state);
   row.dataset.shape = jobShape(job);
@@ -1687,7 +1734,7 @@ function jobRow(job) {
         <span class="saved-before"></span>
         <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
       </div>` : ""}
-    ${job.state === "error" ? `<div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>
+    ${job.state === "error" ? `<div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>${douyinNote(job)}
       ${job.error && job.error_from_tool ? `<details class="more" style="margin-top:4px">
         <summary class="hint">Show ${job.tool_name || job.tool}'s message</summary><div class="err"></div>
       </details>` : ""}
@@ -1739,22 +1786,9 @@ function jobRow(job) {
     button.setAttribute("aria-label", `${button.textContent.trim()}: ${shown}`);
   }
   const update = row.querySelector("[data-update]");
-  if (update) update.addEventListener("click", async () => {
-    update.disabled = true;
-    update.textContent = "updating…";
-    await installTool(update.dataset.update);
-    const result = await waitForInstall(update.dataset.update);
-    // Said only when it happened (decision 24). Until 2026-09-26 this read
-    // "updated" whatever came back -- seen with an install made to fail.
-    if (!result || result.state === "error") {
-      update.disabled = false;
-      update.textContent = "Update failed — try again";
-      setStatus(`The update of ${job.tool_name || update.dataset.update} did not finish: `
-        + (result && result.error ? result.error : "no answer after 6 minutes") + ".");
-      return;
-    }
-    update.textContent = "updated — press Retry";
-  });
+  if (update) update.addEventListener("click", () => updateAndRetry(job, update));
+  const preview = row.querySelector("[data-preview]");
+  if (preview) preview.addEventListener("click", () => tryPreview(job, preview));
 
   const loginButton = row.querySelector("[data-login]");
   if (loginButton) loginButton.addEventListener("click", () => {
@@ -1841,9 +1875,11 @@ async function refresh() {
           : `${name}: download failed.`;
       }
       const fresh = jobRow(job);
+      const justFailed = row && job.state === "error";
       if (row) row.replaceWith(fresh);
       jobRows.set(job.id, fresh);
       row = fresh;
+      if (justFailed) checkForFix(job);
     }
     // Newest first, as the server sends them.
     if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null);
@@ -1898,7 +1934,9 @@ function toolRow(tool, progress) {
   if (running) buttons = '<span class="small">working…</span>';
   else if (!tool.installed) buttons = `<button class="tiny" data-install="${tool.id}">Install</button>`;
   else {
-    if (tool.update_available) buttons += `<button class="tiny" data-install="${tool.id}">Update</button>`;
+    if (tool.update_available) buttons += `<button class="tiny" data-install="${tool.id}">${
+      tool.channel_change ? (tool.channel === "preview" ? "Switch to preview" : "Switch to stable")
+        : "Update"}</button>`;
     if (!tool.essential) buttons += `<button class="ghost tiny" data-remove="${tool.id}">Remove</button>`;
   }
 
@@ -1907,7 +1945,7 @@ function toolRow(tool, progress) {
     // No version known (TikTokDownloader and KS-Downloader are never started
     // just to ask): say nothing -- the "installed" badge already says it,
     // and it said it twice.
-    ? shortVersion(tool.version || "")
+    ? shortVersion(tool.version || tool.release_installed || "")
     : (tool.latest ? "not installed · latest " + shortVersion(tool.latest) + size : "not installed");
 
   row.innerHTML = `
@@ -1978,13 +2016,18 @@ async function loadTools(refresh) {
   toolsData = { ...toolsData, ...data };
   if (!data.progress) toolsData.progress = (await api("/api/tools/progress")).progress;
   renderTools();
+  renderUpdateBar();
+  redrawFailedRows();
   updateGoLabel();          // the card's Update follows the versions (upToDate)
   const busy = Object.values(toolsData.progress || {}).some((p) => p.state === "running");
   if (busy && !toolsPolling) { toolsPolling = true; setTimeout(pollTools, 800); }
 }
 
 async function pollTools() {
+  const before = toolsData.progress || {};
   toolsData.progress = (await api("/api/tools/progress")).progress;
+  reportFinished(before, toolsData.progress);
+  renderUpdateBar();
   const busy = Object.values(toolsData.progress).some((p) => p.state === "running");
   if (busy) { renderTools(); setTimeout(pollTools, 800); }
   else { toolsPolling = false; loadTools(); }
@@ -1997,7 +2040,8 @@ async function installTool(id) {
 
 /** Wait until an install finishes. Returns its last progress, or null. */
 async function waitForInstall(id) {
-  for (let i = 0; i < 450; i++) {           // ~6 minutes, enough for FFmpeg
+  // ~30 minutes: an update waits for the downloads of its tool to finish.
+  for (let i = 0; i < 2250; i++) {
     const progress = (await api("/api/tools/progress")).progress[id];
     if (!progress || progress.state !== "running") return progress || null;
     await new Promise((resolve) => setTimeout(resolve, 800));
@@ -2015,6 +2059,181 @@ function shortVersion(text) {
   const number = String(text).match(/\d+(?:\.\d+)+/);
   return number ? number[0] : String(text).slice(0, 24);
 }
+
+// ---- the update system (decisions 8, 18, 19; built 2026-10-21) -------------
+
+let updateMode = "ask";
+let updateBarLater = false;
+// One automatic "update and retry" per row: never a loop.
+const autoRetried = new Set();
+// Updates a failed row is waiting for: that row says the result itself,
+// once, with "Retrying…" -- not twice.
+const rowUpdates = new Set();
+
+function toolName(id) {
+  return ((toolsData.tools || []).find((t) => t.id === id) || {}).name || id;
+}
+
+/** Installed tools of ours with a newer version, or another channel chosen. */
+function pendingUpdates() {
+  return (toolsData.tools || []).filter((t) => t.installed && !t.outside && t.update_available);
+}
+
+function updateWords(tool) {
+  if (tool.channel_change) return `${tool.name} → its ${tool.channel} builds`;
+  const here = tool.version || tool.release_installed;
+  return `${tool.name} ${here ? shortVersion(here) + " → " : ""}${shortVersion(tool.latest)}`;
+}
+
+/** A failed row's buttons depend on the versions (upToDate): drawn before
+ * they had loaded, a row offered "Update yt-dlp" for a yt-dlp already the
+ * newest, and kept it (seen 2026-10-21 after a reload). */
+function redrawFailedRows() {
+  for (const [id, row] of jobRows) {
+    if (!row._job || row._job.state !== "error" || !row.isConnected) continue;
+    const fresh = jobRow(row._job);
+    row.replaceWith(fresh);
+    jobRows.set(id, fresh);
+  }
+}
+
+function renderUpdateBar() {
+  const list = pendingUpdates();
+  const working = Object.entries(toolsData.progress || {})
+    .filter(([, p]) => p.state === "running");
+  $("tools-update-all").classList.toggle("hidden", list.length === 0 || working.length > 0);
+  const show = updateMode === "ask" && (working.length > 0 || (!updateBarLater && list.length > 0));
+  $("update-bar").classList.toggle("hidden", !show);
+  if (!show) return;
+  // While updating: what each one is doing, "waits for 1 download to finish"
+  // included (decision 19). The buttons go: there is nothing to press.
+  $("update-bar-text").textContent = working.length
+    ? "Updating " + working.map(([id, p]) => `${toolName(id)} (${p.stage || "starting"})`).join(", ") + "…"
+    : "Updates ready: " + list.map(updateWords).join(", ") + ".";
+  $("update-bar-all").classList.toggle("hidden", working.length > 0);
+  $("update-bar-later").classList.toggle("hidden", working.length > 0);
+}
+
+/** What an update really did: "updated" only when the version changed. */
+function installSentence(id, p) {
+  const name = toolName(id);
+  if (p.state === "error") return `The update of ${name} did not finish: ${p.error || "unknown error"}.`;
+  if (!p.changed) return `The update did not change ${name}: ${shortVersion(p.after || "")} is kept.`;
+  if (!p.before) return `${name} installed${p.after ? ": " + shortVersion(p.after) : ""}.`;
+  if (p.switched || p.before === p.after) return `${name} now comes from its ${p.channel} builds (${shortVersion(p.after)}).`;
+  return `${name} updated: ${shortVersion(p.before)} → ${shortVersion(p.after)}.`;
+}
+
+function reportFinished(before, now) {
+  for (const [id, p] of Object.entries(now || {})) {
+    if ((before[id] || {}).state !== "running" || p.state === "running" || rowUpdates.has(id)) continue;
+    const sentence = installSentence(id, p);
+    if (p.state === "error" || !p.changed) setStatus(sentence);   // stays: read it
+    else notify(sentence);
+  }
+}
+
+async function updateAll() {
+  updateBarLater = false;
+  for (const tool of pendingUpdates()) await api("/api/tools/install", { id: tool.id });
+  await loadTools();
+}
+
+/** A failed row's tool: update it, then retry the row -- once. */
+async function updateAndRetry(job, button) {
+  const name = job.tool_name || toolName(job.tool);
+  if (button) { button.disabled = true; button.textContent = "updating…"; }
+  rowUpdates.add(job.tool);
+  await api("/api/tools/install", { id: job.tool });
+  loadTools();
+  const result = await waitForInstall(job.tool);
+  rowUpdates.delete(job.tool);
+  // Said only when it happened (decision 24), and no retry when nothing
+  // changed: it would get the same answer.
+  if (!result || result.state === "error" || !result.changed) {
+    if (button) { button.disabled = false; button.textContent = "Update failed — try again"; }
+    setStatus(result ? installSentence(job.tool, result)
+      : `The update of ${name} gave no answer after 30 minutes.`);
+    return;
+  }
+  notify(installSentence(job.tool, result) + " Retrying…");
+  await api("/api/job/" + job.id + "/retry", {});
+  refresh();
+}
+
+/** A row just failed: is there a fix? GitHub is asked at once if the last
+ * answer is over an hour old. In Automatic mode the fix is applied and the
+ * row retried, once. */
+async function checkForFix(job) {
+  if (updateMode === "manual" || !job.tool) return;
+  const answer = await api("/api/tools/check", { id: job.tool });
+  if (!answer.tool) return;
+  toolsData.tools = (toolsData.tools || []).map((t) => (t.id === answer.tool.id ? answer.tool : t));
+  renderUpdateBar();
+  const row = jobRows.get(job.id);
+  if (row && row.isConnected) {          // its buttons follow the answer (upToDate)
+    const fresh = jobRow(job);
+    row.replaceWith(fresh);
+    jobRows.set(job.id, fresh);
+  }
+  if (updateMode === "auto" && failChoice(job).primary === "update" && !autoRetried.has(job.id)) {
+    autoRetried.add(job.id);
+    updateAndRetry(job, null);
+  }
+}
+
+function previewOffer(job, hopeless) {
+  const tool = (toolsData.tools || []).find((t) => t.id === "yt-dlp");
+  return job.tool === "yt-dlp" && !hopeless && !(job.explain || {}).known && job.error_from_tool
+    && tool && tool.channel === "stable" && upToDate("yt-dlp");
+}
+
+/** Switch yt-dlp to its preview builds (a setting, said so), then update and retry. */
+async function tryPreview(job, button) {
+  button.disabled = true;
+  button.textContent = "switching…";
+  await api("/api/settings", { ytdlp_channel: "preview" });
+  $("ytdlp-channel").value = "preview";
+  await api("/api/tools/check", { id: "yt-dlp" });
+  await loadTools();
+  notify("yt-dlp now comes from its preview builds (Settings → Tools to go back).");
+  updateAndRetry(job, button);
+}
+
+/** Douyin's signing is no longer fixed upstream: an update may not help. */
+function douyinNote(job) {
+  if (job.tool !== "tiktokdownloader" || job.platform !== "douyin" || (job.explain || {}).known) return "";
+  return `<div class="hint" style="margin-top:4px">TikTokDownloader's author no longer
+    maintains the part that signs Douyin's requests (its own README, 2026). If Douyin
+    changed it, an update will not fix this.</div>`;
+}
+
+const UPDATE_MODE_HINTS = {
+  ask: "A bar shows the updates waiting. A failed download offers “Update and retry”.",
+  auto: "Tools update by themselves when they have no download running, and a failed download is updated and retried once.",
+  manual: "Nothing is checked or offered by itself. The “update” badges below still show.",
+};
+
+$("update-mode").addEventListener("change", async () => {
+  updateMode = $("update-mode").value;
+  await api("/api/settings", { update_mode: updateMode });
+  $("update-mode-hint").textContent = UPDATE_MODE_HINTS[updateMode];
+  notify("Saved: updates — " + $("update-mode").selectedOptions[0].text + ".");
+  renderUpdateBar();
+});
+
+$("ytdlp-channel").addEventListener("change", async () => {
+  const preview = $("ytdlp-channel").value === "preview";
+  await api("/api/settings", { ytdlp_channel: preview ? "preview" : "stable" });
+  await api("/api/tools/check", { id: "yt-dlp" });       // that channel's release, now
+  await loadTools();
+  notify(preview ? "Saved: yt-dlp will come from its preview builds. Press “Switch to preview” to change it now."
+    : "Saved: yt-dlp will come from its stable builds.");
+});
+
+$("update-bar-all").addEventListener("click", updateAll);
+$("tools-update-all").addEventListener("click", updateAll);
+$("update-bar-later").addEventListener("click", () => { updateBarLater = true; renderUpdateBar(); });
 
 // ---- first launch ---------------------------------------------------------
 
@@ -2624,6 +2843,10 @@ async function forgetCookies() {
   $("folder").value = settings.download_folder || "";
   $("parallel").value = String(settings.max_parallel || 2);
   $("record-minutes").value = String(settings.record_minutes ?? 60);
+  updateMode = ["ask", "auto", "manual"].includes(settings.update_mode) ? settings.update_mode : "ask";
+  $("update-mode").value = updateMode;
+  $("update-mode-hint").textContent = UPDATE_MODE_HINTS[updateMode];
+  $("ytdlp-channel").value = settings.ytdlp_channel === "preview" ? "preview" : "stable";
   askWhere = settings.ask_where !== false;
   $("cookies-keep").value = settings.cookies_keep === "once" ? "once" : "keep";
   renderKeepNote();
@@ -2632,8 +2855,12 @@ async function forgetCookies() {
   // which log-in to offer.
   loadCookies();
   // The same for the versions: a failure offers "Update" only when a newer
-  // one exists (upToDate). GitHub is asked at most once a day (decision 18).
-  loadTools();
+  // one exists (upToDate). GitHub is asked at most every 6 hours (decision
+  // 18). In Automatic mode, what is waiting is updated now (decision 19:
+  // a tool with a download running waits for it).
+  loadTools().then(() => {
+    if (updateMode === "auto" && pendingUpdates().length) updateAll();
+  });
   $("ask-where").checked = askWhere;
   updateGoLabel();
 

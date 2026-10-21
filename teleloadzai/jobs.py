@@ -206,6 +206,8 @@ class Queue:
         self._order: list[str] = []          # oldest first
         self._lock = threading.RLock()
         self._workers: set[threading.Thread] = set()
+        # Tools being updated: their waiting jobs do not start meanwhile.
+        self._held: set[str] = set()
 
     # -- public ------------------------------------------------------------
 
@@ -267,6 +269,25 @@ class Queue:
     # read. Copying the failed attempt's choice made a Retry after a log-in
     # run without the log-in (found 2026-09-23).
 
+    def busy(self, tool_id: str) -> int:
+        """How many running downloads use this tool now. FFmpeg serves them
+        all (joining, MP3), so every running download counts for it.
+        Decision 19, changed 2026-10-21: a tool is never updated while it
+        downloads -- and only that tool waits, not the others."""
+        with self._lock:
+            return sum(1 for j in self._jobs.values() if j.state == RUNNING
+                       and (j.tool == tool_id or tool_id == "ffmpeg"))
+
+    def hold(self, tool_id: str) -> None:
+        """No new download of this tool starts until `release`."""
+        with self._lock:
+            self._held.add(tool_id)
+
+    def release(self, tool_id: str) -> None:
+        with self._lock:
+            self._held.discard(tool_id)
+        self._pump()
+
     def stop_all(self) -> int:
         """Stop every job, waiting or running. Used when the app closes:
         until 2026-10-18 a download went on unseen after the window closed,
@@ -321,6 +342,8 @@ class Queue:
                 if free <= 0:
                     break
                 job = self._jobs[job_id]
+                if job.tool in self._held or "ffmpeg" in self._held:
+                    continue            # its tool is being updated
                 if job.state == WAITING:
                     job.state = RUNNING
                     job.started = time.time()

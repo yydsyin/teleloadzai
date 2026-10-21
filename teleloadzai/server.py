@@ -15,6 +15,7 @@ import secrets
 import socket
 import subprocess
 import threading
+import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -64,6 +65,13 @@ def load_settings() -> dict:
         # (decision 13, first level). Only sites where he changed it.
         "tool_choice": {k: v for k, v in (stored.get("tool_choice") or {}).items()
                         if isinstance(k, str) and isinstance(v, str)},
+        # Decision 19: "ask" (a bar, and "Update and retry" on a failed row)
+        # is the default; "auto" updates and retries once by itself;
+        # "manual" only shows the badges in Settings -> Tools.
+        "update_mode": stored.get("update_mode") if stored.get("update_mode")
+                       in ("ask", "auto", "manual") else "ask",
+        # yt-dlp's release channel: "stable", or "preview" (nightly builds).
+        "ytdlp_channel": "preview" if stored.get("ytdlp_channel") == "preview" else "stable",
     }
 
 
@@ -251,6 +259,7 @@ def max_parallel() -> int:
 
 
 QUEUE = Queue(max_parallel)
+tools.set_preview("yt-dlp", load_settings()["ytdlp_channel"] == "preview")
 
 
 # --------------------------------------------------------------------------
@@ -277,9 +286,31 @@ def start_install(tool_id: str) -> dict:
 
     def work() -> None:
         try:
-            tools.install(tool_id, lambda stage, pct: _set_install(
-                tool_id, stage=stage, percent=pct))
-            _set_install(tool_id, state="done", stage="done", percent=100)
+            # Never while this tool downloads (decision 19): it waits, and
+            # says so. Its new downloads do not start meanwhile.
+            while QUEUE.busy(tool_id):
+                count = QUEUE.busy(tool_id)
+                _set_install(tool_id, stage=f"waits for {count} download"
+                             f"{'s' if count > 1 else ''} to finish", percent=0)
+                time.sleep(2)
+            QUEUE.hold(tool_id)
+            try:
+                before = tools.status(tool_id, check_online=False)
+                tools.install(tool_id, lambda stage, pct: _set_install(
+                    tool_id, stage=stage, percent=pct))
+                after = tools.status(tool_id, check_online=False)
+            finally:
+                QUEUE.release(tool_id)
+            # "Updated" only when the version really changed: read from the
+            # tool itself, or the release we installed when it prints none.
+            old = before["version"] or before["release_installed"]
+            new = after["version"] or after["release_installed"]
+            _set_install(tool_id, state="done", stage="done", percent=100,
+                         before=old if before["installed"] else "", after=new,
+                         changed=(not before["installed"]) or old != new
+                         or before["channel"] != after["channel"],
+                         switched=before["installed"] and before["channel"] != after["channel"],
+                         channel=after["channel"])
         except tools.InstallError as exc:
             # "python_missing" is not a failure, it is a question for the user.
             _set_install(tool_id, state="error", error=str(exc))
@@ -588,6 +619,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"removed": removed, "tool": tools.status(tool_id)})
             return
 
+        if path == "/api/tools/check":
+            # After a failed download: is there a fix? GitHub is asked at
+            # once if the last answer is over an hour old (decision 18).
+            tool_id = (body.get("id") or "").strip()
+            if tools.spec(tool_id) is None:
+                self._json({"error": "unknown tool"}, 400)
+                return
+            tools.latest_release(tool_id, max_age_hours=1)
+            self._json({"tool": tools.status(tool_id)})
+            return
+
         if path == "/api/tools/refresh":
             for tool in tools.SPECS:
                 tools.latest_release(tool.id, force=True)
@@ -803,6 +845,11 @@ class Handler(BaseHTTPRequestHandler):
                 settings["setup_done"] = bool(body["setup_done"])
             if "record_minutes" in body:
                 settings["record_minutes"] = body["record_minutes"]
+            if body.get("update_mode") in ("ask", "auto", "manual"):
+                settings["update_mode"] = body["update_mode"]
+            if body.get("ytdlp_channel") in ("stable", "preview"):
+                settings["ytdlp_channel"] = body["ytdlp_channel"]
+                tools.set_preview("yt-dlp", body["ytdlp_channel"] == "preview")
             if body.get("cookies_keep") in ("keep", "once"):
                 settings["cookies_keep"] = body["cookies_keep"]
             if isinstance(body.get("tool_choice"), dict):

@@ -36,7 +36,10 @@ from typing import Callable
 from .paths import BIN_DIR, DATA_DIR, ensure_dirs
 
 CACHE_FILE = DATA_DIR / "tools.json"
-CACHE_HOURS = 24                      # decision 18
+# Decision 18, changed by the user 2026-10-21: every 6 hours, not 24. A site
+# that breaks gets its fix in yt-dlp within hours, and the app knew of it a
+# day later. 8 tools x 4 checks = 32 requests a day; GitHub allows 60 an hour.
+CACHE_HOURS = 6
 PYTHON_LIBS = "pylibs"                # where pip packages land, inside bin/
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _USER_AGENT = "Teleloadzai tool manager"
@@ -68,13 +71,18 @@ class ToolSpec:
     version_args: tuple[str, ...] = ("--version",)
     # Shown to the user BEFORE he installs, never discovered afterwards.
     requires: tuple[str, ...] = ()
+    # A second release channel the user may choose (Settings -> Tools):
+    # yt-dlp's preview builds get fixes for broken sites days earlier.
+    preview_repo: str = ""
 
 
 SPECS: tuple[ToolSpec, ...] = (
     ToolSpec("yt-dlp", "yt-dlp", "yt-dlp/yt-dlp", "exe",
              what_for="The engine. Almost every site.", essential=True,
              exe_name="yt-dlp.exe", asset_keywords=("yt-dlp.exe",),
-             requires=("FFmpeg",)),      # for MP3, and to join video with sound
+             requires=("FFmpeg",),       # for MP3, and to join video with sound
+             # Read 2026-10-21: its latest release holds a plain yt-dlp.exe.
+             preview_repo="yt-dlp/yt-dlp-nightly-builds"),
 
     ToolSpec("ffmpeg", "FFmpeg", "GyanD/codexffmpeg", "zip",
              what_for="Makes MP3, and joins video with sound.", essential=True,
@@ -127,6 +135,26 @@ SPECS: tuple[ToolSpec, ...] = (
 )
 
 BY_ID: dict[str, ToolSpec] = {s.id: s for s in SPECS}
+
+# The tools whose PREVIEW channel the user chose. Set by the server from the
+# settings at start and when the setting changes.
+PREVIEW: set[str] = set()
+
+
+def set_preview(tool_id: str, on: bool) -> None:
+    (PREVIEW.add if on else PREVIEW.discard)(tool_id)
+
+
+def channel(tool_id: str) -> str:
+    """"preview" or "stable" -- the channel this tool is fetched from."""
+    tool = BY_ID.get(tool_id)
+    return "preview" if tool and tool.preview_repo and tool_id in PREVIEW else "stable"
+
+
+def _release_key(tool: ToolSpec) -> str:
+    """Where a channel's release is remembered in the cache: the preview has
+    an entry of its own, so switching back finds the stable answer intact."""
+    return tool.id + "@preview" if channel(tool.id) == "preview" else tool.id
 
 
 def spec(tool_id: str) -> ToolSpec | None:
@@ -368,39 +396,46 @@ def _save_cache(cache: dict) -> None:
     CACHE_FILE.write_text(json.dumps(cache, indent=2), encoding="utf-8")
 
 
-def _is_fresh(entry: dict) -> bool:
+def _is_fresh(entry: dict, hours: float = CACHE_HOURS) -> bool:
     try:
         checked = datetime.fromisoformat(entry["checked_at"])
     except Exception:
         return False
-    return datetime.now(timezone.utc) - checked < timedelta(hours=CACHE_HOURS)
+    return datetime.now(timezone.utc) - checked < timedelta(hours=hours)
 
 
-def latest_release(tool_id: str, force: bool = False) -> dict:
-    """Latest version + the file to download. Asks GitHub at most once a day.
+def latest_release(tool_id: str, force: bool = False,
+                   max_age_hours: float | None = None) -> dict:
+    """Latest version + the file to download, from the tool's chosen channel.
+    Asks GitHub at most every CACHE_HOURS -- or every ``max_age_hours``: after
+    a failed download the page asks with 1, so a fix released this morning is
+    found at once, and never more than once an hour per tool.
 
     Returns ``{"version": str, "url": str, "size": int, "error": str}``.
     """
     tool = spec(tool_id)
     if tool is None:
         return {"error": "unknown tool"}
+    key = _release_key(tool)
+    repo = tool.preview_repo if key != tool.id else tool.repo
 
     cache = _load_cache()
-    entry = cache.get(tool_id, {})
+    entry = cache.get(key, {})
     # A file remembered from before the asset rules changed is not trusted:
     # the ARM64 links of TikTokDownloader and XHS-Downloader sat in this cache
     # after "X64" was added to their rules (2026-10-18).
     usable = tool.kind == "pip" or _pick_asset(
         tool, [{"name": str(entry.get("url", "")).rsplit("/", 1)[-1]}]) is not None
     remembered = entry.get("version") and usable
-    if not force and remembered and (_is_fresh(entry) or _failed_lately(entry)):
+    fresh = _is_fresh(entry, CACHE_HOURS if max_age_hours is None else max_age_hours)
+    if not force and remembered and (fresh or _failed_lately(entry)):
         return {k: entry.get(k, "") for k in ("version", "url", "size")} | {"error": ""}
     if not force and _failed_lately(entry):
         return {"error": "cannot reach GitHub (tried less than an hour ago)"}
 
     try:
         request = urllib.request.Request(
-            f"https://api.github.com/repos/{tool.repo}/releases/latest",
+            f"https://api.github.com/repos/{repo}/releases/latest",
             headers={"User-Agent": _USER_AGENT, "Accept": "application/vnd.github+json"},
         )
         with urllib.request.urlopen(request, timeout=20) as response:
@@ -411,7 +446,7 @@ def latest_release(tool_id: str, force: bool = False) -> dict:
         # when GitHub hangs, and more requests spent when it refuses
         # (decision 18). Install and Update pass `force` and still ask.
         cache = _load_cache()
-        cache.setdefault(tool_id, {})["failed_at"] = datetime.now(timezone.utc).isoformat()
+        cache.setdefault(key, {})["failed_at"] = datetime.now(timezone.utc).isoformat()
         _save_cache(cache)
         # Keep an old answer rather than nothing.
         if remembered:
@@ -429,8 +464,8 @@ def latest_release(tool_id: str, force: bool = False) -> dict:
     # installed version, so every check made the Tools page start each
     # program again to read it.
     cache = _load_cache()
-    kept = {k: v for k, v in cache.get(tool_id, {}).items() if k != "failed_at"}
-    cache[tool_id] = kept | found | {"checked_at": datetime.now(timezone.utc).isoformat()}
+    kept = {k: v for k, v in cache.get(key, {}).items() if k != "failed_at"}
+    cache[key] = kept | found | {"checked_at": datetime.now(timezone.utc).isoformat()}
     _save_cache(cache)
     return found | {"error": ""}
 
@@ -530,6 +565,7 @@ def install(tool_id: str, on_progress: ProgressFn | None = None) -> str:
             raise InstallError(f"FFmpeg, which every download needs, could not be "
                                f"installed: {problem}") from problem
 
+    release: dict = {}
     if tool.kind == "pip":
         _install_pip(tool, on_progress)
     else:
@@ -540,6 +576,14 @@ def install(tool_id: str, on_progress: ProgressFn | None = None) -> str:
             _install_exe(tool, release["url"], on_progress)
         else:
             _install_zip(tool, release["url"], on_progress)
+
+    # Which release and channel is now here. TikTokDownloader and
+    # KS-Downloader print no version, so this is the only way to know an
+    # update worked -- and whether yt-dlp is the stable or the preview build.
+    cache = _load_cache()
+    cache.setdefault(tool_id, {})["installed_from"] = {
+        "channel": channel(tool_id), "release": release.get("version", "")}
+    _save_cache(cache)
 
     if on_progress:
         on_progress("done", 100)
@@ -581,7 +625,17 @@ def _install_exe(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
     except InstallError:
         temporary.unlink(missing_ok=True)
         raise
-    temporary.replace(target)
+    # A title read can hold yt-dlp.exe for a few seconds: wait for it rather
+    # than fail on a raw "PermissionError".
+    for attempt in range(10):
+        try:
+            temporary.replace(target)
+            return
+        except PermissionError:
+            time.sleep(1)
+    temporary.unlink(missing_ok=True)
+    raise InstallError(f"{tool.name} is in use by another program, so it could not be "
+                       "replaced. The installed one was kept: try again in a moment.")
 
 
 def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> None:
@@ -770,8 +824,15 @@ def status(tool_id: str, check_online: bool = True) -> dict:
     here = installed_version(tool_id) if path else ""
     release = latest_release(tool_id) if check_online else {"version": "", "error": ""}
     latest = release.get("version", "")
+    installed_from = _load_cache().get(tool_id, {}).get("installed_from", {}) if path else {}
 
-    update = _is_newer(latest, here)
+    # A tool with no readable version is compared by the release we installed.
+    update = _is_newer(latest, here or installed_from.get("release", ""))
+    # yt-dlp installed from the other channel: "Update" switches it over --
+    # a preview build is newer than stable, so numbers alone would never
+    # take the user back to stable.
+    switch = bool(path) and bool(tool.preview_repo) \
+        and installed_from.get("channel", "stable") != channel(tool_id)
 
     return {
         "id": tool.id,
@@ -787,8 +848,11 @@ def status(tool_id: str, check_online: bool = True) -> dict:
         "path": str(path) if path else "",
         "outside": bool(path) and BIN_DIR not in path.parents,
         "version": here,
+        "release_installed": installed_from.get("release", ""),
         "latest": latest,
-        "update_available": update,
+        "update_available": update or switch,
+        "channel_change": switch,
+        "channel": channel(tool_id) if tool.preview_repo else "",
         "size": release.get("size", 0),
         "error": release.get("error", ""),
     }

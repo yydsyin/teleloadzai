@@ -16,3 +16,5 @@ __pycache__/
 _old/
 # the impeccable design skill's own notebook (critique archives), not the app
 .impeccable/
+# raw research notes; the finished report stays in reports/
+research_notes/
