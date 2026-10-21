@@ -146,6 +146,22 @@ def _login_saved(kept: int) -> None:
 login.on_saved = _login_saved
 
 
+def _retry_target(old) -> str:
+    """The "Save as" path a Retry or "Download again" may reuse.
+
+    Windows asked about replacing that name BEFORE the first attempt. If the
+    first attempt left a file under it -- a recording kept by Stop -- that
+    file is not what Windows asked about: "Download again" replaced it
+    without a word (round 4 of the hunt, 2026-10-18). Then the same folder,
+    with the next free name ("my live (2).mp4").
+    """
+    if not old.target or not any(Path(f).is_file() for f in old.files):
+        return old.target
+    chosen = Path(old.target)
+    ending = chosen.suffix.lstrip(".")
+    return str(chosen.with_name(dialogs.free_name(chosen.parent, chosen.stem, ending) + chosen.suffix))
+
+
 def queue_download(url: str, mode: str, quality: str, title: str, target: str,
                    tool: str, platform: str, force: bool = False,
                    replace: str = "") -> tuple[dict, int]:
@@ -533,10 +549,11 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 # A private post has no readable title without the cookies,
                 # and the window would show "(no title)" with no reason why.
-                info = ytdlp.probe(
-                    url,
-                    cookie_file=cookies.path_for("yt-dlp", load_settings()["cookies_enabled"]),
-                )
+                # A copy of the cookie file, like every run: yt-dlp writes
+                # its jar back when it exits (cookies.for_one_run).
+                with cookies.for_one_run(cookies.path_for(
+                        "yt-dlp", load_settings()["cookies_enabled"])) as run_cookies:
+                    info = ytdlp.probe(url, cookie_file=run_cookies)
             except ytdlp.ToolMissing as exc:
                 self._json({"error": str(exc), "kind": "tool_missing"})
                 return
@@ -620,7 +637,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             answer, status = queue_download(
                 url=old.url, mode=old.mode, quality=old.quality, title=old.title,
-                target=old.target, tool=(body.get("tool") or "").strip(),
+                target=_retry_target(old), tool=(body.get("tool") or "").strip(),
                 platform=old.platform, replace=old.id,
             )
             self._json(answer, status)
@@ -670,7 +687,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             answer, status = queue_download(
                 url=old.url, mode=old.mode, quality=old.quality, title=old.title,
-                target=old.target, tool=old.tool, platform=old.platform,
+                target=_retry_target(old), tool=old.tool, platform=old.platform,
                 force=bool(body.get("force")), replace=old.id,
             )
             self._json(answer, status)

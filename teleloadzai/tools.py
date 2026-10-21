@@ -92,7 +92,11 @@ SPECS: tuple[ToolSpec, ...] = (
              # "without the watermark" until 2026-09-25: on the same TikTok
              # video neither this tool nor yt-dlp had one (decision 38).
              what_for="TikTok and Douyin.",
-             exe_name="DouK-Downloader.exe", asset_keywords=("Windows",),
+             # "X64": the release has an ARM64 twin, listed first -- with
+             # "Windows" alone, Update fetched the ARM64 build (found by the
+             # silent-failure hunt, 2026-10-18; both names read from the 5.8
+             # release the same day).
+             exe_name="DouK-Downloader.exe", asset_keywords=("Windows", "X64"),
              version_args=()),
 
     # The same author's Kuaishou tool, driven the same way (by its server).
@@ -108,7 +112,8 @@ SPECS: tuple[ToolSpec, ...] = (
     # exe_name we picked XHS-Downloader-GUI.exe, the graphical one.
     ToolSpec("xhs-downloader", "XHS-Downloader", "JoeanAmier/XHS-Downloader", "zip",
              what_for="Xiaohongshu, video and photos.",
-             exe_name="XHS-Downloader.exe", asset_keywords=("Windows",)),
+             # "X64" for the same reason as TikTokDownloader (2.8 release).
+             exe_name="XHS-Downloader.exe", asset_keywords=("Windows", "X64")),
 
     ToolSpec("streamlink", "Streamlink", "streamlink/windows-builds", "zip",
              what_for="Records a live stream while it happens.",
@@ -137,12 +142,29 @@ def libs_dir() -> Path:
 
 
 def find_python() -> str | None:
-    """The user's Python, needed only by the pip tools (decision 26)."""
+    """The user's Python, needed only by the pip tools (decision 26).
+
+    A PC without Python still has a `python.exe` on its PATH: Windows' Store
+    alias (`WindowsApps\\python.exe`), which only prints "Python was not
+    found" and exits with 9009 (seen on this PC, 2026-10-18). Found by name,
+    it hid the "Python is missing" screen behind a raw pip error. A Python
+    from the Store lives in the same folder and DOES run, so that folder is
+    asked, not skipped.
+    """
     for candidate in ("python", "py"):
         found = shutil.which(candidate)
-        if found:
+        if found and ("windowsapps" not in found.lower() or _runs(found)):
             return found
     return None
+
+
+def _runs(python: str) -> bool:
+    try:
+        return subprocess.run([python, "-c", "import sys"], capture_output=True,
+                              stdin=subprocess.DEVNULL, timeout=15,
+                              creationflags=_NO_WINDOW).returncode == 0
+    except Exception:
+        return False
 
 
 WINGET_PYTHON_ID = "Python.Python.3.13"
@@ -258,13 +280,22 @@ def installed_version(tool_id: str) -> str:
     stamp = _file_stamp(path if tool.kind != "pip" else libs_dir())
     cache = _load_cache()
     remembered = cache.get(tool_id, {}).get("installed", {})
-    if stamp and remembered.get("stamp") == stamp:
+    # An empty answer kept by an older version of this code is asked again.
+    nothing_to_ask = tool.kind != "pip" and not tool.version_args
+    if stamp and remembered.get("stamp") == stamp and (remembered.get("version") or nothing_to_ask):
         return remembered.get("version", "")
 
     version = _pip_version(tool) if tool.kind == "pip" else _ask_program(tool, path)
 
-    cache.setdefault(tool_id, {})["installed"] = {"stamp": stamp, "version": version}
-    _save_cache(cache)
+    # Only a real answer is kept. A version read that timed out was kept as
+    # "no version" until the file changed: streamlink 8.6.2 answered in 3.6 s
+    # when asked by hand, and the Tools page showed no version, so Update was
+    # never offered (data/tools.json, 2026-10-18). A tool that has no version
+    # to read (`version_args=()`) is never asked anyway.
+    if version or nothing_to_ask:
+        cache = _load_cache()               # another thread may have written
+        cache.setdefault(tool_id, {})["installed"] = {"stamp": stamp, "version": version}
+        _save_cache(cache)
     return version
 
 
@@ -285,10 +316,18 @@ def _ask_program(tool: ToolSpec, path: Path) -> str:
             stdin=subprocess.DEVNULL,
             timeout=15, creationflags=_NO_WINDOW,
         )
+        text = finished.stdout or finished.stderr or ""
+    except subprocess.TimeoutExpired as late:
+        # XHS-Downloader prints "XHS-Downloader V2.8 Stable" at once and then
+        # never exits (seen 2026-10-18): what it said before the time limit
+        # is its answer. Until then it was kept as "no version".
+        text = late.stdout or late.stderr or ""
+        if isinstance(text, bytes):
+            text = text.decode("utf-8", "replace")
     except Exception:
         return ""
 
-    text = (finished.stdout or finished.stderr or "").strip()
+    text = text.strip()
     if not text:
         return ""
     first = text.splitlines()[0].strip()[:60]
@@ -348,8 +387,16 @@ def latest_release(tool_id: str, force: bool = False) -> dict:
 
     cache = _load_cache()
     entry = cache.get(tool_id, {})
-    if not force and _is_fresh(entry) and entry.get("version"):
+    # A file remembered from before the asset rules changed is not trusted:
+    # the ARM64 links of TikTokDownloader and XHS-Downloader sat in this cache
+    # after "X64" was added to their rules (2026-10-18).
+    usable = tool.kind == "pip" or _pick_asset(
+        tool, [{"name": str(entry.get("url", "")).rsplit("/", 1)[-1]}]) is not None
+    remembered = entry.get("version") and usable
+    if not force and remembered and (_is_fresh(entry) or _failed_lately(entry)):
         return {k: entry.get(k, "") for k in ("version", "url", "size")} | {"error": ""}
+    if not force and _failed_lately(entry):
+        return {"error": "cannot reach GitHub (tried less than an hour ago)"}
 
     try:
         request = urllib.request.Request(
@@ -359,8 +406,15 @@ def latest_release(tool_id: str, force: bool = False) -> dict:
         with urllib.request.urlopen(request, timeout=20) as response:
             data = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
+        # The failure is remembered for an hour: without that, every pasted
+        # link asked GitHub again for each tool it offered -- up to 20 s each
+        # when GitHub hangs, and more requests spent when it refuses
+        # (decision 18). Install and Update pass `force` and still ask.
+        cache = _load_cache()
+        cache.setdefault(tool_id, {})["failed_at"] = datetime.now(timezone.utc).isoformat()
+        _save_cache(cache)
         # Keep an old answer rather than nothing.
-        if entry.get("version"):
+        if remembered:
             return {k: entry.get(k, "") for k in ("version", "url", "size")} | {"error": ""}
         return {"error": f"cannot reach GitHub ({type(exc).__name__})"}
 
@@ -371,9 +425,22 @@ def latest_release(tool_id: str, force: bool = False) -> dict:
             return {"error": f"no Windows file in the {tool.name} release"}
         found["url"], found["size"] = asset["browser_download_url"], asset.get("size", 0)
 
-    cache[tool_id] = found | {"checked_at": datetime.now(timezone.utc).isoformat()}
+    # The entry is merged, not replaced: replacing it dropped the cached
+    # installed version, so every check made the Tools page start each
+    # program again to read it.
+    cache = _load_cache()
+    kept = {k: v for k, v in cache.get(tool_id, {}).items() if k != "failed_at"}
+    cache[tool_id] = kept | found | {"checked_at": datetime.now(timezone.utc).isoformat()}
     _save_cache(cache)
     return found | {"error": ""}
+
+
+def _failed_lately(entry: dict) -> bool:
+    try:
+        failed = datetime.fromisoformat(entry["failed_at"])
+    except Exception:
+        return False
+    return datetime.now(timezone.utc) - failed < timedelta(hours=1)
 
 
 def _pick_asset(tool: ToolSpec, assets: list[dict]) -> dict | None:
@@ -479,10 +546,41 @@ def install(tool_id: str, on_progress: ProgressFn | None = None) -> str:
     return installed_version(tool_id)
 
 
+# What a Windows program says it runs on (its PE header's "machine" field).
+# x64 runs here; 32-bit x86 too. ARM64 does not -- and it is what Update
+# fetched for TikTokDownloader and XHS-Downloader (2026-10-18).
+_RUNS_HERE = {0x8664, 0x014C}
+
+
+def _check_program(path: Path, tool: ToolSpec) -> None:
+    """Refuse a program that cannot run on this PC, BEFORE it replaces the
+    working one. Read from the file, never from its name."""
+    import struct
+    try:
+        with path.open("rb") as program:
+            head = program.read(4096)
+        start = struct.unpack_from("<I", head, 0x3C)[0]
+        machine = struct.unpack_from("<H", head, start + 4)[0]
+        is_program = head[:2] == b"MZ" and head[start:start + 4] == b"PE\0\0"
+    except (OSError, struct.error):
+        is_program, machine = False, 0
+    if not is_program:
+        raise InstallError(f"the downloaded {tool.name} is not a Windows program; "
+                           "the installed one was kept")
+    if machine not in _RUNS_HERE:
+        raise InstallError(f"the downloaded {tool.name} is built for another kind of "
+                           f"processor (code {machine:#06x}); the installed one was kept")
+
+
 def _install_exe(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> None:
     target = BIN_DIR / tool.exe_name
     temporary = target.with_suffix(target.suffix + ".part")
     _download(url, temporary, on_progress, f"downloading {tool.name}")
+    try:
+        _check_program(temporary, tool)
+    except InstallError:
+        temporary.unlink(missing_ok=True)
+        raise
     temporary.replace(target)
 
 
@@ -511,6 +609,9 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
                         taken.append((temporary, target))
                 if not taken:
                     raise InstallError(f"{', '.join(tool.extract_only)} not found in the archive")
+                for temporary, target in taken:
+                    if target.suffix.lower() == ".exe":
+                        _check_program(temporary, tool)
                 for temporary, target in taken:     # only now, all of them complete
                     temporary.replace(target)
             else:
@@ -520,6 +621,14 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
                 shutil.rmtree(fresh, ignore_errors=True)
                 shutil.rmtree(old, ignore_errors=True)
                 zipped.extractall(fresh)            # complete, beside the working one
+                # The program we will run must be in it, and run here --
+                # checked before the working folder is moved away.
+                if tool.exe_name:
+                    program = next(fresh.rglob(tool.exe_name), None)
+                    if program is None:
+                        raise InstallError(f"{tool.exe_name} is not in the downloaded "
+                                           f"archive; the installed {tool.name} was kept")
+                    _check_program(program, tool)
                 if folder.exists():
                     folder.rename(old)              # fails cleanly if the tool is in use
                 try:

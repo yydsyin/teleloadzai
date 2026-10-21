@@ -374,6 +374,7 @@
         <div class="meta" id="meta"></div>
         <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span><span class="hint hidden" id="tool-pick-label" style="margin-left:8px">Tool</span><span class="switch hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span></div>
         <div class="hint hidden" id="tool-why" style="margin-top:6px"></div>
+        <div class="hint warn-text hidden" id="short-link-note" style="margin-top:6px">Teleloadzai could not open this short link to see where it leads, so it cannot tell which site it is from. If the download fails, paste the full link from the post instead.</div>
         <div class="hint hidden" id="tool-need" style="margin-top:8px;padding:6px 10px;border-width:1px;border-style:solid;border-radius:8px">
           <span id="tool-need-text"></span>
           <div style="margin-top:6px"><button class="tiny" id="tool-need-login"></button></div>
@@ -1290,6 +1291,10 @@ async function readLink(url, mine) {
   }
 
   $("platform").textContent = found.platform;
+  // A short link nobody could follow was never mentioned: a t.cn link to a
+  // Weibo post became "Unknown site — yt-dlp", and gallery-dl was never
+  // offered (decision 34's case of 2026-09-22, said on the card 2026-10-18).
+  $("short-link-note").classList.toggle("hidden", !(found.was_shortened && found.redirect_error));
   currentPlatform = found.platform;
   currentPlatformId = found.platform_id || "";
   currentTools = found.tools || [];
@@ -1669,9 +1674,18 @@ function jobRow(job) {
       <div class="row" style="margin-top:6px">
         <button class="ghost tiny" data-force="${job.id}">Download again</button>
       </div>` : ""}
+    ${job.state === "cancelled" && (job.files || []).length ? `<div class="hint" style="margin-top:6px">
+        <span class="saved-before"></span>
+        <button class="ghost tiny" data-open="${job.id}">Open</button>
+        <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
+      </div>` : ""}
     ${job.state === "cancelled" ? `<div class="row" style="margin-top:6px">
         <button class="ghost tiny" data-retry="${job.id}">Download again</button>
         <button class="ghost tiny" data-dismiss="${job.id}">Remove</button>
+      </div>` : ""}
+    ${job.state === "error" && (job.files || []).length ? `<div class="hint" style="margin-top:6px">
+        <span class="saved-before"></span>
+        <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
       </div>` : ""}
     ${job.state === "error" ? `<div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>
       ${job.error && job.error_from_tool ? `<details class="more" style="margin-top:4px">
@@ -1710,6 +1724,15 @@ function jobRow(job) {
   row.querySelector(".small").textContent = right;
   const errorText = row.querySelector(".err");
   if (errorText) errorText.textContent = job.error || "";
+  // A tool that failed half-way (3 pictures of 8) is a failure, and what it
+  // did save is said -- never shown as "done" (silent-failure hunt, 2026-10-18).
+  const savedBefore = row.querySelector(".saved-before");
+  // A live recording stopped by the user keeps what it recorded (2026-10-18).
+  if (savedBefore && job.state === "cancelled") savedBefore.textContent =
+    `Recorded until Stop: ${fileName(files[0])}.`;
+  else if (savedBefore) savedBefore.textContent = files.length === 1
+    ? `Saved before it failed: ${fileName(files[0])}.`
+    : `Saved before it failed: ${files.length} files, ${fileName(files[0])} first.`;
   // Three rows gave three buttons all called "Retry" or "Stop" to a screen
   // reader: each says which download it acts on (review of 2026-09-27).
   for (const button of row.querySelectorAll("button")) {

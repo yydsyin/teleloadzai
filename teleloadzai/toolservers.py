@@ -51,6 +51,7 @@ percentage instead of a bar that never moves (decision 33).
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import socket
@@ -61,7 +62,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import explain, tools
+from . import children, explain, tools
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -110,6 +111,9 @@ class _Server:
         # to connect ... over proxy" and waited forever (2026-09-23), and we
         # only said "did not open port 5555 within 120 seconds".
         self._said: list[str] = []
+        # Set when the app closes: a job still waiting must not start the
+        # server again after it was stopped for good.
+        self._closed = False
 
     # -- starting and stopping ---------------------------------------------
 
@@ -138,6 +142,13 @@ class _Server:
                     del self._said[:-30]
             low = seen.lower()
             if _READY in low:
+                # Its output is still read after this, and thrown away. Left
+                # unread, the pipe fills (a few KB of request lines while one
+                # server serves several jobs), the tool's next print blocks,
+                # and every request then "did not answer" after 90 s
+                # (silent-failure hunt, 2026-10-18).
+                for _line in process.stdout:
+                    pass
                 return
             for needle, reply in self._prompts:
                 if needle in low and needle not in answered:
@@ -158,6 +169,10 @@ class _Server:
     def _wait_for_port(self, deadline: float) -> None:
         stuck_at = None
         while time.time() < deadline:
+            # The app is closing: a start in progress held the lock for up
+            # to 120 s, and the app stayed alive with no window (round 3).
+            if self._closed:
+                raise ToolServerError(f"Teleloadzai is closing, so {self.name} was stopped.")
             if stuck_at is None and any(_STUCK in line for line in list(self._said)):
                 stuck_at = time.time()
             if stuck_at is not None and time.time() - stuck_at > _STUCK_GRACE:
@@ -198,6 +213,8 @@ class _Server:
     def start(self) -> None:
         """Make sure the server is running, and count one more user."""
         with self._lock:
+            if self._closed:
+                raise ToolServerError(f"Teleloadzai is closing, so {self.name} was not started.")
             if self._alive():
                 self._users += 1
                 return
@@ -230,6 +247,10 @@ class _Server:
                 cwd=str(exe.parent),        # its Volume/ folder lives beside it
                 creationflags=_NO_WINDOW,
             )
+            # It dies with Teleloadzai even when the app is killed: closing
+            # the console used to leave it listening on 0.0.0.0, with the
+            # user's cookie, until the PC restarted (children.py).
+            children.bind(self._process)
             reader = threading.Thread(
                 target=self._answer_prompts, args=(self._process,), daemon=True)
             reader.start()
@@ -266,8 +287,10 @@ class _Server:
 
     def stop_now(self) -> bool:
         """Shut it down whatever the count. Used when the app closes."""
+        self._closed = True                 # seen by a start still waiting, before the lock
         with self._lock:
             running = self._alive()
+            self._closed = True
             self._users = 0
             self._kill()
             return running
@@ -348,6 +371,11 @@ def _post(path: str, body: dict, timeout: float = 90.0,
     except json.JSONDecodeError as problem:
         raise ToolServerError(
             f"{server.name} answered something that is not JSON") from problem
+    except (OSError, http.client.HTTPException) as problem:
+        # A read that timed out, or a connection it closed half-way: these
+        # reached the row as raw Python words, without the tool's name.
+        raise ToolServerError(
+            f"{server.name} did not answer: {problem or type(problem).__name__}") from problem
 
 
 _ID_IN_URL = re.compile(r"/video/(\d{6,})")

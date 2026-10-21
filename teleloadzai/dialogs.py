@@ -113,7 +113,12 @@ def free_name(folder: Path, base: str, extension: str) -> str:
 
 # PowerShell prints in the old Windows code page unless it is told otherwise,
 # which destroys every non-Latin character of a path (Chinese, Japanese...).
-_FORCE_UTF8 = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n"
+# And any error stops the script: PowerShell otherwise goes on to the next
+# line, ends with code 0 and prints nothing -- a window that failed to open
+# was read as Cancel (silent-failure hunt, 2026-10-18: exit 0 without this
+# line, exit 1 with it, on the same failing script).
+_FORCE_UTF8 = ("$ErrorActionPreference = 'Stop'\n"
+               "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n")
 
 
 class DialogError(RuntimeError):
@@ -162,10 +167,13 @@ def _run_dialog(script: str) -> str | None:
         return chosen
     if finished.returncode != 0:
         # PowerShell ran and failed -- that is not a cancel.
-        detail = (finished.stderr or "").strip().splitlines()
+        # The first line says what failed; the ones after it say where
+        # ("At line:3 char:1", "+ FullyQualifiedErrorId : TypeNotFound").
+        detail = [line.strip() for line in (finished.stderr or "").splitlines()
+                  if line.strip() and not line.strip().startswith(("At line", "+"))]
         raise DialogError(
             "The Windows window could not open: "
-            + (detail[-1][:160] if detail else f"PowerShell stopped with code {finished.returncode}")
+            + (detail[0][:160] if detail else f"PowerShell stopped with code {finished.returncode}")
         )
     return None                      # the user pressed Cancel
 

@@ -13,9 +13,9 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import cookies, login, toolservers
+from . import cookies, login, runners, toolservers
 from .config import APP_NAME, APP_VERSION
-from .server import claim, forget_if_once, holder_is_us, serve, start_background
+from .server import QUEUE, claim, forget_if_once, holder_is_us, serve, start_background
 
 WINDOW_SIZE = (860, 900)
 WINDOW_MINIMUM = (520, 560)
@@ -35,16 +35,18 @@ def say_port_taken(port: int, show_box: bool) -> None:
         ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x40)   # "i" icon
 
 
-def open_window(port: int, httpd=None) -> None:
-    """Open the native window. Falls back to the browser if it cannot."""
+def open_window(port: int, httpd=None) -> int:
+    """Open the native window. Falls back to the browser if it cannot.
+    Returns the exit code: 1 when closing could not forget the log-ins."""
     try:
         import webview
     except ImportError:
         print("The window engine (pywebview) is missing -- using the browser.")
         serve(port=port, open_browser=True, httpd=httpd)
-        return
+        return 0
 
     httpd, url = start_background(port, httpd)
+    failed = False
     print(f"{APP_NAME} {APP_VERSION}  -  close the window to stop.")
     try:
         webview.create_window(
@@ -67,6 +69,11 @@ def open_window(port: int, httpd=None) -> None:
         # Both bind 0.0.0.0 and ask for no token, so one left running is a
         # door open on the network -- exactly what decision 21 forbids for
         # our own.
+        # Every download first: one left running went on unseen, and yt-dlp
+        # wrote its cookie jar back AFTER the forget below (2026-10-18).
+        stopped = QUEUE.stop_all()
+        if stopped:
+            print(f"{stopped} download(s) stopped.")
         for server in toolservers.ALL:
             if server.stop_now():
                 print(f"{server.name}'s server stopped.")
@@ -74,8 +81,12 @@ def open_window(port: int, httpd=None) -> None:
             forget_if_once()
         except Exception as problem:            # never block the shutdown
             print(f"Could not forget the log-ins: {problem}")
+            # The console closes at once on a clean exit, so this line could
+            # never be read: a non-zero code makes Teleloadzai.bat pause.
+            failed = True
         httpd.shutdown()
         httpd.server_close()
+    return 1 if failed else 0
 
 
 def main() -> int:
@@ -105,6 +116,16 @@ def main() -> int:
         forget_if_once()
     except Exception as problem:
         print(f"Could not forget the log-ins from the last run: {problem}")
+    # The per-run cookie copies a crash left behind (cookies.for_one_run).
+    cookies.clear_run_copies()
+    # And the hidden work folders of downloads a crash cut off: what they
+    # finished goes to the user's folder, the rest is deleted.
+    try:
+        rescued = runners.sweep_work_folders()
+        if rescued:
+            print(f"Kept from downloads cut off last time: {', '.join(rescued)}")
+    except Exception as problem:
+        print(f"Could not tidy the unfinished downloads of last time: {problem}")
     # A site refused since (Netflix) must not keep the cookies it had.
     try:
         dropped = cookies.drop_unsupported()
@@ -118,7 +139,7 @@ def main() -> int:
     elif args.browser:
         serve(port=args.port, open_browser=True, httpd=httpd)
     else:
-        open_window(args.port, httpd)
+        return open_window(args.port, httpd)
     return 0
 
 

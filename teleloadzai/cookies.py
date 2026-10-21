@@ -46,13 +46,111 @@ day, does not rewrite. yt-dlp does.)
 from __future__ import annotations
 
 import re
+import shutil
+import threading
 import time
+import uuid
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 from .paths import DATA_DIR
 
 # Our copy. `.gitignore` excludes it -- it holds live sessions.
 COOKIE_FILE = DATA_DIR / "cookies.txt"
+
+# One short-lived copy per tool run (`for_one_run`), inside `data/` too.
+RUN_DIR = DATA_DIR / "cookie-runs"
+
+# Every change WE make to the file (import, log-in, forget, clean-up) moves
+# this on. A tool's write-back is kept only if nothing moved it meanwhile.
+_lock = threading.RLock()
+_generation = 0
+
+
+def _changed() -> None:
+    global _generation
+    with _lock:
+        _generation += 1
+
+
+def _writes(change):
+    """For every function that changes our cookie file: one at a time, and a
+    tool run that started before it does not write its older jar back."""
+    import functools
+
+    @functools.wraps(change)
+    def wrapped(*args, **kwargs):
+        with _lock:
+            try:
+                return change(*args, **kwargs)
+            finally:
+                _changed()
+    return wrapped
+
+
+@contextmanager
+def for_one_run(path: Path | None) -> Iterator[Path | None]:
+    """The cookie file to hand ONE tool run: a copy of ours, gone afterwards.
+
+    yt-dlp and gallery-dl write their whole jar back into the file they are
+    given, when they exit. Given our file itself, a run that had started
+    before "Forget them" wrote every log-in back after it, and a log-in made
+    during a long download was erased the same way (found by the silent-
+    failure hunt, 2026-10-18; yt-dlp's write-back proven with a fake jar).
+
+    What the tool wrote back is still kept -- a site renews its cookies, and
+    losing that would end a log-in sooner -- but only when nothing else
+    changed our file during the run. Otherwise the user's newer choice wins.
+    """
+    if path is None:
+        yield None
+        return
+    with _lock:
+        started = _generation
+        if not Path(path).is_file():
+            # Forgotten between Add and the start: never run on as if there
+            # were none without saying so (round 2 of the hunt, 2026-10-18).
+            raise CookieFileError(
+                "Your log-ins were forgotten after this download was added. "
+                "Press Retry to download without them.")
+        copy = RUN_DIR / f"{uuid.uuid4().hex}.txt"
+        try:
+            RUN_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, copy)
+        except OSError as problem:
+            copy.unlink(missing_ok=True)
+            # Never run on as if there were no cookies: the user turned them on.
+            raise CookieFileError(
+                f"The cookies could not be prepared for this download: {problem.strerror}"
+            ) from problem
+    try:
+        yield copy
+    finally:
+        with _lock:
+            try:
+                if (_generation == started and COOKIE_FILE.is_file()
+                        and copy.is_file() and copy.stat().st_size > 0):
+                    copy.replace(COOKIE_FILE)
+                    _changed()          # a second run's older jar must not win
+            except OSError:
+                pass                    # ours stays as it was: nothing lost
+            finally:
+                copy.unlink(missing_ok=True)
+
+
+def clear_run_copies() -> None:
+    """Delete every run copy -- at start (a crash leaves them) and when the
+    user forgets the cookies."""
+    with _lock:
+        if RUN_DIR.is_dir():
+            # Every file: gallery-dl saves its jar as `<copy>.txt.tmp` first,
+            # and one killed during that save left a whole jar behind.
+            for leftover in RUN_DIR.iterdir():
+                try:
+                    leftover.unlink()
+                except OSError:
+                    pass                # deleted at the next start
 
 # The three tools that accept a cookie FILE. Probed one by one, 2026-09-22:
 #   yt-dlp      --cookies FILE
@@ -303,6 +401,7 @@ def inspect(path: Path, keep_all: bool = False) -> dict:
 # what the app does with it
 # --------------------------------------------------------------------------
 
+@_writes
 def import_file(chosen: Path, keep_all: bool = False) -> dict:
     """Check the user's file, then write our own SHORTER copy of it.
 
@@ -395,6 +494,7 @@ def _key(raw: str) -> tuple[str, str, str]:
     return (parts[0].lower(), parts[2], parts[5])
 
 
+@_writes
 def merge_lines(fresh: list[str]) -> int:
     """Add cookie lines to our file, replacing the ones they update.
 
@@ -436,8 +536,10 @@ def merge_lines(fresh: list[str]) -> int:
     return added
 
 
+@_writes
 def clear() -> bool:
     """Forget the cookies. Returns True when a file was really removed."""
+    clear_run_copies()          # the copies a running tool holds go too
     if not COOKIE_FILE.exists():
         return False
     COOKIE_FILE.unlink()
@@ -491,6 +593,7 @@ def badge_dates(domains: tuple[str, ...], names: tuple[str, ...]) -> list[float]
     return found or None
 
 
+@_writes
 def drop_unsupported() -> int:
     """Remove the cookies of sites we no longer download from. Returns how many.
 

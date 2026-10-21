@@ -11,15 +11,17 @@ functions raise ``ToolMissing`` and the caller decides what to tell the user.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import cookies, explain
+from . import children, cookies, explain
 from .dialogs import MEDIA_ENDING
 from .paths import BIN_DIR, make_folder
 
@@ -55,7 +57,23 @@ _STEPS = (
     ("[ExtractAudio]", "making the MP3"),
 )
 _FILE_TEMPLATE = f"after_move:{_FILE_TAG}\t%(filepath)s"
+# Said before the download starts: is this a live stream? Stop is how a live
+# recording ENDS, and Stop's clean-up deleted it as a leftover -- 40 s of a
+# YouTube live, 2,097,152 bytes, gone, the row "stopped" (round 6 of the
+# hunt, 2026-10-18, with the real yt-dlp on @LofiGirl/live).
+_LIVE_TAG = "TLZ_L"
+_LIVE_TEMPLATE = f"before_dl:{_LIVE_TAG}\t%(is_live)s"
 _DESTINATION = "[download] Destination: "
+# The files yt-dlp writes AFTER the download, under their final names. A Stop
+# during these steps left a half MP3 that the next try called "already
+# there" (silent-failure hunt, 2026-10-18). The two lines, as yt-dlp prints
+# them: `[ExtractAudio] Destination: <path>`, and `[Merger] Merging formats
+# into "<path>"`, which writes `<name>.temp.<ext>` first.
+_CONVERTING = "[ExtractAudio] Destination: "
+_MERGING = re.compile(r'^\[Merger\] Merging formats into "(.+)"$')
+# yt-dlp's repairs after a download ("[FixupM3u8] Fixing MPEG-TS in MP4
+# container of "<path>"") write `<name>.temp.<ext>` the same way.
+_FIXING = re.compile(r'^\[Fixup\w*\] .* of "(.+)"$')
 
 
 class ToolMissing(RuntimeError):
@@ -173,15 +191,32 @@ def _ffmpeg_arguments() -> list[str]:
 
 
 def _run(command: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    """Run yt-dlp for a title read: tied to the app, and ended whole.
+
+    Started loose, a read still running when the app closed outlived it and
+    wrote its cookie jar back AFTER "Forget when I close" had wiped them; a
+    read that timed out ended only the yt-dlp.exe launcher, and the real
+    yt-dlp went on (round 5 of the hunt, 2026-10-18). The timeout also
+    reached the card as Python's own words, the whole command line with it.
+    """
+    process = subprocess.Popen(
         command,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=timeout,
         creationflags=_NO_WINDOW,
     )
+    children.bind(process)
+    try:
+        out, err = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        children.stop_tree(process)
+        process.communicate()
+        raise DownloadFailed(f"yt-dlp did not answer within {int(timeout)} seconds.")
+    return subprocess.CompletedProcess(command, process.returncode, out, err)
 
 
 def _cookie_arguments(cookie_file: Path | None) -> list[str]:
@@ -271,8 +306,28 @@ _MP4_BEST = (f"bestvideo[ext=mp4]{_REAL}+bestaudio[ext=m4a]/bestvideo{_REAL}+bes
              f"best[ext=mp4]{_REAL}/best{_REAL}")
 
 
+# In MP3 mode, yt-dlp first fetches a step file named like the final one,
+# "Title.mp4", then makes "Title.mp3" from it and deletes it. When the user
+# already had "Title.mp4" -- the MP4 of the same video -- yt-dlp took HIS file
+# as the step, and deleted it; the row said "already there" (round 9 of the
+# hunt, real yt-dlp: clip.mp4 47,317 B, gone after the MP3 run). So the run's
+# names carry a tag of their own, ".tlz<6 hex>", removed once the MP3 exists.
+_TAG = re.compile(r"\.tlz[0-9a-f]{6}")
+
+
+def untagged(name: str, tag: str = "") -> str:
+    """A file name without this run's MP3 tag -- the LAST one, which is the
+    run's: a title of its own containing ".tlz" + 6 hex keeps it (round 10)."""
+    if tag:
+        head, found, rest = name.rpartition(tag)
+        return head + rest if found else name
+    found = list(_TAG.finditer(name))
+    return name[:found[-1].start()] + name[found[-1].end():] if found else name
+
+
 def _output_arguments(
-    mode: str, out_dir: Path, quality: str = "best", out_path: Path | None = None
+    mode: str, out_dir: Path, quality: str = "best", out_path: Path | None = None,
+    tag: str = "",
 ) -> list[str]:
     """Build the yt-dlp options for the chosen format and quality.
 
@@ -289,11 +344,11 @@ def _output_arguments(
     number = "%(playlist_index& {}|)s"
     if out_path is not None:
         # The user's name is text, not a template: a "%" in it is doubled.
-        target = str(out_path.with_suffix("")).replace("%", "%%") + number + ".%(ext)s"
+        target = str(out_path.with_suffix("")).replace("%", "%%") + number + tag + ".%(ext)s"
         tidy: list[str] = []
     else:
         folder = str(out_dir).replace("%", "%%")
-        target = str(Path(folder) / f"%(title)s{number}.%(ext)s")
+        target = str(Path(folder) / f"%(title)s{number}{tag}.%(ext)s")
         # yt-dlp names the file from the title: "… VIDEO.mp4" came out
         # "… VIDEO.mp4.mp4". Its own option drops that ending first.
         tidy = ["--replace-in-metadata", "title", MEDIA_ENDING, ""]
@@ -381,6 +436,8 @@ def download(
     cookie_file: Path | None = None,
     on_step: Callable[[str], None] | None = None,
     on_destination: Callable[[Path], None] | None = None,
+    on_writing: Callable[[Path], None] | None = None,
+    on_live: Callable[[], None] | None = None,
 ) -> DownloadResult:
     """Download one link as MP3 or MP4, reporting progress line by line.
 
@@ -394,6 +451,7 @@ def download(
     """
     tool = require_ytdlp()
     make_folder(out_dir)
+    tag = f".tlz{uuid.uuid4().hex[:6]}" if mode == "mp3" else ""
 
     command = [
         str(tool),
@@ -408,6 +466,7 @@ def download(
         "--no-warnings",
         "--progress", "--progress-template", _PROGRESS_TEMPLATE,
         "--print", _FILE_TEMPLATE,
+        "--print", _LIVE_TEMPLATE,
         # `--print` turns quiet mode on, and quiet mode hides "[Merger]" and
         # "[ExtractAudio]" -- the only signs of the step after the download.
         # Probed on this exact command, 2026-09-25: steps seen [] without
@@ -418,7 +477,7 @@ def download(
         *(["--force-overwrites"] if (force or _only_chosen_name(out_path)) else []),
         *_cookie_arguments(cookie_file),
         *_ffmpeg_arguments(),
-        *_output_arguments(mode, out_dir, quality, out_path),
+        *_output_arguments(mode, out_dir, quality, out_path, tag),
         url,
     ]
 
@@ -446,6 +505,9 @@ def download(
         if line.startswith(_PROGRESS_TAG):
             if on_progress:
                 on_progress(_progress(line.split("\t")))
+        elif line.startswith(_LIVE_TAG):
+            if on_live and line.split("\t", 1)[-1].strip() == "True":
+                on_live()
         elif line.startswith(_FILE_TAG):
             files.append(Path(line.split("\t", 1)[1].strip()))
         elif line.strip():
@@ -454,6 +516,17 @@ def download(
             # and only these, to remove what it leaves half-written.
             if on_destination and line.startswith(_DESTINATION):
                 on_destination(Path(line[len(_DESTINATION):].strip()))
+                # An MP3 run's download is only its step file, tagged as
+                # ours: after a Stop it goes too, finished or not.
+                if tag and on_writing:
+                    on_writing(Path(line[len(_DESTINATION):].strip()))
+            if on_writing:
+                merging = _MERGING.match(line.strip()) or _FIXING.match(line.strip())
+                if merging:
+                    whole = Path(merging.group(1))
+                    on_writing(whole.with_name(f"{whole.stem}.temp{whole.suffix}"))
+                elif line.startswith(_CONVERTING):
+                    on_writing(Path(line[len(_CONVERTING):].strip()))
             if on_step:
                 for prefix, step in _STEPS:
                     if line.startswith(prefix):
@@ -462,12 +535,67 @@ def download(
             del tail[:-40]          # keep only the last 40 lines
 
     if process.wait() != 0:
-        raise _tool_said("\n".join(tail))
+        problem = _tool_said("\n".join(tail))
+        # An MP3 run that failed on its 2nd item had finished the others
+        # under tagged names: never renamed, never said, one more set with
+        # each Retry (round 10). They get their names, and the row says them.
+        if tag and files:
+            try:
+                done = _untag(files, tail, out_path, force, tag)
+                problem.saved = [f for f in done.files if f not in done.skipped]
+            except DownloadFailed:
+                pass
+        raise problem
+    # Ended well and named no file: a playlist with no video in it, an empty
+    # channel tab. The row said "done" with nothing behind it (silent-failure
+    # hunt, 2026-10-18). Our sentence, so it is not marked as yt-dlp's words.
+    if not files:
+        last = next((l.strip() for l in reversed(tail) if l.strip()), "")
+        raise DownloadFailed("yt-dlp finished without downloading anything."
+                             + (f" Its last line: {cookies.redact(last[:200])}" if last else ""))
+
+    if tag:
+        return _untag(files, tail, out_path, force, tag)
 
     # yt-dlp leaves an existing file alone and says nothing useful about it.
     # The only reliable proof is the file's own date.
     skipped = [f for f in files if f.exists() and f.stat().st_mtime < started_at]
     return DownloadResult(files, tail, skipped)
+
+
+def _untag(files: list[Path], tail: list[str], out_path: Path | None,
+           force: bool, tag: str) -> DownloadResult:
+    """Give an MP3 run's files their real names (decision 24).
+
+    Replaced only when the user asked: "Download again", or the very name
+    Windows asked about in "Save as". Otherwise his file of that name stays,
+    ours goes, and the row says "already there".
+    """
+    final: list[Path] = []
+    already: list[Path] = []
+    for path in files:
+        if tag not in path.name or not path.is_file():
+            final.append(path)
+            continue
+        target = path.with_name(untagged(path.name, tag))
+        asked = out_path is not None and target.name == out_path.with_suffix(".mp3").name
+        try:
+            if force or asked:
+                os.replace(path, target)
+            else:
+                os.rename(path, target)         # refuses a name that is taken
+        except FileExistsError:
+            try:
+                path.unlink()
+            except OSError:
+                pass            # held a moment (an antivirus): his file is what counts
+            already.append(target)
+        except OSError as problem:
+            raise DownloadFailed(
+                f"\"{target.name}\" was made, but could not be given its name: "
+                f"{problem.strerror or problem}. It is in the folder as \"{path.name}\".")
+        final.append(target)
+    return DownloadResult(final, tail, already)
 
 
 def _tool_said(text: str) -> DownloadFailed:

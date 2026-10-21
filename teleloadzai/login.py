@@ -642,8 +642,15 @@ def _watch(window, platform_id: str, start: str, closed: threading.Event) -> Non
                 if mine:
                     _window, _open_for = None, ""
             if mine:
-                kept = cookies.merge_lines(latest) if latest else 0
-                _report(platform_id, kept, "closed")
+                # Caught like the automatic road: a save that raised here
+                # ended this watcher with no result, and the page kept its
+                # "waiting" box with no word (silent-failure hunt, 2026-10-18).
+                try:
+                    kept = cookies.merge_lines(latest) if latest else 0
+                except Exception as problem:
+                    _report(platform_id, 0, "closed", cookies.redact(str(problem)))
+                else:
+                    _report(platform_id, kept, "closed")
             return
 
         try:

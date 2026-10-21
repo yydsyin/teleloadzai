@@ -4,11 +4,12 @@
 progress and tell us the exact file it wrote. None of the others do. So this
 module works the other way round:
 
-**Watch the folder.** We note what is in the output folder before the tool
-runs, and look again afterwards. What appeared or changed is what the tool
-downloaded. That works for every tool, whatever it prints, and it answers
-the question of decision 24 for free: if nothing changed, nothing was
-downloaded, and we must not claim a success.
+**Watch the folder.** Each run gets a folder of its own (`_work_folder`), and
+what the tool finished there is what it downloaded. That works for every
+tool, whatever it prints, and it answers the question of decision 24 for
+free: if nothing arrived, nothing was downloaded, and we must not claim a
+success. *(Until 2026-10-18 the user's own folder was watched, before and
+after -- and a download running beside it was taken for this tool's.)*
 
 Two things every tool gets, and both were learned the hard way:
 
@@ -20,21 +21,24 @@ Two things every tool gets, and both were learned the hard way:
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
-from . import cookies, explain, toolservers, tools
+from . import children, cookies, explain, toolservers, tools
 from .dialogs import UNKNOWN, free_name, without_media_ending
-from .paths import BIN_DIR, make_folder
+from .paths import BIN_DIR, DATA_DIR, make_folder
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -57,6 +61,11 @@ class Request:
     url: str
     out_dir: Path               # the folder the file must land in
     out_name: str = ""          # wanted base name; some tools ignore it
+    # The FULL name chosen in "Save as" ("Foo.mp4"). Windows asked about that
+    # name only: a "Foo.ts" handed back by the tool is another file, and an
+    # older "Foo.ts" of the user's was replaced by the base-name test
+    # (round 3 of the hunt, 2026-10-18).
+    out_file: str = ""
     # The title the card read, or "" when nobody could. Used to name the file
     # when the tool leaves the name to us and the user was not asked.
     title: str = ""
@@ -74,6 +83,20 @@ class Request:
     # True when this job may use cookies at all. TikTokDownloader wants them
     # as a header string, not a file, so it cannot use `cookie_file`.
     cookie_header: bool = False
+    # Set by Stop. A tool driven by its server holds no process for Stop to
+    # end while it reads the post or while we fetch its file: Stop said
+    # "stopped" and the whole video still arrived (silent-failure hunt,
+    # 2026-10-18). Every step checks this.
+    stop: threading.Event | None = field(default=None, compare=False)
+
+
+def _stopped(request: Request) -> bool:
+    return request.stop is not None and request.stop.is_set()
+
+
+def _check_stop(request: Request) -> None:
+    if _stopped(request):
+        raise RunnerError("Stopped.")       # the job is already "stopped": never shown
 
 
 @dataclass
@@ -105,10 +128,8 @@ class Recipe:
     # XHS-Downloader skipped a note it had already seen, wrote only its own
     # database, and that alone looked like a download (2026-09-22).
     ignore: tuple[str, ...] = ()
-    # Clutter the tool leaves in the USER'S folder, removed after the run --
-    # but only a file this run created (absent from the snapshot before): one
-    # that was already there belongs to the user. Exact names, never a
-    # pattern. XHS-Downloader writes an empty `ExploreData.db` beside every
+    # Clutter the tool leaves beside its download: never moved out of the
+    # work folder, so it goes with it. Exact names, never a pattern. XHS-Downloader writes an empty `ExploreData.db` beside every
     # video, whatever its own `record_data` setting says (False, and the file
     # still came, with 0 rows -- seen 2026-09-26).
     litter: tuple[str, ...] = ()
@@ -130,6 +151,11 @@ class Recipe:
     # server's date, the folder looked unchanged, and the app reported an
     # error made of a hidden path (2026-09-23).
     reported: Callable[[list[str], Path], list[Path]] | None = None
+    # The line a tool prints when the link is a LIVE stream. Only then is
+    # what it wrote kept on Stop: a normal N_m3u8DL-RE download merges its
+    # picture BEFORE fetching the sound, and Stop kept a silent video called
+    # "Recorded until Stop" (round 8 of the hunt, with the real tool).
+    live_sign: str = ""
 
 
 # --------------------------------------------------------------------------
@@ -197,11 +223,33 @@ def _n_m3u8dl_re(exe: Path, r: Request) -> list[str]:
     # stop and ask which one, and with stdin closed it crashes (2026-09-21).
     # --tmp-dir is not optional either: without it the pieces of the video
     # pile up beside the program (28 MB found in bin/ the same day).
-    return [str(exe), r.url,
-            "--auto-select",
-            "--tmp-dir", str(r.out_dir),
-            "--save-dir", str(r.out_dir),
-            "--save-name", _file_name(r)]
+    # A LIVE stream (all four flags read from its own --help, and seen on a
+    # real YouTube live 2026-10-21): without them it recorded with no end and
+    # kept only pieces until the stream ended, and Stop lost everything.
+    # `--live-real-time-merge` builds one `<name>.ts` as it records;
+    # `--live-keep-segments false` drops the pieces (with them, every piece
+    # would have been moved into the user's folder); `--live-record-limit`
+    # is the "Stop a live recording after" setting (110 s asked, 110.0 s
+    # recorded). It counts the stream's time from its first fetch, which
+    # already holds the last minute or so. And no update check against
+    # GitHub on every run.
+    command = [str(exe), r.url,
+               "--auto-select",
+               "--tmp-dir", str(r.out_dir),
+               "--save-dir", str(r.out_dir),
+               "--save-name", _file_name(r),
+               "--live-real-time-merge",
+               "--live-keep-segments", "false",
+               "--disable-update-check",
+               # Its own words in English: "Live stream found" is how a live
+               # run is told from a normal one (`Recipe.live_sign`). In the
+               # PC's language it printed Chinese, unreadable here.
+               "--ui-language", "en-US"]
+    if r.limit_minutes > 0:
+        # HH:mm:ss has no 24th hour: the setting's top (24 h) becomes 23:59.
+        minutes = min(r.limit_minutes, 23 * 60 + 59)
+        command += ["--live-record-limit", f"{minutes // 60:02d}:{minutes % 60:02d}:00"]
+    return command
 
 
 def _repackage_to_mp4(files: list[Path]) -> list[Path]:
@@ -225,22 +273,30 @@ def _repackage_to_mp4(files: list[Path]) -> list[Path]:
             continue
 
         target = path.with_suffix(".mp4")
+        # Written as `.tmp` and renamed once whole: a crash half-way left an
+        # unplayable `name.mp4` that the next start took for a download.
+        partial = target.with_name(target.name + ".tmp")
         try:
-            done = subprocess.run(
+            # Tied to the app: started loose, it outlived a closed app.
+            done = subprocess.Popen(
                 [str(ffmpeg), "-y", "-i", str(path), "-c", "copy",
-                 "-movflags", "+faststart", str(target)],
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
-                stdin=subprocess.DEVNULL, timeout=1800, creationflags=_NO_WINDOW,
+                 "-movflags", "+faststart", "-f", "mp4", str(partial)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
             )
+            children.bind(done)
+            done.wait(timeout=1800)
         except Exception:
+            partial.unlink(missing_ok=True)
             final.append(path)
             continue
 
-        if done.returncode == 0 and target.is_file() and target.stat().st_size > 0:
+        if done.returncode == 0 and partial.is_file() and partial.stat().st_size > 0:
+            partial.replace(target)
             path.unlink(missing_ok=True)
             final.append(target)
         else:
-            target.unlink(missing_ok=True)      # never leave a broken mp4
+            partial.unlink(missing_ok=True)     # never leave a broken mp4
             final.append(path)
     return final
 
@@ -308,7 +364,9 @@ RECIPES: dict[str, Recipe] = {
     "streamlink": Recipe("streamlink", _streamlink, after=_repackage_to_mp4),
     "xhs-downloader": Recipe("xhs-downloader", _xhs, ignore=("*.db",),
                              litter=("ExploreData.db",), skipped=_xhs_skipped),
-    "n-m3u8dl-re": Recipe("n-m3u8dl-re", _n_m3u8dl_re, encoding="oem"),
+    # "Live stream found": read on a real YouTube live, 2026-10-21.
+    "n-m3u8dl-re": Recipe("n-m3u8dl-re", _n_m3u8dl_re, encoding="oem",
+                          live_sign="Live stream found"),
 }
 
 
@@ -343,10 +401,13 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
     _say(on_step, "starting TikTokDownloader")
     toolservers.TIKTOK.start()
     try:
+        # Stopped while it started: the post is not read, the cookie not sent.
+        _check_stop(request)
         _say(on_step, "reading the post")
         data = toolservers.detail(request.url, douyin, cookie)
     finally:
         toolservers.TIKTOK.release()
+    _check_stop(request)                # Stop pressed while the post was read
     _say(on_step, "")                   # the download's own percentage next
 
     # MP3 is the sound of THIS video, as with yt-dlp and Kuaishou. It used to
@@ -369,12 +430,12 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
         # The video is only a step: its own name, so the user's MP4 of the
         # same post is never overwritten, then deleted (the Kuaishou bug).
         video = request.out_dir / (name + ".teleloadzai-audio.mp4")
-        _fetch(address, video, site, on_progress, cookie, on_bytes)
-        target = _to_mp3(video, request.out_dir / (name + ".mp3"), request.quality,
-                         on_start=on_start, on_step=on_step)
+        _fetch(address, video, site, on_progress, cookie, on_bytes, request.stop)
+        target = _to_mp3_or_clean(video, request.out_dir / (name + ".mp3"), request,
+                                  on_start, on_step)
     else:
         target = request.out_dir / (name + ".mp4")
-        _fetch(address, target, site, on_progress, cookie, on_bytes)
+        _fetch(address, target, site, on_progress, cookie, on_bytes, request.stop)
     return RunResult([target], [f"TikTokDownloader: {data.get('desc', '')[:80]}"])
 
 
@@ -397,10 +458,12 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
     _say(on_step, "starting KS-Downloader")
     toolservers.KS.start()
     try:
+        _check_stop(request)
         _say(on_step, "reading the post")
         data = toolservers.ks_detail(request.url, cookie)
     finally:
         toolservers.KS.release()
+    _check_stop(request)
     _say(on_step, "")
 
     address = data.get("download")
@@ -421,13 +484,31 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
         # `<name>.mp4` it overwrote -- then deleted -- the user's own MP4 of
         # the same post (seen 2026-09-23: MP4, then MP3, left only the MP3).
         video = request.out_dir / (name + ".teleloadzai-audio.mp4")
-        _fetch(address, video, "kuaishou.com", on_progress, on_bytes=on_bytes)
-        target = _to_mp3(video, request.out_dir / (name + ".mp3"), request.quality,
-                         on_start=on_start, on_step=on_step)
+        _fetch(address, video, "kuaishou.com", on_progress, on_bytes=on_bytes,
+               stop=request.stop)
+        target = _to_mp3_or_clean(video, request.out_dir / (name + ".mp3"), request,
+                                  on_start, on_step)
     else:
         target = request.out_dir / (name + ".mp4")
-        _fetch(address, target, "kuaishou.com", on_progress, on_bytes=on_bytes)
+        _fetch(address, target, "kuaishou.com", on_progress, on_bytes=on_bytes,
+               stop=request.stop)
     return RunResult([target], [f"KS-Downloader: {str(data.get('caption', ''))[:80]}"])
+
+
+def _to_mp3_or_clean(video: Path, target: Path, request: Request,
+                     on_start: Callable[[subprocess.Popen], None] | None,
+                     on_step: Callable[[str], None] | None) -> Path:
+    """`_to_mp3` for the server tools' step video, which is ours: after a
+    Stop it goes, instead of staying as `name.teleloadzai-audio.mp4`."""
+    try:
+        return _to_mp3(video, target, request.quality, on_start=on_start, on_step=on_step)
+    except Exception:
+        # The target is NOT deleted: FFmpeg writes `.tmp` (removed in
+        # `_to_mp3`), so the name may still be the user's own older MP3 --
+        # deleting it on a Stop lost it (round 4 of the hunt, 2026-10-18).
+        if _stopped(request):
+            video.unlink(missing_ok=True)
+        raise
 
 
 def _say(on_step: Callable[[str], None] | None, step: str) -> None:
@@ -471,20 +552,23 @@ def _to_mp3(video: Path, target: Path, quality: str = "best", remove: bool = Tru
     if on_step:
         on_step("making the MP3")       # the row says it, never a frozen 100%
     rate = ["-q:a", "0"] if quality == "best" else ["-b:a", f"{int(quality)}k"]
+    # Written as `.tmp`, renamed once whole (as `_repackage_to_mp4`).
+    partial = target.with_name(target.name + ".tmp")
     process = subprocess.Popen(
         [str(ffmpeg), "-y", "-i", str(video), "-vn", "-c:a", "libmp3lame",
-         *rate, str(target)],
+         *rate, "-f", "mp3", str(partial)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
     )
     if on_start:
         on_start(process)
     code = process.wait()
-    if code != 0 or not target.is_file() or target.stat().st_size == 0:
-        target.unlink(missing_ok=True)
+    if code != 0 or not partial.is_file() or partial.stat().st_size == 0:
+        partial.unlink(missing_ok=True)
         raise RunnerError(
             f"The video was downloaded ({video.name}), but turning it into an "
             "MP3 failed. The video is kept.")
+    partial.replace(target)
     if remove:
         video.unlink(missing_ok=True)
     return target
@@ -495,39 +579,232 @@ _SOUND_SUFFIXES = {".mp4", ".m4v", ".mkv", ".webm", ".mov", ".avi", ".flv", ".ts
                    ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus"}
 
 
-def _sound_of(written: list[Path], before: dict, request: Request,
+def _has_sound(path: Path) -> bool:
+    """Does this file hold a sound track? Asked to ffprobe; when it cannot
+    answer, yes -- FFmpeg will then say what is wrong."""
+    ffmpeg = tools.installed_path("ffmpeg")
+    probe = ffmpeg.with_name("ffprobe.exe") if ffmpeg else None
+    if probe is None or not probe.is_file():
+        return True
+    try:
+        found = subprocess.run(
+            [str(probe), "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, stdin=subprocess.DEVNULL,
+            timeout=60, creationflags=_NO_WINDOW)
+    except Exception:
+        return True
+    return found.returncode != 0 or bool(found.stdout.strip())
+
+
+def _sound_of(written: list[Path], request: Request,
               on_start: Callable[[subprocess.Popen], None] | None,
-              on_step: Callable[[str], None] | None = None) -> tuple[list[Path], str]:
+              on_step: Callable[[str], None] | None = None) -> list[tuple[Path, str]]:
     """MP3 for the tools that only hand back a video (streamlink, XHS-Downloader,
     N_m3u8DL-RE): our FFmpeg keeps the sound, at the kbps the user chose.
 
-    A video this run CREATED is replaced by its MP3. One that was already in
-    the folder and was rewritten stays: it may be the user's own MP4 of the
-    same post (the Kuaishou bug of 2026-09-23 -- an MP3 that deleted it).
-    Returns the files, and the reason when an MP3 of the same name is
-    already there (decision 24): then nothing is converted, and the videos
-    this run created go -- they were only a step.
+    Everything here is in the run's own work folder (`_work_folder`), so the
+    videos are ours and go once their MP3 exists. Until 2026-10-18 this ran
+    in the user's folder and took every new video there as the tool's -- a
+    YouTube MP4 downloading at the same time was turned into an MP3 and
+    deleted (silent-failure hunt, reproduced with a fake tool).
+    Returns (MP3 in the work folder, the name it should have in the user's).
     """
-    sources = [p for p in written if p.suffix.lower() in _SOUND_SUFFIXES and p.is_file()]
-    if not sources:
+    candidates = [p for p in written if p.suffix.lower() in _SOUND_SUFFIXES and p.is_file()]
+    if not candidates:
         raise RunnerError(
             "The tool downloaded no video or sound file, so there is no MP3 to "
-            "make. What it downloaded is kept in the folder.")
+            "make.")
+    # A track with no sound is a step, not a source: N_m3u8DL-RE hands back
+    # the picture and the sound as two files, and the picture failed first --
+    # the row said "the MP3 failed" beside a real MP3 (round 8, real tool).
+    sources = [p for p in candidates if _has_sound(p)]
+    if not sources:
+        raise RunnerError("The tool downloaded a video with no sound, so there is "
+                          "no MP3 to make.")
     # The "Save as" name fits one file; several keep the tool's own names.
     chosen = request.out_name if len(sources) == 1 else ""
-    targets = [s.with_name((chosen or s.stem) + ".mp3") for s in sources]
-    reason = next(filter(None, (_already_there(t, request) for t in targets)), "")
-    if reason:
-        for source in sources:
-            if source not in before:
-                source.unlink(missing_ok=True)
-        return [], reason
-    final = [p for p in written if p not in sources]
-    for source, target in zip(sources, targets):
-        final.append(_to_mp3(source, target, request.quality,
-                             remove=source not in before, on_start=on_start,
-                             on_step=on_step))
-    return final, ""
+    final = [(p, p.name) for p in written if p not in candidates]
+    for source in sources:
+        made = _to_mp3(source, source.with_name(free_name(source.parent, source.stem, "mp3") + ".mp3"),
+                       request.quality, on_start=on_start, on_step=on_step)
+        final.append((made, (chosen or source.stem) + ".mp3"))
+    return final
+
+
+# The tools that can record a live stream into one growing file at the top
+# of their work folder. Stop is how such a recording ends, so what they
+# recorded is kept -- streamlink always (it only records lives), N_m3u8DL-RE
+# only when it said the stream is live (`Recipe.live_sign`). Round 7 kept
+# N_m3u8DL-RE's work on every Stop, on the belief that a normal download
+# writes nothing at the top until the end; round 8 proved it false.
+LIVE_RECORDERS = ("streamlink", "n-m3u8dl-re")
+
+# Pieces a tool leaves while it works -- never a finished file. `.mark` are
+# our own notes in the work folder (which tool, and whether it is live).
+_PIECES = ("*.part", "*.tmp", "*.ytdl", "*.mark")
+_LIVE_MARK = "teleloadzai-live.mark"
+
+# The work folders that exist right now, one path per line. A crash or a
+# closed console skips our clean-up, and the folder is hidden: its download
+# stayed there unseen, taking the disk (round 2 of the hunt, 2026-10-18).
+# `sweep_work_folders` deals with them at the next start.
+WORK_LIST = DATA_DIR / "work-folders.txt"
+_work_lock = threading.Lock()
+
+
+def _note_work(work: Path, present: bool) -> None:
+    with _work_lock:
+        try:
+            known = set(WORK_LIST.read_text(encoding="utf-8").splitlines()) \
+                if WORK_LIST.is_file() else set()
+            known.discard("")
+            (known.add if present else known.discard)(str(work))
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            temporary = WORK_LIST.with_name(WORK_LIST.name + ".tmp")
+            temporary.write_text("\n".join(sorted(known)), encoding="utf-8")
+            temporary.replace(WORK_LIST)
+        except OSError:
+            # The folder is still cleaned after the run; only a crash would
+            # leave it unswept. Said, never swallowed.
+            print(f"Could not note the work folder {work} in {WORK_LIST.name}.")
+
+
+def _work_folder(out_dir: Path, tool_id: str = "") -> Path:
+    """A folder of this run's own, inside the user's folder.
+
+    Watching the user's folder could not tell this tool's files from another
+    download's running beside it: with 2 downloads at once, a tool that
+    failed was shown "done" with the other job's video, and an MP3 job
+    converted and deleted the other job's MP4 (2026-10-18). A tool writes
+    here; what it finished is moved out (`_move_out`); the rest goes with
+    the folder. Inside the user's folder, so the move is a rename on the
+    same disk, never a copy.
+
+    No dot or underscore in front: XHS-Downloader strips both from the
+    folder name it is given (its own name cleaner, read in its code), and
+    would have written beside our folder instead of inside it.
+    """
+    make_folder(out_dir)
+    work = out_dir / f"teleloadzai-{uuid.uuid4().hex[:8]}"
+    try:
+        work.mkdir()            # a new name: never someone else's folder
+    except OSError as problem:
+        raise RunnerError(f"Teleloadzai could not write in {out_dir}. Choose another "
+                          f"folder. (Windows says: {problem.strerror or problem})") from problem
+    _note_work(work, True)
+    try:
+        # Which tool, for the start-up sweep after a crash.
+        (work / f"{tool_id or 'tool'}.tool.mark").write_text(tool_id, encoding="utf-8")
+    except OSError:
+        pass
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.kernel32.SetFileAttributesW(str(work), 0x2)   # hidden
+    return work
+
+
+def _drop_work(work: Path) -> None:
+    """Delete a work folder. One that cannot go yet (a file still held) stays
+    on the list, and the next start deals with it."""
+    shutil.rmtree(work, ignore_errors=True)
+    if not work.exists():
+        _note_work(work, False)
+
+
+def sweep_work_folders() -> list[str]:
+    """At start: the work folders a crash left. Their finished files are put
+    in the user's folder, never over one of his (a free name); the rest goes.
+    Returns the names saved, so the console can say so."""
+    if not WORK_LIST.is_file():
+        return []
+    saved: list[str] = []
+    for line in WORK_LIST.read_text(encoding="utf-8").splitlines():
+        work = Path(line)
+        if not line or not work.name.startswith("teleloadzai-") or not work.is_dir():
+            _note_work(work, False)
+            continue
+        # A normal N_m3u8DL-RE download cut off by a crash holds a half
+        # file (the picture without its sound): nothing is rescued from it.
+        # A live recording, or another tool's finished files, are.
+        half = (work / "n-m3u8dl-re.tool.mark").is_file() and not (work / _LIVE_MARK).is_file()
+        for path in ([] if half else work.iterdir()):
+            if path.is_file() and not any(path.match(x) for x in (*_PIECES, "*.db")):
+                stem, ending = path.stem, path.suffix.lstrip(".")
+                target = work.parent / (free_name(work.parent, stem, ending) + path.suffix)
+                try:
+                    os.rename(path, target)
+                    saved.append(target.name)
+                except OSError:
+                    pass
+        _drop_work(work)
+    return saved
+
+
+def _finished(work: Path, recipe: Recipe, top_only: bool = False) -> list[Path]:
+    """The files a tool finished in its work folder. Its bookkeeping, its
+    clutter and its unfinished pieces are not downloads."""
+    found = work.iterdir() if top_only else work.rglob("*")
+    return sorted(p for p in found if p.is_file()
+                  and not any(p.match(x) for x in (*recipe.ignore, *recipe.litter, *_PIECES)))
+
+
+def _move_out(pairs: list[tuple[Path, str]], request: Request,
+              own_names: bool) -> tuple[list[Path], list[str]]:
+    """Move finished files from the work folder into the user's folder.
+
+    Decision 24 decides what happens when the name is taken. Replaced only
+    when the user asked: "Download again", or the very name he chose in
+    "Save as" (Windows asked about that one, and only that one -- a post's
+    other files keep the tool's names). Otherwise his file stays, and:
+    ``own_names`` (streamlink, N_m3u8DL-RE: a name WE gave, from the title)
+    -> the new file gets "name (2)" -- a second recording of a channel is not
+    the first one; the post's own names (gallery-dl, XHS-Downloader) -> the
+    same file is already there, and ours is dropped.
+    When nobody asked, the move is a rename that REFUSES a taken name, so two
+    jobs ending at the same moment cannot replace each other's file.
+    Returns (files now in the user's folder, names that were already there).
+    """
+    moved: list[Path] = []
+    already: list[str] = []
+    for source, name in pairs:
+        target = request.out_dir / name
+        replace = request.force or (bool(request.out_file) and target.name == request.out_file)
+        for _attempt in range(20):
+            try:
+                if replace:
+                    os.replace(source, target)
+                else:
+                    os.rename(source, target)       # fails if the name is taken
+                moved.append(target)
+                break
+            except FileExistsError:
+                if not own_names:
+                    already.append(name)
+                    break
+                target = request.out_dir / (free_name(request.out_dir, Path(name).stem,
+                                                      target.suffix.lstrip(".")) + target.suffix)
+            except OSError as problem:
+                # The chosen name is held -- the old file open in a player.
+                # The new one takes a free name beside it: a stopped live
+                # recording was deleted with the work folder, and the row
+                # said only "stopped" (round 5 of the hunt, 2026-10-18).
+                spare = request.out_dir / (free_name(request.out_dir, Path(name).stem,
+                                                     target.suffix.lstrip(".")) + target.suffix)
+                try:
+                    os.rename(source, spare)
+                    moved.append(spare)
+                    break
+                except OSError:
+                    pass
+                failure = RunnerError(
+                    f"\"{name}\" was downloaded, but could not be put in the folder: "
+                    f"{problem.strerror or problem}. It is kept aside, and Teleloadzai "
+                    "puts it in the folder the next time it starts.")
+                failure.saved = moved       # the files before it ARE there: said
+                failure.keep_work = True    # never deleted with the work folder
+                raise failure from problem
+    return moved, already
 
 
 def _with_page_cookies(page: str, cookie: str) -> str:
@@ -599,7 +876,8 @@ def _file_name(request: Request, found: str = "") -> str:
 
 def _fetch(address: str, target: Path, site: str,
            on_progress: Callable[[int], None] | None, cookie: str = "",
-           on_bytes: Callable[[int, int], None] | None = None) -> None:
+           on_bytes: Callable[[int, int], None] | None = None,
+           stop: threading.Event | None = None) -> None:
     """Download a direct link, reporting a real percentage.
 
     What the file servers demand, measured 2026-09-23 on a real TikTok video
@@ -633,6 +911,8 @@ def _fetch(address: str, target: Path, site: str,
             done = 0
             with open(partial, "wb") as out:
                 while True:
+                    if stop is not None and stop.is_set():
+                        raise RunnerError("Stopped.")   # the half file goes below
                     block = answer.read(256 * 1024)
                     if not block:
                         break
@@ -644,6 +924,15 @@ def _fetch(address: str, target: Path, site: str,
                         on_bytes(done, total)       # the size the site sent
         if partial.stat().st_size == 0:
             raise RunnerError("The download came back empty.")
+        # A connection that ends early is not an error to Python: the read
+        # just returns nothing, and the loop ends as if the file were whole.
+        # A server announcing 1,000,000 bytes and sending 300,000 gave a
+        # 300,000-byte video under its real name, shown "done" (silent-
+        # failure hunt, 2026-10-18).
+        if total and done < total:
+            raise RunnerError(
+                f"The download was cut off at {done / 1048576:.1f} MB of "
+                f"{total / 1048576:.1f} MB. Nothing was kept: try again.")
         partial.replace(target)
     except urllib.error.URLError as problem:
         partial.unlink(missing_ok=True)     # never leave half a file behind
@@ -708,21 +997,6 @@ def unavailable_reason(tool_id: str) -> str | None:
 # --------------------------------------------------------------------------
 # the engine
 # --------------------------------------------------------------------------
-
-def _snapshot(folder: Path) -> dict[Path, tuple[int, float]]:
-    """Every file under a folder, with its size and date."""
-    if not folder.is_dir():
-        return {}
-    found = {}
-    for path in folder.rglob("*"):
-        if path.is_file():
-            try:
-                info = path.stat()
-                found[path] = (info.st_size, info.st_mtime)
-            except OSError:
-                pass
-    return found
-
 
 def _grown(folder: Path, before: dict[Path, tuple[int, float]],
            ignore: tuple[str, ...] = ()) -> int:
@@ -803,10 +1077,47 @@ def run(
             raise RunnerError(f"{tool_id} is not installed")
         exe, head = found, []
 
-    make_folder(request.out_dir)
-    before = _snapshot(request.out_dir)
+    work = _work_folder(request.out_dir, tool_id)
+    keep = False
+    try:
+        return _run_in(work, recipe, exe, head, tool_id, request,
+                       on_progress, on_start, on_step, on_bytes)
+    except Exception as problem:
+        # A finished file that could not be moved out stays in the work
+        # folder, still listed: the next start puts it in the user's folder.
+        keep = getattr(problem, "keep_work", False)
+        raise
+    finally:
+        # What was finished has been moved out; what is left is the tool's
+        # pieces and clutter, in a folder this run created.
+        if not keep:
+            _drop_work(work)
 
-    command = head + recipe.build(exe, request)
+
+# N_m3u8DL-RE prints its messages one after another with no line break, each
+# starting with its time: the whole run arrived as ONE line, cut at 200
+# characters before the reason ("... 404") was reached (round 9 of the hunt).
+_STAMP = re.compile(r"(?=\d\d:\d\d:\d\d\.\d{3} (?:INFO|WARN|ERROR|DEBUG) :)")
+
+
+def _lines(stream) -> Iterator[str]:
+    """The tool's lines -- and, inside one, each message that starts with its
+    time is a line of its own."""
+    for raw in stream:
+        for piece in _STAMP.split(raw.rstrip("\n")):
+            yield piece
+
+
+def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str,
+            request: Request,
+            on_progress: Callable[[int], None] | None,
+            on_start: Callable[[subprocess.Popen], None] | None,
+            on_step: Callable[[str], None] | None,
+            on_bytes: Callable[[int, int], None] | None) -> RunResult:
+    """One tool run inside its work folder; finished files end in the user's."""
+    # The tool is told the work folder. Names are still decided against the
+    # user's folder when the files move out ("unknown (2)", decision 24).
+    command = head + recipe.build(exe, dataclasses.replace(request, out_dir=work))
     tail: list[str] = []
 
     process = subprocess.Popen(
@@ -821,9 +1132,9 @@ def run(
         env=_child_environment(recipe.module),
         # A program run from our own folder drops its logs there: f2 wrote a
         # `logs/` folder straight into the project (2026-09-21). A module has
-        # no folder of its own, so it works from the download folder instead.
+        # no folder of its own, so it works from the work folder instead.
         # A real program keeps its own folder, where its settings live.
-        cwd=str(exe.parent) if not recipe.module else str(request.out_dir),
+        cwd=str(exe.parent) if not recipe.module else str(work),
         creationflags=_NO_WINDOW,
     )
     if on_start:
@@ -832,18 +1143,19 @@ def run(
     # These tools never say a size, but what they write grows in the folder
     # (seen 2026-09-26: gallery-dl's file 6.5 -> 53.4 MB, streamlink's .ts,
     # N_m3u8DL-RE's pieces). Measured once a second, never guessed.
+    # A live recording: what it wrote is kept on Stop (`LIVE_RECORDERS`).
+    live = tool_id == "streamlink"
     stop_watching = threading.Event()
     if on_bytes:
         def watch() -> None:
             while not stop_watching.wait(1.0):
-                grown = _grown(request.out_dir, before, recipe.ignore)
+                grown = _grown(work, {}, (*recipe.ignore, "*.mark"))
                 if grown:                   # nothing yet: "Working…" stays
                     on_bytes(grown, 0)
         threading.Thread(target=watch, daemon=True).start()
 
     assert process.stdout is not None
-    for line in process.stdout:
-        line = line.rstrip("\n")
+    for line in _lines(process.stdout):
         if not line.strip():
             continue
         if on_progress:
@@ -860,40 +1172,62 @@ def run(
         if not line.strip().startswith(("at ", "--- End of")):
             tail.append(line)
             del tail[:-40]
+        if recipe.live_sign and not live and recipe.live_sign in line:
+            live = True
+            try:
+                (work / _LIVE_MARK).write_text("live", encoding="utf-8")
+            except OSError:
+                pass            # only the crash sweep reads it
 
     code = process.wait()
     stop_watching.set()
+    # The tool's names, unless it is one whose name we chose from the title.
+    own_names = tool_id in LIVE_RECORDERS
 
-    # What is new or changed since before the tool ran.
-    #
-    # ⚠️ Do NOT also test the file's date. gallery-dl keeps the date the web
-    # server sent, so a picture from 2005 lands with a 2005 date, and a
-    # "newer than the start" filter threw away the only file it downloaded
-    # (found 2026-09-21). Comparing before and after needs no clock.
-    afterwards = _snapshot(request.out_dir)
-    for path in list(afterwards):
-        if path not in before and path.name in recipe.litter:
+    if _stopped(request):
+        # A live recording is the exception: Stop is how it ENDS ("no limit"
+        # records until the disk is full). Round 1 of the hunt deleted it with
+        # the work folder -- 2 hours of stream gone, the row said "stopped"
+        # (round 2, 2026-10-18). What was recorded is kept, as before; FFmpeg
+        # is not handed to Stop here, or the stopped job would end it at once.
+        recorded = _finished(work, recipe, top_only=True)
+        if not live or not recorded:
+            raise RunnerError("Stopped.")   # the pieces go with the work folder
+        if request.mode == "mp3":
             try:
-                path.unlink()
-            except OSError:
-                pass            # still held by the tool: a leftover, never a crash
-    written = sorted(
-        path for path, stamp in afterwards.items()
-        if (path not in before or before[path] != stamp)
-        and not any(path.match(pattern) for pattern in recipe.ignore)
-    )
+                pairs = _sound_of(recorded, request, children.bind, on_step)
+            except RunnerError:
+                pairs = [(p, p.name) for p in _finished(work, recipe, top_only=True)]
+        else:
+            pairs = [(p, p.name) for p in (recipe.after(recorded) if recipe.after else recorded)]
+        moved, _ = _move_out(pairs, request, own_names)
+        return RunResult(moved, tail)
 
-    # A tool can end badly and still have written something useful, and it
-    # can end well having written nothing. Both are reported honestly.
-    if code != 0 and not written:
+    if code != 0:
+        # A tool that failed is a failure, even when some files arrived (3
+        # pictures of 8). Until 2026-10-18 any new file in the folder made it
+        # "done" -- even another download's. Only complete files at the top
+        # of the work folder are kept: N_m3u8DL-RE's pieces sit in a sub-
+        # folder. They are said on the row, never claimed as the download.
         said = _short_error(tail)
-        if said:
-            raise explain.from_tool(RunnerError(said))      # its words (decision 38)
-        raise RunnerError(f"{tool_id} stopped with code {code}")
+        problem = explain.from_tool(RunnerError(said)) if said else \
+            RunnerError(f"{tool_id} stopped with code {code}")
+        # The tool's own error comes first: a file that could not be moved
+        # (open in a viewer) must not hide it. A normal N_m3u8DL-RE run keeps
+        # nothing: what it merged before failing is the picture without its
+        # sound -- "Saved before it failed" was a silent video (round 9).
+        keepable = [] if recipe.live_sign and not live else _finished(work, recipe, top_only=True)
+        try:
+            moved, _ = _move_out([(p, p.name) for p in keepable], request, own_names)
+        except RunnerError as failure:
+            moved = getattr(failure, "saved", [])
+            problem.keep_work = getattr(failure, "keep_work", False)
+        problem.saved = moved
+        raise problem
 
+    written = _finished(work, recipe)
     if recipe.reported:
-        said_written = recipe.reported(tail, request.out_dir)
-        written = sorted(set(written) | set(said_written))
+        written = sorted(set(written) | set(recipe.reported(tail, work)))
 
     if not written:
         reason = recipe.skipped(tail) if recipe.skipped else ""
@@ -908,12 +1242,39 @@ def run(
     if request.mode == "mp3":
         # The sound only, straight from what the tool wrote: a .ts recording
         # is not repackaged to .mp4 first.
-        written, reason = _sound_of(written, before, request, on_start, on_step)
-        if reason:
-            return RunResult([], tail, skip_reason=reason)
-    elif recipe.after:
-        written = recipe.after(written)
-    return RunResult(written, tail)
+        try:
+            pairs = _sound_of(written, request, on_start, on_step)
+        except RunnerError as problem:
+            # "The video is kept" must be true: the video sat in the work
+            # folder and went with it (round 3, 2026-10-18). Not after a
+            # Stop -- except a recording, which Stop never throws away.
+            if _stopped(request) and not live:
+                raise
+            try:
+                kept, _ = _move_out([(p, p.name) for p in _finished(work, recipe)],
+                                    request, own_names)
+            except RunnerError as failure:
+                kept = getattr(failure, "saved", [])
+                problem.keep_work = getattr(failure, "keep_work", False)
+            if _stopped(request):
+                return RunResult(kept, tail)
+            problem.saved = kept
+            raise
+    else:
+        if recipe.after:
+            written = recipe.after(written)
+        # A recording's name is the one we built ("Save as" or the title).
+        pairs = [(p, p.name) for p in written]
+    # A recording that ended by itself and is being repackaged when Stop
+    # comes is kept, like one ended by Stop (round 4, 2026-10-18).
+    if not live:
+        _check_stop(request)
+    moved, already = _move_out(pairs, request, own_names)
+    if not moved:
+        return RunResult([], tail, skip_reason=(
+            f"\"{already[0]}\" is already in this folder, and Teleloadzai never "
+            "replaces a file without asking."))
+    return RunResult(moved, tail)
 
 
 def _short_error(tail: list[str]) -> str:
