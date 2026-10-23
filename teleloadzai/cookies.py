@@ -314,7 +314,7 @@ def _rows(lines: list[str]) -> list[tuple[str, float | None, str]]:
     return found
 
 
-def inspect(path: Path, keep_all: bool = False) -> dict:
+def inspect(path: Path) -> dict:
     """Describe a Netscape cookie file: how many, for which sites, until when.
 
     Also splits it in two: the cookies for sites we can download from, and
@@ -353,12 +353,12 @@ def inspect(path: Path, keep_all: bool = False) -> dict:
     for domain, when, raw in rows:
         clean = domain.lstrip(".").lower()
         site = _known_match(clean, known)
-        if site is None and not keep_all:
+        if site is None:
             dropped_domains[clean] = dropped_domains.get(clean, 0) + 1
             continue
 
         kept.append(raw)
-        label = site or clean          # keep_all: show the raw domain
+        label = site
         kept_domains[label] = kept_domains.get(label, 0) + 1
         if when is None or when == 0:
             continue                     # session cookie: dies with the browser
@@ -402,7 +402,7 @@ def inspect(path: Path, keep_all: bool = False) -> dict:
 # --------------------------------------------------------------------------
 
 @_writes
-def import_file(chosen: Path, keep_all: bool = False) -> dict:
+def import_file(chosen: Path) -> dict:
     """Check the user's file, then write our own SHORTER copy of it.
 
     Two things happen here, and neither is a copy:
@@ -416,22 +416,36 @@ def import_file(chosen: Path, keep_all: bool = False) -> dict:
       file the user picked is never handed to a tool and never opened for
       writing. It is read once and closed.
 
-    ``keep_all`` is the way out for a site we do not know yet -- yt-dlp
-    handles far more sites than our table lists, and refusing those would be
-    the dead end decision 15 forbids. The user asks for it explicitly.
+    There is no way round the filter. A "keep every site" option existed
+    until 2026-10-23 and was removed by the user: it saved a whole browser
+    export, bank and mail included, and drop_unsupported deleted what it
+    kept at the next start anyway. A site outside our table still downloads
+    through yt-dlp; only a log-in there is not offered.
     """
     chosen = Path(chosen)
     if not chosen.is_file():
         raise CookieFileError("That file no longer exists. Choose it again.")
 
-    summary = inspect(chosen, keep_all=keep_all)     # raises with a reason
+    summary = inspect(chosen)     # raises with a reason
+
+    # Added to what is there, not written over it -- as the in-app log-in
+    # does (merge_lines). The file replaced the whole store: a TikTok log-in
+    # made in the window was erased in silence by a cookies.txt with no
+    # TikTok in it (proven 2026-10-23 on a scratch store, made-up cookies).
+    # A cookie the file carries again (same site, path, name) is replaced.
+    keeping: dict[tuple[str, str, str], str] = {}
+    if have_file():
+        for _domain, _when, raw in _rows(COOKIE_FILE.read_text(encoding="utf-8").splitlines()):
+            keeping[_key(raw)] = raw
+    for raw in summary["lines"]:
+        keeping[_key(raw)] = raw
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     try:
         COOKIE_FILE.write_text(
             "# Netscape HTTP Cookie File\n"
             "# Written by Teleloadzai. Only the sites it can download from.\n"
-            + "\n".join(summary["lines"]) + "\n",
+            + "\n".join(keeping.values()) + "\n",
             encoding="utf-8",
         )
     except OSError as problem:

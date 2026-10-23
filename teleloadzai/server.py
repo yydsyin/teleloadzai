@@ -88,11 +88,14 @@ def usable_tools(platform) -> list:
 
 
 def tool_choices() -> list[dict]:
-    """The sites where there is a real choice: more than one usable tool."""
+    """Every site with a usable tool, and its tools. A choice exists only
+    where there are two or more; the page draws a list there and the
+    program's name elsewhere (Settings -> Sites, 2026-10-22: one row per
+    site, its program and its log-in)."""
     rows = []
     for platform in PLATFORMS:
         offered = usable_tools(platform)
-        if len(offered) < 2:
+        if not offered:
             continue
         # The default the user really gets: our first USABLE tool. Weibo's
         # first is f2, which cannot run yet, so "(default)" was drawn on no
@@ -750,10 +753,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"cancelled": True})
                 return
             try:
-                # keep_all is the way out for a site our table does not list.
-                # yt-dlp handles far more sites than we name, and refusing
-                # those would be the dead end decision 15 forbids.
-                summary = cookies.import_file(chosen, keep_all=bool(body.get("keep_all")))
+                # Only the sites we download from are kept. "Keep every site"
+                # was removed on 2026-10-23 (the user's decision): it saved a
+                # whole browser export, bank and mail included, and the
+                # start-up clean-up deleted what it kept anyway.
+                summary = cookies.import_file(chosen)
             except cookies.CookieFileError as problem:
                 # A refusal the user can act on, never a bare "failed".
                 self._json({"error": cookies.redact(str(problem))}, 400)

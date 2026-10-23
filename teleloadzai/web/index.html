@@ -5,43 +5,109 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__APP_NAME__</title>
 <style>
+  /* The look chosen by the user on 2026-10-22: "Parcel tracking, softer"
+     (model 3A). Each link is a parcel -- a label before Download, then
+     tracking steps until it is in your folder. Warm paper, ink, soft
+     corners, and ONE yellow: Download. */
   :root {
-    --bg: #f4f5f7;  --card: #ffffff;  --ink: #1b1d21;  --soft: #6b7079;
-    --line: #e2e5ea; --accent: #2f6df6; --ok: #1f9d55; --bad: #c0392b;
-    /* Green TEXT needs a darker green: the "installed" badge's #1f9d55 on
-       white measured 3.49:1 (critique of 2026-09-26). */
-    --ok-text: #16733e;
-    --radius: 10px;
+    /* The page a step deeper than the boxes: at #f4f1ea against #fffdf8
+       everything read as one washed-out sheet (review of 2026-10-22). */
+    --bg: #ebe5d8;  --card: #fffdf9;  --ink: #24221e;  --soft: #625b4f;
+    --line: #e2d8c4; --line-strong: #cfc3ab; --ok: #2f7a4f; --bad: #b03a2e;
+    /* Links, focus rings, the selected choice: a dark ochre, the yellow's
+       own family, readable as text on paper (5.6:1). */
+    --accent: #7d5d00;
+    --ok-text: #2f7a4f;
+    --radius: 12px;
     /* Windows' own parts (scrollbar, list pop-up, checkbox) follow the theme:
        in dark mode they were drawn light (round 1, 2026-09-26). */
     color-scheme: light dark;
-    /* Filled buttons carry white text: they need a darker blue than the
-       one used for links and outlines. */
-    --accent-fill: #2f6df6;
+    /* Filled buttons other than Download: ink, with paper text. */
+    --accent-fill: #2e2b26; --on-fill: #fffdf8;
+    /* Download, and nothing else. Ink on this yellow is 11:1. */
+    --go: #f5c400; --go-hover: #e6b700; --go-ink: #1d1b17;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #16181c; --card: #1f2227; --ink: #e9eaec; --soft: #9aa0a8;
-      --line: #2e3339; --accent: #5b8cff; --ok: #35c07a; --bad: #ef6d60;
-      --ok-text: #35c07a;
-      /* White on #5b8cff was 3.2:1 (critique, 2026-09-25); on this blue it
-         passes. The lighter --accent stays for text on the dark page. */
-      --accent-fill: #3a6ee8;
+      --bg: #161513; --card: #25231f; --ink: #ede8dd; --soft: #aaa293;
+      --line: #3a3630; --line-strong: #4e483f; --accent: #e3bb4f; --ok: #5cc28a; --bad: #f07a6a;
+      --ok-text: #5cc28a;
+      --accent-fill: #ede8dd; --on-fill: #1b1a17;
     }
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 28px 16px 60px;
+    margin: 0; padding: 0 16px; overflow-x: clip;
     background: var(--bg); color: var(--ink);
-    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+    font: 15px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   }
-  .wrap { max-width: 720px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0 0 2px; letter-spacing: -.01em; }
+  /* The parts the browser draws by itself carry the palette too. */
+  ::selection { background: color-mix(in srgb, var(--go) 55%, transparent); color: var(--ink); }
+  html { scrollbar-color: color-mix(in srgb, var(--soft) 45%, transparent) transparent; accent-color: var(--accent); }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 19px; margin: 0; letter-spacing: -.02em; font-weight: 700; white-space: nowrap; }
   .sub { color: var(--soft); font-size: 13px; }
+  /* Layout A: one bar across the whole window -- the name, the link box,
+     Settings. Pulled to the window's edges, its content kept on the column. */
   .topbar {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    gap: 12px; margin-bottom: 22px;
+    display: flex; align-items: center; gap: 14px; flex: none;
+    margin: 16px 0 28px;
   }
+  .linkbox .linkbox-title { display: block; margin-bottom: 12px; }
+  .wrap[data-showing="settings"] .topbar { margin-bottom: 16px; }
+  .screen-title { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: -.01em; }
+  /* A real button: a border, the ink colour, an icon. */
+  .topbar #settings-toggle {
+    display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px;
+    color: var(--ink); background: var(--card); border: 1px solid var(--line-strong); font-weight: 600;
+  }
+  .topbar #settings-toggle svg { width: 17px; height: 17px; flex: none; }
+  .topbar #settings-toggle:not(:disabled):hover { border-color: var(--soft); background: var(--card); }
+  .linkbox { flex: none; margin: 0 0 18px; }
+  /* The one field the app is for: taller than the others. */
+  .linkbox input[type=text] { height: 48px; font-size: 16px; padding: 0 14px; }
+  .linkbox #read { min-height: 48px; padding: 0 22px; }
+  .linkbox .err { margin-top: 6px; }
+  #settings-toggle { margin-left: auto; }
+  /* The main screen fills the window and never scrolls: the list scrolls in
+     its own card instead. */
+  .wrap[data-showing="main"] { display: flex; flex-direction: column; height: 100vh; padding-bottom: 16px; }
+  .wrap[data-showing="settings"] { padding-bottom: 60px; }
+  .wrap[data-showing="main"] > .card { flex: none; }
+  .wrap[data-showing="main"] > #jobs-card {
+    flex: 1 1 auto; min-height: 170px; display: flex; flex-direction: column; margin-bottom: 0;
+  }
+  #jobs { flex: 1; min-height: 0; overflow-y: auto; margin-right: -8px; padding-right: 8px; }
+  #jobs:not(:empty) ~ #jobs-empty { display: none; }
+  #jobs:empty { flex: 0; }
+  /* Near the top of the free space, not in its middle: centred, it floated
+     ~450 px under the link box on the user's screen (2026-10-22). */
+  #jobs-empty {
+    flex: 1; display: flex; flex-direction: column; justify-content: flex-start;
+    align-items: center; text-align: center; padding: min(14vh, 120px) 12px 24px; color: var(--ink);
+  }
+  #jobs-empty svg { width: 64px; height: 64px; margin-bottom: 14px; color: var(--line-strong); }
+  #jobs-empty .empty-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  /* Nothing to list: no box. A 765 px empty box with two lines in its
+     middle read as a blank document (review of 2026-10-22). */
+  #jobs-card:has(#jobs:empty) { background: transparent; border-color: transparent; }
+  #jobs-card:has(#jobs:empty) > .head { display: none; }
+  /* The updates line: a tinted band under the bar, not a whole card -- its
+     text floated on the page and its 28 px buttons sat beside 42 px ones. */
+  #update-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none;
+    margin: 0 0 12px; padding: 6px 6px 6px 14px; font-size: 14px; border-radius: 10px;
+    background: color-mix(in srgb, var(--go) 16%, var(--card));
+    border: 1px solid color-mix(in srgb, var(--go) 45%, var(--line));
+  }
+  #update-bar-text { flex: 1; min-width: 200px; }
+  #update-bar button { min-height: 32px; }
+  #result { position: relative; }
+  #result-close {
+    position: absolute; top: 8px; right: 8px; min-width: 28px; min-height: 28px;
+    padding: 0; font-size: 18px; line-height: 1; border-color: transparent;
+  }
+  #result .preview { padding-right: 30px; }
   .section-title { font-weight: 600; }
   .field { margin-top: 16px; }
   .field:first-of-type { margin-top: 0; }
@@ -55,9 +121,12 @@
      and box was drawn in Arial while the page is Segoe UI (measured by the
      critique of 2026-09-25: 38 buttons, 12 lists, 5 boxes). */
   button, input, select { font-family: inherit; }
+  /* One height for every field and button on a line: 40 px. The bar had a
+     borderless grey field, a 42 px "Read" and a 44 px "Settings" (review of
+     2026-10-22). */
   input[type=text], select {
-    padding: 11px 12px; font-size: 15px; color: var(--ink);
-    background: var(--bg); border: 1px solid var(--line);
+    height: 40px; padding: 0 12px; font-size: 15px; color: var(--ink);
+    background: var(--card); border: 1px solid var(--line-strong);
     border-radius: 8px; outline: none; min-width: 0;
   }
   input[type=text] { flex: 1; }
@@ -65,10 +134,22 @@
      round 1 of the loop, 2026-09-26. */
   input::placeholder { color: var(--soft); opacity: 1; }
   input[type=text]:focus, select:focus { border-color: var(--accent); }
-  button {
-    padding: 11px 16px; font-size: 15px; font-weight: 600; cursor: pointer;
-    color: #fff; background: var(--accent-fill); border: 0; border-radius: 8px;
+  /* The field's focus is its own border plus a soft ring, not a second
+     outline 2 px outside it (a heavy double frame, seen 2026-10-22). */
+  input[type=text]:focus-visible {
+    outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
   }
+  button {
+    min-height: 40px; padding: 8px 16px; font-size: 15px; font-weight: 600; cursor: pointer;
+    color: var(--on-fill); background: var(--accent-fill); border: 0; border-radius: 8px;
+    transition: background-color .15s ease-out, border-color .15s ease-out;
+  }
+  button:not(:disabled):active { transform: translateY(1px); }
+  /* The one yellow on screen: the step that matters. A doubtful card turns
+     it into an outline ("Try anyway", .ghost) -- it stays grey then. */
+  #go:not(.ghost) { background: var(--go); color: var(--go-ink); padding: 8px 24px; }
+  #go:not(.ghost):not(:disabled):hover { background: var(--go-hover); }
+  button.ghost:not(:disabled):hover { border-color: color-mix(in srgb, var(--soft) 60%, var(--line)); color: var(--ink); }
   /* Where the keyboard is, always visible. The link box had `outline: none`
      and only a 1 px border change to show it (critique, 2026-09-25). */
   button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
@@ -79,7 +160,13 @@
     background: transparent; color: var(--soft);
     border: 1px solid var(--line); font-weight: 500;
   }
-  button.tiny { padding: 4px 10px; font-size: 13px; font-weight: 500; }
+  button.tiny { min-height: 30px; padding: 4px 12px; font-size: 13px; font-weight: 500; }
+  /* Quiet text buttons: Settings in the bar, "Clear finished", a row's own
+     actions. A box around every one made the screen a grid of boxes. */
+  #clear { border-color: transparent; }
+  #clear:not(:disabled):hover {
+    background: color-mix(in srgb, var(--ink) 6%, transparent); border-color: transparent;
+  }
 
   /* Five text sizes, not nine: 12 small labels, 13 help, 15 body and
      controls, 17 section titles, 20 the app name. */
@@ -88,7 +175,100 @@
     padding-top: 18px; border-top: 1px solid var(--line);
   }
   h2.section:first-of-type { margin-top: 12px; padding-top: 0; border-top: 0; }
-  .settings-nav { font-size: 14px; color: var(--soft); margin-bottom: 4px; }
+  /* Settings, model S2 (the user's choice, 2026-10-23): a side menu with
+     icons, the page beside it, every setting a row -- the Windows 11
+     Settings app. One look with the download card's rows. */
+  #settings { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .settings-tabs { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 16px; }
+  .settings-tabs button {
+    display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px;
+    padding: 0 12px; border-radius: 8px; text-align: left;
+    background: transparent; color: var(--soft); font-size: 15px; font-weight: 500;
+  }
+  .settings-tabs button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+  .settings-tabs button[aria-selected="true"] {
+    background: var(--card); color: var(--ink); font-weight: 600;
+    box-shadow: 0 1px 3px rgba(40, 30, 10, .14);
+  }
+  .pane-title { font-size: 22px; font-weight: 600; letter-spacing: -.01em; margin: 2px 0 14px; }
+  .set-group {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    margin-bottom: 14px; overflow: hidden;
+  }
+  .set-row {
+    display: flex; align-items: center; gap: 14px; min-height: 60px;
+    padding: 10px 16px; border-top: 1px solid var(--line);
+  }
+  .set-group > .set-row:first-child, .set-group > #sites-table:first-child { border-top: 0; }
+  .set-row-plain { min-height: 0; }
+  .set-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .set-name { font-weight: 600; }
+  .set-sub { font-size: 13px; color: var(--soft); line-height: 1.5; }
+  .set-control { display: flex; align-items: center; gap: 8px; flex: none; }
+  /* In a column the fields' usual "flex: 1" stretched their HEIGHT: the
+     folder box came out 22 px tall (seen 2026-10-23). */
+  .set-row-wide #folder { width: 100%; flex: none; }
+  /* Text and bold words in one flow: as column items, "150 cookies" stood
+     alone on its own line (seen the same day). */
+  .ways { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
+  .way {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+    padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft, transparent);
+  }
+  .way button { margin-top: auto; }
+  .way .set-sub { margin-bottom: 4px; }
+  .ways-or {
+    align-self: center; font-size: 12px; font-weight: 600; color: var(--soft);
+    padding: 4px 10px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 7%, var(--card));
+  }
+  @media (max-width: 700px) { .ways { grid-template-columns: minmax(0, 1fr); } .ways-or { justify-self: center; } }
+  #settings .set-main#cookies-summary { display: block; line-height: 1.6; max-width: none; }
+  .set-warning { margin: 0 0 14px; padding: 12px 16px; font-size: 14px; line-height: 1.5; }
+  #settings .card.warn:not(.set-warning) { margin: 0 0 14px; }
+  .set-group #tools-list { padding: 0 16px; }
+  .set-group #tools-list .tool:first-child { border-top: 1px solid var(--line); }
+  /* Windows' own on/off switch, drawn on the checkbox itself (the box and
+     its .checked stay what the code reads). */
+  input.toggle {
+    appearance: none; -webkit-appearance: none; margin: 0; flex: none; cursor: pointer;
+    width: 42px; height: 22px; border-radius: 99px; position: relative;
+    background: color-mix(in srgb, var(--ink) 18%, var(--card)); transition: background-color .15s ease-out;
+  }
+  input.toggle::before {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--card); box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .15s ease-out;
+  }
+  input.toggle:checked { background: var(--accent-fill); }
+  input.toggle:checked::before { transform: translateX(20px); }
+  .nav-icon { width: 18px; height: 18px; flex: none; background: currentColor;
+    -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+  /* The sites: one row per site, its name, its program, its log-in. */
+  #sites-table { display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) auto; }
+  #sites-table > div { display: contents; }
+  #sites-table > div > * {
+    padding: 9px 10px 9px 0; border-top: 1px solid var(--line);
+    display: flex; align-items: center; min-width: 0; min-height: 52px;
+  }
+  #sites-table > div > :first-child { padding-left: 16px; }
+  #sites-table > div > :last-child { padding-right: 16px; }
+  #sites-table > div:first-child > * { border-top: 0; }
+  #sites-table .site-head > * { font-size: 12px; color: var(--soft); min-height: 0; padding-top: 10px; padding-bottom: 6px; }
+  #sites-table .program { color: var(--soft); font-size: 14px; }
+  #sites-table .login { justify-content: flex-end; }
+  /* Log-ins paused (the switch off; the user's choice, 2026-10-23): the
+     whole Sites page goes grey and cannot be touched, except the switch
+     itself. One cookie store feeds everything here -- the log-ins AND an
+     imported cookies.txt -- so nothing on this page works while it is off.
+     A green "Logged in" that no download used had been a lie. The elements
+     are also made inert in the code, so the keyboard cannot reach them. */
+  .locked { opacity: .45; filter: grayscale(1); pointer-events: none; user-select: none; }
+  /* Settings in a narrow window: the menu keeps its icons only. */
+  @media (max-width: 700px) {
+    #settings { grid-template-columns: 48px minmax(0, 1fr); gap: 12px; }
+    .settings-tabs .nav-text { display: none; }
+    .settings-tabs button { justify-content: center; padding: 0; }
+    .set-row { flex-wrap: wrap; }
+  }
   /* Help lines reached 120 characters at 860 px: a comfortable line is
      shorter (review of 2026-09-27). */
   #settings .hint { max-width: 72ch; }
@@ -104,8 +284,6 @@
   /* A finished row said "done" in the same small grey as nothing: a success
      reads as one (review of 2026-09-27). */
   .state-done .job-right .small { color: var(--ok-text); font-weight: 600; }
-  .settings-nav a { text-decoration: none; font-weight: 600; }
-  .settings-nav a:hover { text-decoration: underline; }
   h2.section:focus { outline: none; }
   .label { font-weight: 500; }
   details.more > summary {
@@ -143,8 +321,6 @@
   .hidden { display: none !important; }
   /* One filled button on screen: once a card is shown, Read only reads
      again, and Download is the step (loop round 2). */
-  .wrap:has(#result:not(.hidden)) #sites-hint, .wrap:has(#unsupported:not(.hidden)) #sites-hint,
-  .wrap:has(#url-error:not(.hidden)) #sites-hint { display: none; }
   .wrap:has(#result:not(.hidden)) #read, .wrap:has(#unsupported:not(.hidden)) #read {
     background: transparent; color: var(--soft); border: 1px solid var(--line); font-weight: 500;
   }
@@ -170,39 +346,41 @@
      nothing changes: the small window is the one the page was made for. */
   @media (min-width: 1200px) {
     body { font-size: 16px; }
-    .wrap { max-width: 1280px; }
-    .wrap[data-showing="main"] {
-      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      column-gap: 20px; align-items: start;
-    }
-    .wrap[data-showing="main"] > * { grid-column: 1; }
-    .wrap[data-showing="main"] > .topbar { grid-column: 1 / -1; }
-    .wrap[data-showing="main"] > #jobs-card {
-      grid-column: 2; grid-row: 2 / span 20; position: sticky; top: 16px;
-    }
-    /* The right column is never an empty hole: it says what will be there. */
-    .wrap[data-showing="main"] > #jobs-card.hidden { display: block !important; }
-    #jobs:empty::before { content: "Your downloads will appear here."; color: var(--soft); font-size: 14px; }
-    /* A long list scrolls inside its own card: 9 rows made it 1014 px in a
-       768 px window, and reaching the last row pushed the link card off the
-       screen (loop round 2, 2026-10-18). The card starts under the top bar
-       (102 px at 1366x768), plus its head and padding (about 70 px), plus
-       the page's 60 px foot and the card's 14 px margin -- without those the
-       page scrolled 54 px too, and its scrollbar pushed the left card 7 px
-       (loop round 3). */
-    .wrap[data-showing="main"] > #jobs-card #jobs {
-      max-height: calc(100vh - 264px); overflow-y: auto;
-    }
-    #jobs-card:has(#jobs:empty) #clear { display: none; }
+    /* Layout A in full screen is the same column, wider -- the card above,
+       the list filling the height. The two columns it had until 2026-10-22
+       left the left half empty beige (960 px) whenever no card was open,
+       and 700 px empty under the card when one was (review of that day). */
+    .wrap { max-width: 1040px; }
     /* Settings is read top to bottom: one column, wider than before -- but
        not so wide that a help line runs to 146 characters (measured at
        900 px, round 1): 820 px and 14 px help text. */
-    .wrap[data-showing="settings"] { max-width: 760px; }
+    .wrap[data-showing="settings"] { max-width: 1040px; }
     .hint { font-size: 14px; }
     /* The picture stayed 132x76 in a 630 px card. `.preview .thumb`, not
        `.thumb`: the plain rule comes later in this file and won (seen in
        loop round 2 -- this line had never applied). */
     .preview .thumb { width: 200px; height: 112px; }
+  }
+
+  /* The small step: a window 640 px wide or less, or 720 px tall or less
+     (the app's smallest is 520 x 560). Measured there on 2026-10-22: the
+     Settings line, the title, the box and the card took 420 of 560 px, the
+     list showed about one row, and Download fell onto a line of its own.
+     The normal window (860 x 900) and full screen are not touched. */
+  @media (max-width: 640px), (max-height: 720px) {
+    .topbar { margin: 10px 0 12px; }
+    .wrap[data-showing="settings"] .topbar { margin-bottom: 10px; }
+    .topbar #settings-toggle { min-height: 32px; }
+    .linkbox { margin-bottom: 12px; }
+    .linkbox .linkbox-title { margin-bottom: 6px; font-size: 16px; }
+    .linkbox input[type=text] { height: 40px; font-size: 15px; }
+    .linkbox #read { min-height: 40px; }
+    .card { padding: 12px; margin-bottom: 10px; }
+    .preview .thumb { width: 96px; height: 54px; }
+    .controls { margin-top: 10px; }
+    .opt-row { min-height: 46px; padding: 5px 0; }
+    .opt-foot { padding-top: 8px; }
+    .wrap[data-showing="main"] > #jobs-card { min-height: 150px; }
   }
 
   .preview { display: flex; gap: 14px; align-items: flex-start; }
@@ -231,62 +409,94 @@
   /* The second click of a destructive button (see `twoClicks`). */
   button.danger { color: var(--bad); border-color: var(--bad); }
 
-  .tag {
-    display: inline-block; padding: 2px 8px; border-radius: 99px;
-    background: var(--bg); border: 1px solid var(--line);
-    font-size: 12px; color: var(--soft);
-  }
+  /* The site and the tool: words in the label's grey line, not chips --
+     two pills under the title read as buttons (review of 2026-10-22). */
+  .tag { display: inline; font-size: 13px; color: var(--soft); }
+  #tool:not(:empty)::before { content: "· "; }
   /* No bottom margin: the card's foot was 28 px under Download and 16 px
      over the title (loop round 2, 2026-10-18). The install box below gets
      its own space. */
-  .controls { display: flex; gap: 6px; margin: 14px 0 0; flex-wrap: wrap; align-items: center; }
-  #need-tool:not(.hidden) { margin-top: 12px; }
-  .choice {
-    padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 15px;
-    border: 1px solid var(--line); background: transparent; color: var(--ink); font-weight: 500;
+  /* The card's choices as settings rows (style H, the user's choice of
+     2026-10-23): icon, name, control on the right, one line each. */
+  .controls { margin: 14px 0 0; }
+  .opt-row {
+    display: flex; align-items: center; gap: 12px; min-height: 54px;
+    padding: 8px 0; border-top: 1px solid var(--line);
   }
-  /* "Selected" looks the same everywhere: filled, as on the tool switch. The
-     MP3/MP4 pair was an outline next to the switch's fill -- two styles for
-     one meaning (critique of 2026-09-26). */
-  /* ...and a TINT, not a fill. Round 1 of the loop (2026-09-26): filled, the
-     selected tool, the selected format and Download were three identical
-     blue blocks, and Download was no longer the obvious next step. Only
-     Download is filled now. */
-  .choice[aria-pressed="true"] {
-    background: color-mix(in srgb, var(--accent) 12%, var(--card));
-    border-color: var(--accent); color: var(--ink); font-weight: 600;
+  /* A row with nothing to choose is not drawn (decision 40): Tool on a site
+     with one program, Quality where no list and no reason are shown. */
+  .opt-row:not(:has(.opt-control > :not(.hidden):not(.sr-only))) { display: none; }
+  #result.dead-end #row-format, #result.dead-end #row-quality { display: none; }
+  .opt-name { flex: 1; font-weight: 600; }
+  .opt-control {
+    display: flex; align-items: center; justify-content: flex-end;
+    gap: 8px; flex-wrap: wrap; min-width: 0;
+  }
+  .opt-icon {
+    width: 32px; height: 32px; flex: none; border-radius: 8px;
+    background: color-mix(in srgb, var(--go) 22%, var(--card));
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* Icons drawn here, not inside the buttons: the page rewrites the MP4
+     button's text ("You get: original files"), which would erase them. */
+  .opt-icon::after, .choice[data-mode]:not(.only)::before, #go:not(.ghost)::before {
+    content: ""; width: 17px; height: 17px; flex: none; background: currentColor;
+    -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
+  }
+  .opt-icon::after { color: var(--accent); }
+  .icon-film, .choice[data-mode="mp4"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4'/%3E%3C/svg%3E"); }
+  .choice[data-mode="mp3"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E"); }
+  .icon-sliders { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6'/%3E%3C/svg%3E"); }
+  .icon-tool { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z'/%3E%3C/svg%3E"); }
+  .icon-download { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E"); }
+  .icon-globe { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/%3E%3C/svg%3E"); }
+  .icon-folder { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E"); }
+  .icon-file { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/%3E%3Cpath d='M14 3v5h5M9 14l3 3 3-3M12 11v6'/%3E%3C/svg%3E"); }
+  .icon-stack { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 3 8l9 5 9-5zM3 13l9 5 9-5'/%3E%3C/svg%3E"); }
+  .icon-live { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='2'/%3E%3Cpath d='M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19 5a10 10 0 0 1 0 14M5 19A10 10 0 0 1 5 5'/%3E%3C/svg%3E"); }
+  .icon-refresh { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 11a8 8 0 0 0-14.9-3M4 5v3h3M4 13a8 8 0 0 0 14.9 3M20 19v-3h-3'/%3E%3C/svg%3E"); }
+  .icon-branch { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='6' r='2'/%3E%3Ccircle cx='6' cy='18' r='2'/%3E%3Ccircle cx='18' cy='8' r='2'/%3E%3Cpath d='M6 8v8M18 10a6 6 0 0 1-6 6H8'/%3E%3C/svg%3E"); }
+  .icon-key { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='15' r='4'/%3E%3Cpath d='m10.8 12.2 9.2-9.2M17 6l3 3M14 9l2 2'/%3E%3C/svg%3E"); }
+  .icon-door { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8M10 12h11M18 9l3 3-3 3'/%3E%3C/svg%3E"); }
+  #go { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E"); }
+  #go:not(.ghost) { display: inline-flex; align-items: center; gap: 8px; }
+  .opt-foot {
+    display: flex; align-items: center; gap: 8px; justify-content: flex-end;
+    padding-top: 12px; border-top: 1px solid var(--line);
+  }
+  #result.dead-end .opt-foot:not(:has(> :not(.hidden))) { display: none; }
+  #need-tool:not(.hidden) { margin-top: 12px; }
+  /* Format and Tool: Windows 11's own switch -- a soft track, the chosen
+     option a raised white button. The same look for both, so every switch on
+     the card reads alike. "Selected" is the raised button, never a fill:
+     only Download is filled (round 1 of the loop, 2026-09-26). */
+  .seg-track {
+    display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px;
+    background: color-mix(in srgb, var(--ink) 8%, var(--card));
+  }
+  .seg-track button, .choice {
+    display: inline-flex; align-items: center; gap: 7px; min-height: 34px;
+    padding: 0 14px; border: 0; border-radius: 7px; cursor: pointer;
+    background: transparent; color: var(--soft); font-size: 14px; font-weight: 500;
+  }
+  .seg-track button:not([aria-pressed="true"]):hover { color: var(--ink); }
+  .seg-track button[aria-pressed="true"] {
+    background: var(--card); color: var(--ink); font-weight: 600;
+    box-shadow: 0 1px 3px rgba(40, 30, 10, .2), 0 0 0 1px color-mix(in srgb, var(--ink) 7%, transparent);
   }
   /* One format only (gallery-dl): said as text, not a toggle with nothing
      to toggle against. */
+  .seg-track:has(.choice.only) { background: none; padding: 0; }
   .choice.only, .choice.only[aria-pressed="true"] {
-    background: none; border-color: transparent; color: var(--soft);
-    font-weight: 500; font-size: 13px; padding-left: 0; cursor: default;
+    background: none; box-shadow: none; color: var(--soft);
+    font-weight: 500; padding: 0; cursor: default;
   }
-  .controls select { padding: 7px 10px; font-size: 15px; }
-  /* The tool switch under the title (asked by the user 2026-09-25): every
-     choice visible at once, the one in use filled. It starts on the default
-     each time; a click changes this download only. */
-  .switch {
-    display: inline-flex; vertical-align: middle; margin-left: 6px;
-    border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
-  }
-  .switch button {
-    padding: 4px 12px; font-size: 13px; font-weight: 500; border-radius: 0;
-    background: transparent; color: var(--ink);
-  }
-  .switch button + button { border-left: 1px solid var(--line); }
-  /* The switch clips what sticks out (its rounded corners), and the focus
-     ring stuck out: a keyboard user saw no ring at all (critique of
-     2026-09-26). Drawn inside the button instead. */
-  .switch button:focus-visible { outline-offset: -3px; }
-  /* Inside the filled (selected) button a blue ring vanished into the blue:
-     white there -- seen with the keyboard on TikTokDownloader. */
-  .switch button[aria-pressed="true"] {
-    background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--ink);
-    font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent);
-  }
+  .controls select { height: 36px; min-width: 130px; padding: 0 10px; font-size: 14px; }
+  #quality-why { text-align: right; }
 
   .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  /* The list's title, in ink: small grey, it was weaker than the rows under it. */
+  #jobs-card > .head #queue-info { font-size: 16px; font-weight: 600; color: var(--ink); }
   .job { border-top: 1px solid var(--line); padding: 12px 0; }
   .job:first-child { border-top: 0; }
   .job-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
@@ -299,16 +509,47 @@
     .job-right { width: 100%; justify-content: space-between; }
   }
   .job-right { display: flex; gap: 8px; align-items: center; flex: none; }
-  .bar { height: 6px; background: var(--bg); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+  /* The tracking line (model 3A): Started -> Downloading -> [the step
+     after, only once the tool has announced it] -> In your folder. A stop
+     is reached only when the app really saw it (decision 33): XHS-Downloader
+     shows no download, so its row stays on "Started" with the time. The
+     segment after "Downloading" IS the progress bar. */
+  .track { display: flex; align-items: center; gap: 6px; margin-top: 9px; font-size: 12px; color: var(--soft); }
+  .stop { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .stop::before {
+    content: ""; width: 9px; height: 9px; border-radius: 50%; flex: none;
+    border: 1.5px solid color-mix(in srgb, var(--soft) 55%, var(--line)); background: var(--card);
+  }
+  .stop.passed { color: var(--ok-text); }
+  .stop.passed::before { background: var(--ok); border-color: var(--ok); }
+  .stop.now { color: var(--ink); font-weight: 600; }
+  .stop.now::before { border-color: var(--ink); background: var(--go); }
+  .stop.failed { color: var(--bad); font-weight: 600; }
+  .stop.failed::before { border-color: var(--bad); background: var(--bad); }
+  .stop.halted { color: var(--ink); }
+  .stop.halted::before { border-color: var(--soft); background: var(--soft); }
+  .seg { flex: 1; min-width: 12px; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .seg.passed { background: var(--ok); }
+  .bar { height: 3px; margin: 0; }
+  /* A tool being installed (Settings -> Tools) keeps a plain bar. */
+  .tool .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 8px; }
   /* 0.7 s, the refresh rhythm: one update glides into the next. Before
      2026-09-25 the bar was rebuilt every refresh and never moved at all. */
-  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .7s linear; }
-  .state-done .bar > i { background: var(--ok); }
-  .state-error .bar > i { background: var(--bad); }
-  .state-cancelled .bar > i { background: var(--soft); }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--ink); }
+  /* Scaled, not resized: the line is redrawn without moving anything else. */
+  .seg.bar > i { width: 100%; transform-origin: left; transform: scaleX(0); transition: transform .7s linear; }
+  .bar.passed > i { background: var(--ok); }
+  .state-cancelled .bar > i, .state-error .bar > i { background: var(--soft); }
+  /* Only the stop where the parcel is keeps its name: five rows repeated
+     "Started -- Downloading -- In your folder" fifteen times, and the list
+     read as a wireframe (review of 2026-10-22). A finished row needs no
+     line at all: "done" and its Open say it. */
+  .stop:not(.now):not(.failed):not(.halted) { font-size: 0; gap: 0; }
+  .state-done .track, .state-skipped .track { display: none; }
+  /* Only the parcel moving now is in full colour; finished ones go quiet. */
+  .job.state-done .job-name, .job.state-skipped .job-name { color: var(--soft); }
   .state-error .job-right .small { color: var(--bad); font-weight: 600; }
-  .state-waiting .bar > i, .state-skipped .bar > i { background: var(--soft); }
-  .small { font-size: 12px; color: var(--soft); white-space: nowrap; }
+  .small { font-size: 12px; color: var(--soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
   .tool { border-top: 1px solid var(--line); padding: 11px 0; }
   .tool:first-child { border-top: 0; }
@@ -337,12 +578,30 @@
 <body>
 <div class="wrap" data-showing="main">
 
+  <!-- Layout A, chosen by the user 2026-10-22: the link box lives in the top
+       bar and never moves; the card opens under it; the list takes all the
+       room left. Before, five stacked boxes pushed the list down the page. -->
+  <!-- No band with the name: the window's own title already says it, and
+       the band said it a second time 30 px lower (the user, 2026-10-22,
+       "change that"). One line instead: what this screen is for, and the
+       way to the other one. The name stays for screen readers. -->
+  <h1 class="sr-only">__APP_NAME__</h1>
   <div class="topbar">
-    <div>
-      <h1>__APP_NAME__</h1>
-      <div class="sub">Paste a link. __APP_NAME__ finds the site and the right tool.</div>
-    </div>
-    <button class="ghost" id="settings-toggle" aria-pressed="false">Settings</button>
+    <h2 class="screen-title" data-view="settings">Settings</h2>
+    <button class="ghost" id="settings-toggle" aria-pressed="false">
+      <!-- A gear on the main screen, an arrow back in Settings: the plain
+           grey word was not seen as a button (the user, 2026-10-22). -->
+      <svg data-view="main" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
+      </svg>
+      <svg data-view="settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M19 12H5M12 19l-7-7 7-7"/>
+      </svg>
+      <span id="settings-toggle-text">Settings</span>
+    </button>
   </div>
 
   <!-- Every message the app says, on every screen. It used to live inside
@@ -353,36 +612,40 @@
 
   <!-- Decisions 8 and 19, built 2026-10-21: the updates waiting, and one
        press for all of them. Shown in "Ask me first" mode only. -->
-  <div class="card hidden" data-view="main" id="update-bar" role="region" aria-label="Tool updates">
-    <div class="row" style="flex-wrap:wrap; align-items:center; gap:8px">
-      <span id="update-bar-text" style="flex:1; min-width:220px"></span>
-      <button class="tiny" id="update-bar-all">Update all</button>
-      <button class="ghost tiny" id="update-bar-later">Later</button>
-    </div>
+  <!-- A thin line now, not a whole box (layout A). -->
+  <div class="hidden" data-view="main" id="update-bar" role="region" aria-label="Tool updates">
+    <span id="update-bar-text"></span>
+    <button class="tiny" id="update-bar-all">Update all</button>
+    <button class="ghost tiny" id="update-bar-later">Later</button>
   </div>
 
-  <div class="card" data-view="main">
+  <!-- The link box, under the bar with its own title (option 2, chosen by
+       the user 2026-10-22): inside the top bar it sat at the window's very
+       edge, "so high". It still never moves; the card opens right under it. -->
+  <!-- Lower still (the user, 2026-10-22: "move down the link box"): its
+       title sits with it, and Settings stays alone in the corner above. -->
+  <div class="linkbox" data-view="main">
+    <label class="screen-title linkbox-title" for="url">Paste a link</label>
     <div class="row">
       <input type="text" id="url" placeholder="https://..." autocomplete="off" spellcheck="false"
-             aria-label="Link to a video or a post" aria-describedby="url-error">
+             aria-describedby="url-error">
       <button id="read">Read</button>
     </div>
     <!-- A problem with what was typed is said HERE, where the eyes are: it
          was a message at the bottom of the window, 600 px away (review of
          2026-09-27). -->
     <div class="err hidden" id="url-error" role="alert"></div>
-    <!-- Which sites work, while nothing else is on screen: the empty window
-         said nothing about it (review of 2026-09-27). -->
-    <div class="hint" id="sites-hint" style="margin-top:8px"></div>
   </div>
 
   <div class="card hidden" data-view="main" id="result">
+    <!-- Closes the card by hand; Download closes it too (2026-09-27). -->
+    <button class="ghost tiny" id="result-close" aria-label="Close this card">×</button>
     <div class="preview">
       <img class="thumb hidden" id="thumb" alt="">
       <div style="min-width:0">
         <div class="title" id="title" role="heading" aria-level="2">…</div>
         <div class="meta" id="meta"></div>
-        <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span><span class="hint hidden" id="tool-pick-label" style="margin-left:8px">Tool</span><span class="switch hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span></div>
+        <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span></div>
         <div class="hint hidden" id="tool-why" style="margin-top:6px"></div>
         <div class="hint warn-text hidden" id="short-link-note" style="margin-top:6px">Teleloadzai could not open this short link to see where it leads, so it cannot tell which site it is from. If the download fails, paste the full link from the post instead.</div>
         <div class="hint hidden" id="tool-need" style="margin-top:8px;padding:6px 10px;border-width:1px;border-style:solid;border-radius:8px">
@@ -398,24 +661,48 @@
       </div>
     </div>
 
+    <!-- The choices as settings rows (style H, chosen by the user 2026-10-23):
+         an icon, a name, the control on the right, like Windows 11 Settings
+         -- the user found the old row of buttons "not professional" and "not
+         clear". Names only, no explanation lines (the user's choice). A row
+         with nothing to choose hides itself (CSS, .opt-row). -->
     <div class="controls">
-      <button class="choice" data-mode="mp3" aria-pressed="false">MP3</button>
-      <button class="choice" data-mode="mp4" aria-pressed="true">MP4</button>
-      <!-- A real <label>: a screen reader announced the list with no name
-           (critique of 2026-09-26). -->
-      <label class="hint" id="quality-label" for="quality" style="margin-left:6px">Quality</label>
-      <select id="quality"></select>
-      <!-- Where the list is missing, why (the user, 2026-10-05: a YouTube
-           MP4 with no Quality list looked like a bug). -->
-      <span class="hint hidden" id="quality-why"></span>
-      <!-- On the same row as the choices: below them, it ended at 483 px in
-           a 421 px window, and the one action that matters needed a scroll
-           (round 1 of the loop, 2026-09-26). -->
-      <!-- A link its own tool could not read, for a reason nobody knows:
-           updating is the first thing to try (decision 8) -- the card offered
-           only a grey "Try anyway" (review of 2026-09-27). -->
-      <button class="hidden" id="probe-update" style="margin-left:auto"></button>
-      <button id="go" style="margin-left:auto">Download</button>
+      <div class="opt-row" id="row-format">
+        <span class="opt-icon icon-film" aria-hidden="true"></span>
+        <span class="opt-name">Format</span>
+        <span class="opt-control seg-track" role="group" aria-label="Format">
+          <button class="choice" data-mode="mp3" aria-pressed="false">MP3</button>
+          <button class="choice" data-mode="mp4" aria-pressed="true">MP4</button>
+        </span>
+      </div>
+      <div class="opt-row" id="row-quality">
+        <span class="opt-icon icon-sliders" aria-hidden="true"></span>
+        <span class="opt-name" aria-hidden="true">Quality</span>
+        <span class="opt-control">
+          <!-- A real <label>: a screen reader announced the list with no name
+               (critique of 2026-09-26). The row's name is drawn beside it. -->
+          <label class="sr-only" id="quality-label" for="quality">Quality</label>
+          <select id="quality"></select>
+          <!-- Where the list is missing, why (the user, 2026-10-05: a YouTube
+               MP4 with no Quality list looked like a bug). -->
+          <span class="hint hidden" id="quality-why"></span>
+        </span>
+      </div>
+      <div class="opt-row" id="row-tool">
+        <span class="opt-icon icon-tool" aria-hidden="true"></span>
+        <span class="opt-name" aria-hidden="true">Tool</span>
+        <span class="sr-only hidden" id="tool-pick-label">Tool</span>
+        <span class="opt-control">
+          <span class="switch seg-track hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span>
+        </span>
+      </div>
+      <div class="opt-foot">
+        <!-- A link its own tool could not read, for a reason nobody knows:
+             updating is the first thing to try (decision 8) -- the card
+             offered only a grey "Try anyway" (review of 2026-09-27). -->
+        <button class="hidden" id="probe-update" style="margin-left:auto"></button>
+        <button id="go" style="margin-left:auto">Download</button>
+      </div>
     </div>
 
     <div class="hidden" id="need-tool" style="margin-bottom:12px">
@@ -431,12 +718,25 @@
     <div class="hint" id="unsupported-note" style="margin-top:6px"></div>
   </div>
 
-  <div class="card hidden" data-view="main" id="jobs-card">
+  <!-- Always drawn on the main screen (layout A): it is the window's body. -->
+  <div class="card" data-view="main" id="jobs-card">
     <div class="head">
       <span class="hint" id="queue-info">Downloads</span>
       <button class="ghost tiny" id="clear">Clear finished</button>
     </div>
     <div id="jobs"></div>
+    <!-- What goes here, while nothing does. Which sites work: the empty
+         window said nothing about it (review of 2026-09-27). -->
+    <div id="jobs-empty">
+      <!-- A parcel, drawn: the look's own sign (model 3A). -->
+      <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5"
+           stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 20 32 9l24 11v25L32 56 8 45Z"/><path d="M8 20l24 11 24-11M32 31v25"/>
+        <path d="M20 14.5l24 11v8" />
+      </svg>
+      <div class="empty-title">Your downloads will appear here.</div>
+      <div class="hint" id="sites-hint" style="margin-top:6px"></div>
+    </div>
   </div>
 
   <!-- Three sections in the order they are used: where files go, which
@@ -460,115 +760,115 @@
     </div>
   </div>
 
-  <div class="card" data-view="settings" id="settings">
-    <!-- Three jumps: Settings is several screens tall, and Accounts -- the
-         section a failed download sends people to -- was at the very bottom
-         (round 1 of the loop, 2026-09-26). -->
-    <nav class="settings-nav" aria-label="Settings sections">
-      <a href="#set-downloads">Downloads</a> · <a href="#set-tools">Tools</a> ·
-      <a href="#set-accounts">Accounts</a>
+  <div data-view="settings" id="settings">
+    <!-- Model S2, chosen by the user 2026-10-23: a side menu with icons and
+         the page beside it, like the Windows 11 Settings app; every setting a
+         row (icon, name, control), as on the download card. The help lines
+         went ("plenty of sentences which are useless", the user): only the
+         cookie explanation stays, short (decision 35). Before: three tabs
+         over pages of paragraphs (model S3, 2026-10-22). -->
+    <nav class="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+      <button type="button" role="tab" id="tab-downloads" data-pane="downloads"
+              aria-controls="pane-downloads" aria-selected="true">
+        <span class="nav-icon icon-download" aria-hidden="true"></span><span class="nav-text">Downloads</span></button>
+      <button type="button" role="tab" id="tab-sites" data-pane="sites"
+              aria-controls="pane-sites" aria-selected="false" tabindex="-1">
+        <span class="nav-icon icon-globe" aria-hidden="true"></span><span class="nav-text">Sites</span></button>
+      <button type="button" role="tab" id="tab-programs" data-pane="programs"
+              aria-controls="pane-programs" aria-selected="false" tabindex="-1">
+        <span class="nav-icon icon-tool" aria-hidden="true"></span><span class="nav-text">Programs</span></button>
     </nav>
-    <h2 class="section" id="set-downloads" tabindex="-1">Downloads</h2>
 
-    <div class="field">
-      <label class="label" for="folder" style="display:block; margin-bottom:8px">Default folder</label>
-      <div class="row">
-        <input type="text" id="folder" spellcheck="false">
-        <button class="ghost" id="browse">Browse…</button>
-        <button class="ghost" id="save-folder">Save</button>
+    <div class="settings-page">
+    <section class="pane" id="pane-downloads" role="tabpanel" aria-labelledby="tab-downloads">
+      <h2 class="pane-title" id="set-downloads" tabindex="-1">Downloads</h2>
+      <div class="set-group">
+        <div class="set-row set-row-wide">
+          <span class="opt-icon icon-folder" aria-hidden="true"></span>
+          <div class="set-main">
+            <label class="set-name" for="folder">Download folder</label>
+            <input type="text" id="folder" spellcheck="false">
+          </div>
+          <div class="set-control">
+            <button class="ghost" id="browse">Browse…</button>
+            <button class="ghost" id="save-folder">Save</button>
+          </div>
+        </div>
+        <label class="set-row" style="cursor:pointer">
+          <span class="opt-icon icon-file" aria-hidden="true"></span>
+          <span class="set-main set-name">Ask where to save each file</span>
+          <span class="set-control"><input type="checkbox" class="toggle" id="ask-where"></span>
+        </label>
+        <div class="set-row">
+          <span class="opt-icon icon-stack" aria-hidden="true"></span>
+          <label class="set-main set-name" for="parallel">Downloads at the same time</label>
+          <span class="set-control">
+            <select id="parallel">
+              <option value="1">1</option><option value="2">2</option>
+              <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+            </select>
+          </span>
+        </div>
+        <div class="set-row">
+          <span class="opt-icon icon-live" aria-hidden="true"></span>
+          <label class="set-main set-name" for="record-minutes">Stop a live recording after</label>
+          <span class="set-control">
+            <select id="record-minutes">
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="120">2 hours</option>
+              <option value="240">4 hours</option>
+              <option value="0">no limit</option>
+            </select>
+          </span>
+        </div>
       </div>
-      <div class="hint" style="margin-top:6px">
-        Where the "Save as" window opens. Also where files go when you turn the
-        question off.
-      </div>
-    </div>
+    </section>
 
-    <div class="field">
-      <label class="row" style="cursor:pointer">
-        <input type="checkbox" id="ask-where" style="width:16px;height:16px;accent-color:var(--accent)">
-        <span class="label">Ask where to save each file</span>
-      </label>
-      <div class="hint" style="margin:4px 0 0 24px">
-        A Windows "Save as" window opens when you press Download, so you choose
-        the folder and the name for that one file.
+    <section class="pane hidden" id="pane-programs" role="tabpanel" aria-labelledby="tab-programs">
+      <h2 class="pane-title" id="set-tools" tabindex="-1">Programs</h2>
+      <div class="set-group">
+        <div class="set-row">
+          <span class="opt-icon icon-tool" aria-hidden="true"></span>
+          <span class="set-main set-name">Installed programs</span>
+          <span class="set-control">
+            <button class="tiny hidden" id="tools-update-all">Update all</button>
+            <button class="ghost tiny" id="tools-refresh">Check versions</button>
+          </span>
+        </div>
+        <div id="tools-list" class="hint">Loading…</div>
       </div>
-    </div>
-
-    <div class="field">
-      <div class="row">
-        <label class="label" for="parallel">Downloads at the same time</label>
-        <select id="parallel">
-          <option value="1">1</option><option value="2">2</option>
-          <option value="3">3</option><option value="4">4</option><option value="5">5</option>
-        </select>
+      <div class="set-group">
+        <div class="set-row">
+          <span class="opt-icon icon-refresh" aria-hidden="true"></span>
+          <label class="set-main set-name" for="update-mode">Updates</label>
+          <span class="set-control">
+            <select id="update-mode">
+              <option value="ask">Ask me first (recommended)</option>
+              <option value="auto">Automatic</option>
+              <option value="manual">Manual</option>
+            </select>
+          </span>
+        </div>
+        <div class="hint hidden" id="update-mode-hint"></div>
+        <div class="set-row">
+          <span class="opt-icon icon-branch" aria-hidden="true"></span>
+          <div class="set-main">
+            <label class="set-name" for="ytdlp-channel">yt-dlp version</label>
+            <!-- The one line a user needs to choose (the user, 2026-10-23:
+                 without it the row was a puzzle). -->
+            <span class="set-sub">Preview gets fixes for broken sites sooner.</span>
+          </div>
+          <span class="set-control">
+            <select id="ytdlp-channel">
+              <option value="stable">Stable (recommended)</option>
+              <option value="preview">Preview</option>
+            </select>
+          </span>
+        </div>
       </div>
-    </div>
-
-    <div class="field">
-      <div class="row">
-        <label class="label" for="record-minutes">Stop a live recording after</label>
-        <select id="record-minutes">
-          <option value="15">15 minutes</option>
-          <option value="30">30 minutes</option>
-          <option value="60">1 hour</option>
-          <option value="120">2 hours</option>
-          <option value="240">4 hours</option>
-          <option value="0">no limit</option>
-        </select>
-      </div>
-      <div class="hint" style="margin-top:6px">
-        A live stream never ends by itself. Without a limit it records until
-        your disk is full.
-      </div>
-    </div>
-
-    <h2 class="section" id="set-tools" tabindex="-1">Tools</h2>
-
-    <!-- Decision 13, first level: the user's own default tool per site.
-         Only the sites with a real choice are listed; a site with one tool
-         has nothing to choose. The download page still lets him switch for
-         one download. -->
-    <!-- Folded: seven lists named after programs, open on every visit, stood
-         between the user and Accounts (round 1 of the loop, 2026-09-26). -->
-    <details class="field more">
-      <summary class="label">Tool for each site</summary>
-      <div id="tool-choices" class="hint" style="margin-top:8px">Loading…</div>
-      <div class="hint" style="margin-top:6px">
-        The tool used when you paste a link from that site. You can still pick
-        another one for a single download.
-      </div>
-    </details>
-
-    <div class="field">
-      <div class="head">
-        <span class="label">Installed programs</span>
-        <span class="row" style="gap:6px">
-          <button class="tiny hidden" id="tools-update-all">Update all</button>
-          <button class="ghost tiny" id="tools-refresh">Check versions</button>
-        </span>
-      </div>
-      <div id="tools-list" class="hint">Loading…</div>
-      <div class="row" style="margin-top:12px">
-        <label class="label" for="update-mode">Updates</label>
-        <select id="update-mode">
-          <option value="ask">Ask me first (recommended)</option>
-          <option value="auto">Automatic</option>
-          <option value="manual">Manual</option>
-        </select>
-      </div>
-      <div class="hint" id="update-mode-hint" style="margin-top:6px"></div>
-      <div class="row" style="margin-top:12px">
-        <label class="label" for="ytdlp-channel">yt-dlp version</label>
-        <select id="ytdlp-channel">
-          <option value="stable">Stable (recommended)</option>
-          <option value="preview">Preview</option>
-        </select>
-      </div>
-      <div class="hint" style="margin-top:6px">
-        Preview gets fixes for broken sites days earlier, and is sometimes less
-        stable. Your choice takes effect when yt-dlp is updated.
-      </div>
-      <div class="card warn hidden" id="python-help" style="margin:12px 0 0">
+      <div class="card warn hidden" id="python-help">
         <div class="title" id="python-help-title">Python is needed</div>
         <div class="hint" style="margin:6px 0 10px" id="python-help-text"></div>
         <div class="row" style="flex-wrap:wrap">
@@ -578,115 +878,133 @@
         </div>
         <div class="hint" id="python-help-status" style="margin-top:8px"></div>
       </div>
-    </div>
+    </section>
 
     <!-- Decision 35: a screen that asks for something sensitive explains
-         itself FIRST. What it is, why it is needed, what we do not do with
-         it, and the risk -- before any switch. Those four stay visible; only
-         the longer explanation and the file road are folded (2026-09-25:
-         the section showed about twelve blocks at once). -->
-    <h2 class="section" id="set-accounts" tabindex="-1">Accounts</h2>
-    <div class="field">
-      <div class="head">
-        <span class="label">Use my log-ins for downloads</span>
-        <!-- A real switch, not a label. Until 2026-09-22 this said "on" or
-             "off" and nothing could change it: the only way to reach "off"
-             was "Forget them", which erases the cookies instead of pausing
-             them. Decision 9 promises the user is in control of this. -->
-        <label class="row hidden" id="cookies-switch-box" style="cursor:pointer; gap:6px">
-          <input type="checkbox" id="cookies-switch" style="width:16px;height:16px;accent-color:var(--accent)">
-          <span class="hint" id="cookies-state">off</span>
-        </label>
-        <span class="hint" id="cookies-state-plain">off</span>
-      </div>
-
-      <div class="hint" style="margin:8px 0 0; line-height:1.6">
-        Some links only work when you are logged in: a private Instagram post,
-        an age-restricted YouTube video, a Kuaishou video. Log in to that site
-        below, and Teleloadzai keeps its proof of log-in — a <b>cookie</b> — for
-        the download tools. <b>You never type a password into Teleloadzai</b>,
-        and the cookies stay on this PC.
-      </div>
-      <details class="more">
-        <summary>What is a cookie, exactly?</summary>
-        <div class="hint" style="line-height:1.6">
-          A small piece of text a site saves when you log in, which says "this
-          is me". The log-in window takes only the cookies of the one site you
-          log in to, and they go straight to the download tool and nowhere
-          else.
+         itself FIRST: what it is, why, what we do not do with it, the risk --
+         before any switch. Said now in one line under the switch and the
+         warning box; the longer explanation and the file road are folded. -->
+    <section class="pane hidden" id="pane-sites" role="tabpanel" aria-labelledby="tab-sites">
+      <h2 class="pane-title" id="set-accounts" tabindex="-1">Sites</h2>
+      <div class="set-group" id="logins-group">
+        <div class="set-row" id="logins-switch-row">
+          <span class="opt-icon icon-key" aria-hidden="true"></span>
+          <div class="set-main">
+            <span class="set-name">Use my log-ins for downloads</span>
+            <!-- Decision 35: what it is for, what we do not do, kept short. -->
+            <span class="set-sub">For videos that need a log-in. Kept on this PC. You never type a password here.</span>
+          </div>
+          <span class="set-control">
+            <!-- A real switch, not a label. Until 2026-09-22 this said "on"
+                 or "off" and nothing could change it (decision 9). -->
+            <label class="row hidden" id="cookies-switch-box" style="cursor:pointer; gap:8px">
+              <!-- The switch shows on/off by itself; the word beside it was
+                   removed from view (the user, 2026-10-23). Still read
+                   aloud, and still updated by the code. -->
+              <span class="sr-only" id="cookies-state">off</span>
+              <input type="checkbox" class="toggle" id="cookies-switch">
+            </label>
+            <span class="hint" id="cookies-state-plain">off</span>
+          </span>
         </div>
-      </details>
-
-      <div class="card warn" style="margin:12px 0 0">
-        <div class="hint" style="line-height:1.6">
-          Downloading a lot while logged in can get that account suspended.
-          If you do this often, use a second account.
-        </div>
-      </div>
-
-      <div class="row" style="margin:12px 0 0; flex-wrap:wrap; justify-content:space-between">
-        <div id="cookies-summary" class="hint"></div>
-        <button class="ghost tiny hidden" id="cookies-forget">Forget them</button>
-      </div>
-
-      <!-- The easy road: log in inside a Teleloadzai window. We receive only
-           the cookies of that one site, and only at the moment they exist. -->
-      <div class="field" style="margin-top:14px">
-        <div class="label" style="margin-bottom:8px">Log in to a site</div>
-        <div class="hint" style="margin-bottom:8px">
-          A window opens on the site. Log in the normal way; the window closes
-          by itself once you are in.
-        </div>
-        <div class="row" id="login-buttons" style="flex-wrap:wrap"></div>
-        <div class="hint hidden" id="login-legend" style="margin-top:8px; display:flex; gap:14px; flex-wrap:wrap"></div>
-        <div class="hint warn-text hidden" id="login-blocked" style="margin-top:8px"></div>
-
-        <div class="card warn hidden" id="login-waiting" style="margin:12px 0 0">
-          <div class="title" id="login-waiting-title">Waiting for you</div>
-          <div class="hint" style="margin:6px 0 10px" id="login-waiting-text"></div>
-          <div class="row" style="flex-wrap:wrap">
-            <button id="login-done">I have logged in</button>
-            <button class="ghost" id="login-cancel">Cancel</button>
+        <div class="set-row set-row-plain">
+          <div class="set-main">
+            <details class="more" style="margin:0">
+              <summary>What is a cookie, exactly?</summary>
+              <div class="hint" style="line-height:1.6">
+                A small piece of text a site saves when you log in, which says "this
+                is me". The log-in window takes only the cookies of the one site you
+                log in to, and they go straight to the download tool and nowhere
+                else.
+              </div>
+            </details>
           </div>
         </div>
+        <!-- The second road (decision 36), in sight next to the first (the
+             user, 2026-10-23: "make the option to use cookie file more
+             noticeable"): it was a folded line at the foot of the page, under
+             23 sites. The how-to stays folded. -->
+        <!-- Two ways to the same thing, said as ONE choice (the user,
+             2026-10-23: as two rows they read as two different settings). -->
+        <div class="set-row set-row-plain">
+          <div class="set-main">
+            <span class="set-name">Two ways to add a log-in</span>
+            <div class="ways">
+              <div class="way">
+                <span class="opt-icon icon-key" aria-hidden="true"></span>
+                <span class="set-name">Log in on the site</span>
+                <span class="set-sub">Recommended</span>
+                <button class="ghost tiny" id="ways-to-sites">Choose a site below</button>
+              </div>
+              <span class="ways-or" aria-hidden="true">or</span>
+              <div class="way">
+                <span class="opt-icon icon-file" aria-hidden="true"></span>
+                <span class="set-name">Import a cookie file</span>
+                <span class="set-sub">A cookies.txt from your browser</span>
+                <button class="ghost tiny" id="cookies-import">Choose my cookies.txt…</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="set-row set-row-plain">
+          <details class="more set-main" style="margin:0">
+            <summary>How to get a cookies.txt file</summary>
+            <div class="hint" style="margin-top:8px; line-height:1.6">
+              Export the file from your browser with a "cookies.txt" extension, and
+              pick the format called <b>Netscape</b>. Your file is never changed.
+              <br>
+              <b>Teleloadzai keeps only the sites it can download from</b> and throws
+              the rest away before saving — your bank and your mail never come in.
+            </div>
+            <!-- "Keep every site" was removed here on 2026-10-23 (the user's
+                 decision): it saved a whole browser export, bank and mail
+                 included, and the start-up clean-up deleted what it kept. -->
+          </details>
+        </div>
+        <div class="set-row set-row-plain">
+          <div class="set-main hint" id="cookies-summary"></div>
+          <span class="set-control"><button class="ghost tiny hidden" id="cookies-forget">Forget them</button></span>
+        </div>
       </div>
 
-      <div class="field" style="margin-top:14px">
-        <div class="row">
-          <label class="label" for="cookies-keep">When I close __APP_NAME__</label>
-          <select id="cookies-keep">
-            <option value="keep">stay logged in</option>
-            <option value="once">forget everything</option>
-          </select>
-        </div>
-        <div class="hint" id="cookies-keep-note" style="margin-top:6px; line-height:1.6"></div>
+      <div class="card warn set-warning">
+        Downloading a lot while logged in can get that account suspended.
+        Use a second account.
       </div>
 
-      <!-- The second road (decision 36), folded: the log-in above is the one
-           we recommend. Everything it said before is still here. -->
-      <details class="more">
-        <summary>Use a cookies.txt file instead</summary>
-        <div class="row" style="flex-wrap:wrap; margin-top:6px">
-          <button class="ghost" id="cookies-import">Choose my cookies.txt…</button>
-        </div>
-        <div class="hint" style="margin-top:8px; line-height:1.6">
-          Export the file from your browser with a "cookies.txt" extension, and
-          pick the format called <b>Netscape</b>. Your file is never changed.
-          <br>
-          <b>Teleloadzai keeps only the sites it can download from</b> and throws
-          the rest away before saving — your bank and your mail never come in.
-        </div>
-        <label class="row" style="cursor:pointer; margin-top:8px">
-          <input type="checkbox" id="cookies-keep-all" style="width:16px;height:16px;accent-color:var(--accent)">
-          <span class="hint">Keep every site, even the ones Teleloadzai does not know</span>
-        </label>
-        <div class="hint" style="margin:4px 0 0 24px; line-height:1.6">
-          Only tick this for a site that is missing. It saves the whole file,
-          including anything else you are logged into.
-        </div>
-      </details>
+      <!-- Decision 13's first level (the program per site) and decision 36's
+           log-in, on one row per site. A switch only where there is a real
+           choice; elsewhere the program's name. -->
+      <div class="hint warn-text hidden" id="login-blocked" style="margin:0 0 8px"></div>
+      <div class="set-group">
+        <div id="sites-table" role="table" aria-label="Your sites">Loading…</div>
+      </div>
+      <div class="hint hidden" id="login-legend" style="margin:-4px 0 12px; display:flex; gap:14px; flex-wrap:wrap"></div>
 
+      <div class="card warn hidden" id="login-waiting">
+        <div class="title" id="login-waiting-title">Waiting for you</div>
+        <div class="hint" style="margin:6px 0 10px" id="login-waiting-text"></div>
+        <div class="row" style="flex-wrap:wrap">
+          <button id="login-done">I have logged in</button>
+          <button class="ghost" id="login-cancel">Cancel</button>
+        </div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-row">
+          <span class="opt-icon icon-door" aria-hidden="true"></span>
+          <label class="set-main set-name" for="cookies-keep">When I close __APP_NAME__</label>
+          <span class="set-control">
+            <select id="cookies-keep">
+              <option value="keep">stay logged in</option>
+              <option value="once">forget everything</option>
+            </select>
+          </span>
+        </div>
+        <div class="hint hidden" id="cookies-keep-note"></div>
+      </div>
       <div class="hint hidden" id="cookies-error" style="margin-top:8px"></div>
+    </section>
     </div>
   </div>
 
@@ -912,7 +1230,8 @@ function applyChoices(tool) {
   const why = mode !== "mp4" ? ""
     : can.mp4 ? (!hasQuality ? qualityWhy() : "")
     : !can.label && tool && !deadEnd(tool) ? `Quality: Best — ${tool.name} has no size choice` : "";
-  $("quality-why").textContent = why;
+  // The row already says "Quality" (style H, 2026-10-23): not twice.
+  $("quality-why").textContent = why.replace(/^Quality: /, "");
   $("quality-why").classList.toggle("hidden", !why);
 }
 
@@ -1640,7 +1959,7 @@ function jobProgress(job) {
   // A tool with no percentage whose file grows in the folder: what has
   // arrived, never a guessed size (gallery-dl, streamlink, N_m3u8DL-RE).
   else if (!job.percent) right = job.done_bytes
-    ? [sizeText(job), speedText(job), formatElapsed(job.elapsed || 0)].filter(Boolean).join("  ")
+    ? [sizeText(job), speedText(job), formatElapsed(job.elapsed || 0)].filter(Boolean).join(" · ")
     : "Working… " + formatElapsed(job.elapsed || 0);
   // The time left only when the tool knows it (yt-dlp said "NA" at 100%,
   // seen 2026-09-25) -- never a guessed one.
@@ -1650,7 +1969,7 @@ function jobProgress(job) {
     // counting to 100%. Named only when yt-dlp's codecs say which.
     right = [job.part && job.part + " " + job.percent.trim(), !job.part && job.percent,
       sizeText(job), speedText(job), eta]
-      .filter(Boolean).join("  ");
+      .filter(Boolean).join(" · ");
   }
   return { percent, right };
 }
@@ -1679,6 +1998,58 @@ function formatElapsed(seconds) {
   return Math.floor(seconds / 60) + " min " + String(seconds % 60).padStart(2, "0") + " s";
 }
 
+// The step after the download, as the tools announce it (ytdlp._STEPS,
+// runners' "making the MP3"). Not every job has one, and nobody can tell
+// beforehand, so its stop appears only once it has been announced -- and
+// stays, remembered per job, after the step is over.
+const AFTER_STEPS = { "joining picture and sound": "Joining", "making the MP3": "Making the MP3" };
+const afterSeen = new Map();
+
+/** Where the parcel is on its line. Only what the app saw (decision 33):
+ *  "Downloading" is reached when a percentage or bytes arrive, never by
+ *  guess -- a tool that shows neither stays on "Started", with the time. */
+function paintTrack(row, job, percent) {
+  if (AFTER_STEPS[job.step]) afterSeen.set(job.id, AFTER_STEPS[job.step]);
+  const after = afterSeen.get(job.id) || "";
+  const arrived = Boolean(job.percent || job.done_bytes);
+  const finished = job.state === "done" && !job.skipped;
+  // Where it is (or was, when it failed or was stopped).
+  let at = "";
+  if (job.state === "waiting") at = "";
+  else if (finished) at = "end";
+  else if (job.skipped) at = "end";
+  else if (after) at = "after";
+  else if (arrived) at = "down";
+  else at = "start";
+  const order = ["start", "down", "after", "end"].filter((s) => s !== "after" || after);
+  const reached = order.indexOf(at);
+  const mark = job.state === "error" ? "failed" : job.state === "cancelled" ? "halted"
+    : job.skipped ? "halted" : finished ? "passed" : "now";
+  for (const stop of row.querySelectorAll("[data-stop]")) {
+    const name = stop.dataset.stop;
+    const index = order.indexOf(name);
+    stop.classList.toggle("hidden", index < 0);
+    stop.classList.remove("passed", "now", "failed", "halted");
+    if (index >= 0 && index < reached) stop.classList.add("passed");
+    if (index >= 0 && index === reached) stop.classList.add(mark);
+  }
+  row.querySelector('[data-stop="after"]').textContent = after;
+  row.querySelector('[data-stop="end"]').textContent = job.skipped ? "Already there" : "In your folder";
+  for (const seg of row.querySelectorAll("[data-seg]")) {
+    const index = order.indexOf(seg.dataset.seg);
+    seg.classList.toggle("hidden", index < 0);
+    seg.classList.toggle("passed", index >= 0 && (index < reached || finished));
+  }
+  // "Already there": nothing came down, so "Downloading" was never passed.
+  if (job.skipped) {
+    for (const el of row.querySelectorAll('[data-stop="down"], [data-seg="start"], [data-seg="down"]'))
+      el.classList.remove("passed");
+  }
+  const downDone = (reached > order.indexOf("down") && !job.skipped) || finished;
+  row.querySelector(".bar > i").style.transform =
+    `scaleX(${(downDone ? 100 : at === "down" ? Math.min(percent, 100) : 0) / 100})`;
+}
+
 /** Everything that changes the SHAPE of a row. Same shape -> update in place. */
 function jobShape(job) {
   return JSON.stringify([job.state, job.skipped, job.skip_reason, job.error,
@@ -1705,7 +2076,12 @@ function jobRow(job) {
         ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
       </span>
     </div>
-    <div class="bar"><i style="width:${percent}%"></i></div>
+    <div class="track" aria-hidden="true">
+      <span class="stop" data-stop="start">Started</span><span class="seg" data-seg="start"></span>
+      <span class="stop" data-stop="down">Downloading</span><span class="seg bar" data-seg="down"><i></i></span>
+      <span class="stop hidden" data-stop="after"></span><span class="seg hidden" data-seg="after"></span>
+      <span class="stop" data-stop="end">In your folder</span>
+    </div>
     ${job.error && !(job.state === "error" && job.error_from_tool) ? '<div class="err"></div>' : ""}
     ${job.cookie_note && job.state !== "done" ? `<div class="hint warn-text" style="margin-top:6px">
         ⚠️ Running without your cookies: ${job.cookie_note}.
@@ -1769,6 +2145,7 @@ function jobRow(job) {
   row.querySelector(".job-name").textContent =
     [shown, [kind, quality].filter(Boolean).join(" ")].filter(Boolean).join("  ·  ");
   row.querySelector(".small").textContent = right;
+  paintTrack(row, job, percent);
   const errorText = row.querySelector(".err");
   if (errorText) errorText.textContent = job.error || "";
   // A tool that failed half-way (3 pictures of 8) is a failure, and what it
@@ -1863,8 +2240,8 @@ async function refresh() {
     let row = jobRows.get(job.id);
     if (row && row.dataset.shape === jobShape(job)) {
       const { percent, right } = jobProgress(job);
-      row.querySelector(".bar > i").style.width = percent + "%";
       row.querySelector(".small").textContent = right;
+      paintTrack(row, job, percent);
     } else {
       // An end said aloud for a screen reader: the rows themselves are not
       // announced -- every 0.7 s would drown it (round 1 of the loop).
@@ -1884,13 +2261,12 @@ async function refresh() {
     // Newest first, as the server sends them.
     if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null);
   });
-  $("jobs-card").classList.toggle("hidden", jobs.length === 0);
 
   const running = jobs.filter((j) => j.state === "running").length;
   const waiting = jobs.filter((j) => j.state === "waiting").length;
   $("queue-info").textContent = waiting
     ? `Downloads — ${running} running, ${waiting} waiting`
-    : "Downloads";
+    : jobs.length ? `Downloads (${jobs.length})` : "Downloads";
 
   const busy = running + waiting > 0;
   if (busy && !polling) { polling = true; setTimeout(tick, 700); }
@@ -2246,8 +2622,7 @@ $("welcome-done").addEventListener("click", closeWelcome);
 $("welcome-tools-open").addEventListener("click", async () => {
   await closeWelcome();
   showView("settings");
-  // After showView's own scroll to the top has started.
-  setTimeout(() => $("tools-list").scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  openPane("programs", true);
 });
 
 $("tools-refresh").addEventListener("click", () => {
@@ -2281,7 +2656,7 @@ $("python-install").addEventListener("click", async () => {
 function showView(name) {
   const wrap = document.querySelector(".wrap");
   wrap.dataset.showing = name;
-  $("settings-toggle").textContent = name === "settings" ? "Back" : "Settings";
+  $("settings-toggle-text").textContent = name === "settings" ? "Back" : "Settings";
   // A whole screen changes, not a panel opening: "pressed", and the keyboard
   // moves with it -- a screen reader stayed on "Back" and heard nothing of
   // the new screen (round 1 of the loop, 2026-09-26).
@@ -2292,63 +2667,66 @@ function showView(name) {
     loadToolChoices();
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
-  (name === "settings" ? $("set-downloads") : $("url")).focus({ preventScroll: true });
+  (name === "settings" ? document.querySelector(".settings-tabs [aria-selected=true]")
+    : $("url")).focus({ preventScroll: true });
 }
 
 async function loadToolChoices() {
-  const box = $("tool-choices");
   const data = await api("/api/tool-choices");
-  const sites = data.sites || [];
-  box.textContent = sites.length ? "" : "No site has more than one usable tool yet.";
-  for (const site of sites) {
-    const row = document.createElement("div");
-    row.className = "row";
-    row.style.margin = "4px 0";
-    const label = document.createElement("span");
-    label.textContent = site.name;
-    label.style.minWidth = "110px";
-    const pick = document.createElement("select");
-    for (const tool of site.tools) {
-      const option = document.createElement("option");
-      option.value = tool.id;
-      // Our default is named as such, so going back to it is obvious.
-      option.textContent = tool.name + " — " + tool.why
-        + (tool.id === site.default ? " (default)" : "");
-      option.selected = tool.id === site.chosen;
-      pick.appendChild(option);
-    }
-    pick.setAttribute("aria-label", "Tool for " + site.name);
-    pick.addEventListener("change", async () => {
-      await api("/api/settings", { tool_choice: { [site.id]: pick.value } });
-      notify("Saved: " + site.name + " links will use " + pick.selectedOptions[0].text.split(" — ")[0] + ".");
-    });
-    row.append(label, pick);
-    box.appendChild(row);
+  siteTools = data.sites || [];
+  renderSites();
+}
+
+// The three tabs of Settings (model S3). One section at a time; the arrow
+// keys move between tabs, as Windows' own tabs do.
+function openPane(name, focusTab = false) {
+  for (const tab of document.querySelectorAll(".settings-tabs [role=tab]")) {
+    const on = tab.dataset.pane === name;
+    tab.setAttribute("aria-selected", String(on));
+    tab.tabIndex = on ? 0 : -1;
+    if (on && focusTab) tab.focus();
+    $("pane-" + tab.dataset.pane).classList.toggle("hidden", !on);
   }
+  window.scrollTo({ top: 0 });
+}
+for (const tab of document.querySelectorAll(".settings-tabs [role=tab]")) {
+  tab.addEventListener("click", () => openPane(tab.dataset.pane));
+  tab.addEventListener("keydown", (event) => {
+    const tabs = [...document.querySelectorAll(".settings-tabs [role=tab]")];
+    const step = { ArrowDown: 1, ArrowUp: -1, ArrowRight: 1, ArrowLeft: -1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const next = tabs[(tabs.indexOf(tab) + step + tabs.length) % tabs.length];
+    openPane(next.dataset.pane, true);
+  });
 }
 
 // Kept as a name because the rest of the page already says it, and a rename
 // is the kind of change that leaves six callers behind (see 2.2).
 const showSettings = (open) => showView(open ? "settings" : "main");
 
-// The three jumps at the top of Settings: scroll, and put the keyboard there
-// -- never a change of address in the app window.
-for (const link of document.querySelectorAll(".settings-nav a")) {
-  link.addEventListener("click", (event) => {
-    event.preventDefault();
-    const target = document.querySelector(link.getAttribute("href"));
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
-    target.focus({ preventScroll: true });
-  });
-}
-
 // Esc leaves Settings, as a window's Back would (round 1 of the loop).
 // A message at the bottom goes first: Esc closes it, the next Esc leaves.
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!$("status").classList.contains("hidden")) { setStatus(""); return; }
-  if (document.querySelector(".wrap").dataset.showing === "settings") showView("main");
+  if (document.querySelector(".wrap").dataset.showing === "settings") { showView("main"); return; }
+  if (!$("result").classList.contains("hidden")) closeCard();
 });
+
+/** The card's ×, and Esc: the card goes, as after Download, and a read still
+ *  running is dropped -- its answer must not bring the card back. */
+function closeCard() {
+  readNumber++;
+  stopWaiting();
+  $("result").classList.add("hidden");
+  $("read").disabled = false;
+  $("read").textContent = "Read";
+  currentUrl = "";
+  $("url").value = "";
+  $("url").focus();
+}
+$("result-close").addEventListener("click", closeCard);
 
 $("settings-toggle").addEventListener("click", () => {
   showView(document.querySelector(".wrap").dataset.showing === "settings" ? "main" : "settings");
@@ -2532,15 +2910,6 @@ $("ask-where").addEventListener("change", async () => {
 // Nothing here ever receives a cookie value. The server sends counts, site
 // names and dates; the file itself never leaves the PC (hard rule 1).
 
-function whenText(seconds) {
-  if (!seconds) return "";
-  const days = Math.round((seconds * 1000 - Date.now()) / 86400000);
-  if (days < 0) return "already expired";
-  if (days === 0) return "expires today";
-  if (days === 1) return "expires tomorrow";
-  return `expires in ${days} days`;
-}
-
 function cookieError(message) {
   const box = $("cookies-error");
   box.textContent = message || "";
@@ -2550,13 +2919,25 @@ function cookieError(message) {
 function renderCookies(state) {
   const have = state && state.have_file;
   $("cookies-forget").classList.toggle("hidden", !have);
+  // An import adds to the log-ins already there (cookies.import_file,
+  // 2026-10-23); "Replace the file…" said the opposite.
   $("cookies-import").textContent = have
-    ? "Replace the file…" : "Choose my cookies.txt…";
+    ? "Import another file…" : "Choose my cookies.txt…";
 
   // The switch only exists when there is something to switch. With no
   // cookies it would be a control that cannot move — the defect it replaces.
   $("cookies-switch-box").classList.toggle("hidden", !have);
   $("cookies-state-plain").classList.toggle("hidden", !!have);
+  // Paused: log-ins saved, switch off. Everything on the Sites page but the
+  // switch's own row goes grey and out of reach (the user, 2026-10-23).
+  const paused = Boolean(have && !state.enabled);
+  const lockable = [...$("logins-group").children].filter((el) => el.id !== "logins-switch-row")
+    .concat([...$("pane-sites").children].filter((el) =>
+      el.id !== "logins-group" && !el.classList.contains("pane-title")));
+  for (const el of lockable) {
+    el.classList.toggle("locked", paused);
+    el.inert = paused;
+  }
 
   if (!have) {
     $("cookies-state-plain").textContent = "off — none saved";
@@ -2575,33 +2956,58 @@ function renderCookies(state) {
   }
 
   $("cookies-state").textContent = state.enabled ? "on" : "off — paused";
-  const sites = state.sites.join(", ")
-    + (state.more_sites ? ` and ${state.more_sites} more` : "");
-  const when = whenText(state.expires_at);
+  // One line (the user, 2026-10-23: descriptions people get bored of). The
+  // site list, the first cookie to end and the programs that use them were
+  // three more lines; the sites table below already says who is logged in.
+  // An expired cookie is still said: that one changes what happens.
+  const count = state.sites.length + (state.more_sites || 0);
   const stale = state.expired
     ? (state.expired === 1
         ? " 1 of them has already expired."
         : ` ${state.expired} of them have already expired.`)
     : "";
   $("cookies-summary").innerHTML =
-    `<b>${state.total} cookies</b> for ${sites}.${stale}`
-    + (when ? `<br>The first to end is a ${state.expires_site || "site's"} cookie: it ${when}.` : "")
-    + `<br>Used by: ${state.used_by.join(", ")}.`;
+    `<b>${state.total} cookies</b>, for ${count} site${count === 1 ? "" : "s"}.${stale}`;
 }
 
+// The two lists Settings -> Sites joins: the log-in sites (from /api/cookies)
+// and each site's programs (from /api/tool-choices). Each arrives on its
+// own; the table is drawn again when either does.
+let loginPlatforms = [];
+let siteTools = null;
+
 function renderLogin(platforms, blocked) {
-  const box = $("login-buttons");
-  box.innerHTML = "";
   // Remembered so a FAILED job can offer the right log-in without asking
   // the server again. This is the moment the user actually needs it.
   loginIsBlocked = blocked || "";
   loginablePlatforms = {};
   for (const p of platforms) loginablePlatforms[p.id] = p.name;
+  loginPlatforms = platforms;
   // Why it cannot run is SAID. A row of dead buttons would be the dead end
   // decisions 15 and 34 both forbid.
   $("login-blocked").textContent = blocked ? "⚠️ Cannot log in here: " + blocked + "." : "";
   $("login-blocked").classList.toggle("hidden", !blocked);
-  if (blocked) return;
+  renderSites();
+}
+
+function renderSites() {
+  const table = $("sites-table");
+  if (siteTools === null) return;           // the programs are not known yet
+  table.textContent = "";
+  const cell = (tag, cls, text) => {
+    const el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text) el.textContent = text;
+    return el;
+  };
+  const head = cell("div", "site-head");
+  head.setAttribute("role", "row");
+  for (const name of ["Site", "Program", "Log-in"]) {
+    const h = cell("span", name === "Log-in" ? "login" : "", name);
+    h.setAttribute("role", "columnheader");
+    head.appendChild(h);
+  }
+  table.appendChild(head);
 
   // A sign per site (asked by the user 2026-09-25): green = logged in,
   // red = past its end date, nothing otherwise -- never a grey "maybe".
@@ -2614,18 +3020,66 @@ function renderLogin(platforms, blocked) {
     expired: (p) => `The log-in has expired (${new Date(p.ends * 1000).toLocaleDateString()}). Log in again.`,
     none: () => "Not logged in.",
   };
-  let shown = new Set();
-  for (const platform of platforms) {
-    const state = platform.state || "none";
-    shown.add(state);
-    const button = document.createElement("button");
-    button.className = "ghost tiny login-site login-" + state;
-    button.textContent = platform.name;
-    const said = words[state](platform);
-    button.title = said;
-    button.setAttribute("aria-label", platform.name + ": " + said);
-    button.addEventListener("click", () => openLogin(platform));
-    box.appendChild(button);
+  const label = { logged_in: "Logged in", expired: "Log in again", none: "Log in" };
+  // The log-in sites in their order, then the sites with a program and no
+  // log-in in Teleloadzai.
+  const toolsOf = new Map(siteTools.map((s) => [s.id, s]));
+  const rows = loginPlatforms.map((p) => ({ id: p.id, name: p.name, login: p, tools: toolsOf.get(p.id) }))
+    .concat(siteTools.filter((s) => !loginablePlatforms[s.id])
+      .map((s) => ({ id: s.id, name: s.name, login: null, tools: s })));
+  const shown = new Set();
+  for (const site of rows) {
+    const row = cell("div");
+    row.setAttribute("role", "row");
+    const name = cell("span", "label", site.name);
+    const program = cell("span", "program");
+    const login = cell("span", "login");
+    for (const c of [name, program, login]) c.setAttribute("role", "cell");
+
+    const tools = site.tools ? site.tools.tools : [];
+    if (tools.length > 1) {
+      // The card's switch, here too (model S2, 2026-10-23): program names,
+      // every one visible (decision 13). What each gives, and which is our
+      // default, is in the tooltip -- the long lists ("gallery-dl — photos,
+      // carousels, stories (default)") are gone.
+      const pick = document.createElement("span");
+      pick.className = "seg-track";
+      pick.setAttribute("role", "group");
+      pick.setAttribute("aria-label", "Program for " + site.name);
+      for (const tool of tools) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = tool.name;
+        button.title = tool.why + (tool.id === site.tools.default ? " (default)" : "");
+        button.setAttribute("aria-pressed", String(tool.id === site.tools.chosen));
+        button.addEventListener("click", async () => {
+          if (button.getAttribute("aria-pressed") === "true") return;
+          for (const other of pick.children) other.setAttribute("aria-pressed", String(other === button));
+          site.tools.chosen = tool.id;
+          await api("/api/settings", { tool_choice: { [site.id]: tool.id } });
+          notify("Saved: " + site.name + " links will use " + tool.name + ".");
+        });
+        pick.appendChild(button);
+      }
+      program.appendChild(pick);
+    } else if (tools.length === 1) {
+      program.textContent = tools[0].name;
+    }
+
+    if (site.login && !loginIsBlocked) {
+      const state = site.login.state || "none";
+      shown.add(state);
+      const button = document.createElement("button");
+      button.className = "ghost tiny login-site login-" + state;
+      button.textContent = label[state];
+      const said = words[state](site.login);
+      button.title = said;
+      button.setAttribute("aria-label", site.name + ": " + said + " " + label[state] + ".");
+      button.addEventListener("click", () => openLogin(site.login));
+      login.appendChild(button);
+    }
+    row.append(name, program, login);
+    table.appendChild(row);
   }
   // The key, only for the signs actually on screen.
   const key = [["logged_in", "logged in"], ["expired", "expired — log in again"]]
@@ -2772,6 +3226,11 @@ function renderKeepNote() {
       + "time. \"Forget them\" erases them whenever you want.";
 }
 
+// "Choose a site below": the Log in buttons live in the site list.
+$("ways-to-sites").addEventListener("click", () => {
+  $("sites-table").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
 $("cookies-switch").addEventListener("change", async () => {
   // Pause the cookies without losing them. "Forget them" is the other
   // button and it erases; this one only stops using what is saved.
@@ -2799,9 +3258,7 @@ $("cookies-import").addEventListener("click", async () => {
   $("cookies-import").disabled = true;
   setStatus("Choose your cookies.txt in the Windows window…");
   try {
-    const result = await api("/api/cookies/import", {
-      keep_all: $("cookies-keep-all").checked,
-    });
+    const result = await api("/api/cookies/import", {});
     if (result.cancelled) { setStatus(""); return; }
     if (result.error) { cookieError(result.error); setStatus(""); return; }
     renderCookies(result.cookies);

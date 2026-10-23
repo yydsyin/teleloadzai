@@ -21,6 +21,31 @@ WINDOW_SIZE = (860, 900)
 WINDOW_MINIMUM = (520, 560)
 
 
+def opening_place() -> tuple[int, int, int | None, int | None]:
+    """Width, height, x, y of the window at start: WINDOW_SIZE when it fits
+    the free screen above the taskbar, else that space minus a margin --
+    never below WINDOW_MINIMUM -- and centred in it. Seen 2026-10-22 on the
+    user's PC (175 % scaling): 866 free in height, the window opened 900 tall
+    and its bottom edge went under the taskbar; at 846 tall, Windows still
+    put its top at 125 (bottom 971), so the place is given too. Windows'
+    work area is in the same unit as pywebview's sizes (both read 1463 wide
+    that day). x and y are None when the free area cannot be read."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        area = wintypes.RECT()
+        if not ctypes.windll.user32.SystemParametersInfoW(0x30, 0, ctypes.byref(area), 0):
+            return (*WINDOW_SIZE, None, None)   # SPI_GETWORKAREA refused: the old way
+    except (AttributeError, OSError):
+        return (*WINDOW_SIZE, None, None)       # not Windows
+    free_width, free_height = area.right - area.left, area.bottom - area.top
+    margin = 20
+    width = max(WINDOW_MINIMUM[0], min(WINDOW_SIZE[0], free_width - margin))
+    height = max(WINDOW_MINIMUM[1], min(WINDOW_SIZE[1], free_height - margin))
+    return (width, height, area.left + max(0, (free_width - width) // 2),
+            area.top + max(0, (free_height - height) // 2))
+
+
 def say_port_taken(port: int, show_box: bool) -> None:
     """The second copy says why it opens nothing -- never a silent exit
     (decision 34). In a Windows box, because the app has no other screen."""
@@ -49,9 +74,10 @@ def open_window(port: int, httpd=None) -> int:
     failed = False
     print(f"{APP_NAME} {APP_VERSION}  -  close the window to stop.")
     try:
+        width, height, x, y = opening_place()
         webview.create_window(
             APP_NAME, url,
-            width=WINDOW_SIZE[0], height=WINDOW_SIZE[1],
+            width=width, height=height, x=x, y=y,
             min_size=WINDOW_MINIMUM,
         )
         # A "Forget them" that Windows refused last time happens now, before
