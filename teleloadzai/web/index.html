@@ -15,7 +15,8 @@
     --bg: #ebe5d8;  --card: #fffdf9;  --ink: #24221e;  --soft: #625b4f;
     --line: #e2d8c4; --line-strong: #cfc3ab; --ok: #2f7a4f; --bad: #b03a2e;
     /* Links, focus rings, the selected choice: a dark ochre, the yellow's
-       own family, readable as text on paper (5.6:1). */
+       own family, readable as text: 6.0:1 on a card, 4.9:1 on the page
+       (measured 2026-10-23). */
     --accent: #7d5d00;
     --ok-text: #2f7a4f;
     --radius: 12px;
@@ -24,7 +25,7 @@
     color-scheme: light dark;
     /* Filled buttons other than Download: ink, with paper text. */
     --accent-fill: #2e2b26; --on-fill: #fffdf8;
-    /* Download, and nothing else. Ink on this yellow is 11:1. */
+    /* Download, and nothing else. Ink on this yellow is 10.5:1. */
     --go: #f5c400; --go-hover: #e6b700; --go-ink: #1d1b17;
   }
   @media (prefers-color-scheme: dark) {
@@ -168,8 +169,9 @@
     background: color-mix(in srgb, var(--ink) 6%, transparent); border-color: transparent;
   }
 
-  /* Five text sizes, not nine: 12 small labels, 13 help, 15 body and
-     controls, 17 section titles, 20 the app name. */
+  /* Few text sizes, not nine: 12 small labels, 13 help, 15 body and
+     controls, 17 section titles, 18 screen titles, 22 Settings page
+     titles (DESIGN.md, Typography). */
   h2.section {
     font-size: 17px; font-weight: 600; margin: 30px 0 4px;
     padding-top: 18px; border-top: 1px solid var(--line);
