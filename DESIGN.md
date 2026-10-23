@@ -260,7 +260,8 @@ A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the ti
 ### The downloads list (tracking)
 Each row has the name, then numbers on the right joined with " · " (12.3 MB / 45.6 MB · 2.1 MB/s · 16 s left). Under that is the **tracking line**: Started → Downloading → [Joining / Making the MP3, only once announced] → In your folder.
 - Stops are 9 px dots: green when passed; yellow with an ink ring for **now**; red for failed; grey for stopped.
-- **Only the stop where the parcel is now keeps its name**, and it says what happened there: "Waiting", "Failed", "Stopped". The other stops are dots only.
+- **Only the stop where the parcel is now keeps its name**, and it says what happened there: "Waiting", "Failed", "Stopped". The other stops are dots only. The state is also written for screen readers (the line itself is drawn only).
+- **A live recording** says "Recording" on its stop and "Recording live · 1 min 15 s of 60 min" on the right; its bar follows the time limit, the one real measure it has.
 - Started → Downloading is a short fixed step (24 px). The segment after Downloading **is** the progress bar and takes the rest of the row, so the green never shows more than was measured. It moves with `scaleX` over 0.7 s, the refresh rhythm.
 - **The parcel arrives:** a finished row keeps its line, all green, ending on "In your folder"; its title stays in ink. An "already there" row drops the line and goes grey: nothing came down.
 - **When the list is empty:** no box, just a parcel drawing and "Your downloads will appear here."

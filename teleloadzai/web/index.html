@@ -464,6 +464,11 @@
     -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
   }
   .opt-icon::after { color: var(--accent); }
+  /* The Format tile shows the format chosen: a film strip beside MP3 said
+     the opposite (loop rounds 1 and 2, 2026-10-23). */
+  #row-format:has(.choice[data-mode="mp3"][aria-pressed="true"]) .opt-icon {
+    --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E");
+  }
   .icon-film, .choice[data-mode="mp4"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4'/%3E%3C/svg%3E"); }
   .choice[data-mode="mp3"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E"); }
   .icon-sliders { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6'/%3E%3C/svg%3E"); }
@@ -522,7 +527,10 @@
   .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   /* The list's title, in ink: small grey, it was weaker than the rows under it. */
   #jobs-card > .head #queue-info { font-size: 16px; font-weight: 600; color: var(--ink); }
-  .job { border-top: 1px solid var(--line); padding: 12px 0; }
+  /* relative: the row's screen-reader words (.sr-only, absolute) sat at the
+     page's level below the list, and the main screen scrolled (measured,
+     loop round 2, 2026-10-23). */
+  .job { border-top: 1px solid var(--line); padding: 12px 0; position: relative; }
   .job:first-child { border-top: 0; }
   .job-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
   .job-name { font-weight: 500; word-break: break-word; }
@@ -759,7 +767,7 @@
   <!-- Always drawn on the main screen (layout A): it is the window's body. -->
   <div class="card" data-view="main" id="jobs-card">
     <div class="head">
-      <span class="hint" id="queue-info">Downloads</span>
+      <span class="hint" id="queue-info" role="heading" aria-level="2">Downloads</span>
       <button class="ghost tiny" id="clear">Clear finished</button>
     </div>
     <div id="jobs"></div>
@@ -829,7 +837,6 @@
           </div>
           <div class="set-control">
             <button class="ghost" id="browse">Browse…</button>
-            <button class="ghost" id="save-folder">Save</button>
           </div>
         </div>
         <label class="set-row" style="cursor:pointer">
@@ -1989,6 +1996,15 @@ function jobProgress(job) {
   // "Already there" has no line, so it keeps its word.
   if (job.state === "done") right = job.skipped ? (job.skip_reason ? "skipped" : "already there") : "";
   else if (["error", "cancelled", "waiting"].includes(job.state)) right = "";
+  // A live recording has a real measure: the time against its limit
+  // (decision 33's own example, "14 of 60 minutes" -- never shown until
+  // loop round 2, 2026-10-23). The bar follows it.
+  else if (job.live && job.state === "running") {
+    const limit = (job.limit_minutes || 60) * 60;
+    right = ["Recording live", sizeText(job),
+      `${formatElapsed(job.elapsed || 0)} of ${job.limit_minutes || 60} min`].filter(Boolean).join(" · ");
+    return { percent: Math.min(100, 100 * (job.elapsed || 0) / limit), right };
+  }
   // Running, and the tool has given no percentage yet -- or never gives one
   // (XHS-Downloader). The time it has been working is the one true thing to
   // show; a silent 0% bar looks exactly like a crash (decision 33).
@@ -2075,7 +2091,7 @@ function paintTrack(row, job, percent) {
     if (index >= 0 && index === reached) stop.classList.add(mark);
   }
   row.querySelector('[data-stop="start"]').textContent = "Started";
-  row.querySelector('[data-stop="down"]').textContent = "Downloading";
+  row.querySelector('[data-stop="down"]').textContent = job.live ? "Recording" : "Downloading";
   row.querySelector('[data-stop="after"]').textContent = after;
   row.querySelector('[data-stop="end"]').textContent = job.skipped ? "Already there" : "In your folder";
   // The stop says what happened there: a failed row read "Started" on its
@@ -2102,6 +2118,17 @@ function paintTrack(row, job, percent) {
     `scaleX(${(downDone ? 100 : at === "down" ? Math.min(percent, 100) : 0) / 100})`;
 }
 
+/** The row's state for a screen reader. The line that says it is drawn
+ *  only (aria-hidden), and since loop round 1 the word on the right is
+ *  gone for done / failed / stopped / waiting -- a blind user heard
+ *  "Bilibili trip.mp4, Open" and no state (loop round 2, 2026-10-23). */
+function sayState(row, job) {
+  const said = job.state === "done" ? (job.skipped ? "" : "Done, in your folder.")
+    : job.state === "error" ? "Failed." : job.state === "cancelled" ? "Stopped."
+    : job.state === "waiting" ? "Waiting." : "";
+  row.querySelector(".job-state").textContent = said ? " " + said : "";
+}
+
 /** Everything that changes the SHAPE of a row. Same shape -> update in place. */
 function jobShape(job) {
   return JSON.stringify([job.state, job.skipped, job.skip_reason, job.error,
@@ -2122,7 +2149,7 @@ function jobRow(job) {
 
   row.innerHTML = `
     <div class="job-top">
-      <span class="job-name"></span>
+      <span class="job-name"></span><span class="sr-only job-state"></span>
       <span class="job-right">
         <span class="small"></span>
         ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
@@ -2198,6 +2225,7 @@ function jobRow(job) {
     [shown, [kind, quality].filter(Boolean).join(" ")].filter(Boolean).join("  ·  ");
   row.querySelector(".small").textContent = right;
   paintTrack(row, job, percent);
+  sayState(row, job);
   const errorText = row.querySelector(".err");
   if (errorText) errorText.textContent = job.error || "";
   // A tool that failed half-way (3 pictures of 8) is a failure, and what it
@@ -2391,7 +2419,8 @@ function toolRow(tool, progress) {
     ${failed ? `<div class="err"></div>` : ""}`;
 
   row.querySelector(".tool-name").textContent = tool.name;
-  row.querySelector(".hint").textContent = tool.what_for + (version ? " — " + version : "");
+  // " · " as on the rows (DESIGN.md): eight dashes on one page (loop round 2).
+  row.querySelector(".hint").textContent = tool.what_for + (version ? " · " + version : "");
   if (failed) {
     row.querySelector(".err").textContent =
       progress.error === "python_missing"
@@ -2933,7 +2962,10 @@ $("browse").addEventListener("click", async () => {
   if (result.download_folder) $("folder").value = result.download_folder;
 });
 
-$("save-folder").addEventListener("click", async () => {
+// Saved when the field is left or Enter is pressed, like every other
+// setting: it was the only one with a Save button, and a folder typed then
+// left with Back was lost without a word (loop round 2, 2026-10-23).
+$("folder").addEventListener("change", async () => {
   const settings = await api("/api/settings", { download_folder: $("folder").value.trim() });
   $("folder").value = settings.download_folder || "";
   notify("Folder saved.");
@@ -2976,7 +3008,7 @@ function renderCookies(state) {
   // An import adds to the log-ins already there (cookies.import_file,
   // 2026-10-23); "Replace the file…" said the opposite.
   $("cookies-import").textContent = have
-    ? "Import another file…" : "Choose my cookies.txt…";
+    ? "Import a cookie file…" : "Choose my cookies.txt…";
 
   // The switch only exists when there is something to switch. With no
   // cookies it would be a control that cannot move — the defect it replaces.

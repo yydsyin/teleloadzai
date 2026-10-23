@@ -78,7 +78,7 @@ class ToolSpec:
 
 SPECS: tuple[ToolSpec, ...] = (
     ToolSpec("yt-dlp", "yt-dlp", "yt-dlp/yt-dlp", "exe",
-             what_for="The engine. Almost every site.", essential=True,
+             what_for="Downloads from almost every site.", essential=True,
              exe_name="yt-dlp.exe", asset_keywords=("yt-dlp.exe",),
              requires=("FFmpeg",),       # for MP3, and to join video with sound
              # Read 2026-10-21: its latest release holds a plain yt-dlp.exe.
@@ -90,7 +90,7 @@ SPECS: tuple[ToolSpec, ...] = (
              asset_exclude=("shared",), extract_only=("ffmpeg.exe", "ffprobe.exe")),
 
     ToolSpec("n-m3u8dl-re", "N_m3u8DL-RE", "nilaoda/N_m3u8DL-RE", "zip",
-             what_for="Direct stream links (.m3u8, .mpd), the second choice after yt-dlp.",
+             what_for="Links straight to a video stream, the second choice after yt-dlp.",
              exe_name="N_m3u8DL-RE.exe", asset_keywords=("win-x64",),
              extract_only=("N_m3u8DL-RE.exe",)),
 

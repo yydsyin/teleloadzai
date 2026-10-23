@@ -194,6 +194,11 @@ class Job:
                        if self.state == RUNNING and self.started else 0,
             "part": self.part,
             "step": self.step,
+            # A live recording and its limit: the row said "Downloading" over
+            # an empty bar, never "live" nor "of 60 min" (loop round 2,
+            # 2026-10-23). streamlink only ever records live streams.
+            "live": self.live or self.tool == "streamlink",
+            "limit_minutes": self.limit_minutes,
         }
 
 
