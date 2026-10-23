@@ -90,7 +90,7 @@ SPECS: tuple[ToolSpec, ...] = (
              asset_exclude=("shared",), extract_only=("ffmpeg.exe", "ffprobe.exe")),
 
     ToolSpec("n-m3u8dl-re", "N_m3u8DL-RE", "nilaoda/N_m3u8DL-RE", "zip",
-             what_for="Encrypted HLS / DASH streams.",
+             what_for="Direct stream links (.m3u8, .mpd), the second choice after yt-dlp.",
              exe_name="N_m3u8DL-RE.exe", asset_keywords=("win-x64",),
              extract_only=("N_m3u8DL-RE.exe",)),
 

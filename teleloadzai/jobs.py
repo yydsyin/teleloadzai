@@ -323,8 +323,12 @@ class Queue:
             return True
 
     def clear_finished(self) -> int:
+        """Done, "already there" and stopped rows -- never a failed one: its
+        words and its Retry went with the rest in one click, and "finished"
+        reads as "succeeded" (loop round 1, 2026-10-23). A failed row has
+        its own Remove."""
         with self._lock:
-            finished = [i for i in self._order if self._jobs[i].state not in ACTIVE_STATES]
+            finished = [i for i in self._order if self._jobs[i].state in ("done", "cancelled")]
             for job_id in finished:
                 del self._jobs[job_id]
                 self._order.remove(job_id)

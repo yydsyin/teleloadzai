@@ -179,7 +179,7 @@ PLATFORMS: tuple[Platform, ...] = (
 STREAM = Platform(
     "stream", "Direct stream link", (),
     (ToolOption("yt-dlp", "simple, works most of the time"),
-     ToolOption("n-m3u8dl-re", "faster, and handles encrypted HLS/DASH")),
+     ToolOption("n-m3u8dl-re", "faster, and opens streams locked with a key")),
 )
 
 # Nothing matched. yt-dlp still knows 1752 sites (checked 2026-09-20), so we try it.

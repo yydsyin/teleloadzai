@@ -260,6 +260,8 @@
   #sites-table > div:first-child > * { border-top: 0; }
   #sites-table .site-head > * { font-size: 12px; color: var(--soft); min-height: 0; padding-top: 10px; padding-bottom: 6px; }
   #sites-table .program { color: var(--soft); font-size: 14px; }
+  #sites-table .program-pick { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }
+  #sites-table .program-why { font-size: 13px; }
   #sites-table .login { justify-content: flex-end; }
   /* Log-ins paused (the switch off; the user's choice, 2026-10-23): the
      whole Sites page goes grey and cannot be touched, except the switch
@@ -416,8 +418,10 @@
   }
   .login-logged_in::before { background: var(--ok); }
   .login-expired::before { background: var(--bad); }
-  button.login-logged_in { border-color: var(--ok); color: var(--ink); }
-  button.login-expired { border-color: var(--bad); color: var(--ink); }
+  /* The log-in state on Sites: words with their dot, beside the button. */
+  .login-sign { font-size: 13px; font-weight: 600; white-space: nowrap; margin-right: 10px; }
+  .login-sign.login-logged_in { color: var(--ok-text); }
+  .login-sign.login-expired { color: var(--bad); }
   /* The second click of a destructive button (see `twoClicks`). */
   button.danger { color: var(--bad); border-color: var(--bad); }
 
@@ -499,6 +503,11 @@
   .seg-track button[aria-pressed="true"] {
     background: var(--card); color: var(--ink); font-weight: 600;
     box-shadow: 0 1px 3px rgba(40, 30, 10, .2), 0 0 0 1px color-mix(in srgb, var(--ink) 7%, transparent);
+  }
+  /* In dark mode the card colour is DARKER than the track: the chosen
+     option sank instead of rising (loop round 1, 2026-10-23). */
+  @media (prefers-color-scheme: dark) {
+    .seg-track button[aria-pressed="true"] { background: color-mix(in srgb, var(--ink) 16%, var(--card)); }
   }
   /* One format only (gallery-dl): said as text, not a toggle with nothing
      to toggle against. */
@@ -780,7 +789,7 @@
        840 px, ABOVE the place to paste a link (critique of 2026-09-26). -->
   <div class="card hidden" data-view="main" id="welcome">
     <div class="hint">
-      Paste a link above to start. If a site needs a tool that is not installed yet,
+      Paste a link above to start. If a site needs a program that is not installed yet,
       Teleloadzai offers to install it right there, the first time.
     </div>
     <div class="row" style="margin-top:10px">
@@ -979,8 +988,9 @@
           <details class="more set-main" style="margin:0">
             <summary>How to get a cookies.txt file</summary>
             <div class="hint" style="margin-top:8px; line-height:1.6">
-              Export the file from your browser with a "cookies.txt" extension, and
-              pick the format called <b>Netscape</b>. Your file is never changed.
+              Add a cookie-export add-on to your browser (search its add-on store
+              for "cookies.txt"), and save your cookies with it. If it asks which
+              kind of file, choose <b>Netscape</b>. Your file is never changed.
               <br>
               <b>Teleloadzai keeps only the sites it can download from</b> and throws
               the rest away before saving — your bank and your mail never come in.
@@ -1008,7 +1018,6 @@
       <div class="set-group">
         <div id="sites-table" role="table" aria-label="Your sites">Loading…</div>
       </div>
-      <div class="hint hidden" id="login-legend" style="margin:-4px 0 12px; display:flex; gap:14px; flex-wrap:wrap"></div>
 
       <div class="card warn hidden" id="login-waiting">
         <div class="title" id="login-waiting-title">Waiting for you</div>
@@ -1960,9 +1969,9 @@ function failButtons(job) {
     // preview builds get fixes days earlier -- the next way out.
     previewOffer(job, hopeless) && `<button class="ghost tiny" data-preview="${job.id}">Try yt-dlp's preview version</button>`,
     !hopeless && `<button class="${cls("retry")}" data-retry="${job.id}">Retry</button>`,
-    // Nothing to retry: the row still gets a way out of the list, without
-    // "Clear finished" taking every other row with it (review of 2026-09-27).
-    hopeless && `<button class="ghost tiny" data-dismiss="${job.id}">Remove</button>`,
+    // Every failed row has its own way out of the list: "Clear finished"
+    // leaves failed rows alone since loop round 1 (2026-10-23).
+    `<button class="ghost tiny" data-dismiss="${job.id}">Remove</button>`,
   ].filter(Boolean).join("\n");
 }
 
@@ -1974,11 +1983,12 @@ function jobProgress(job) {
   // "already there" only when it is checked (yt-dlp compares the file's
   // date). A tool's own skip is just "skipped": XHS-Downloader skips notes
   // from its history even when the file is in no folder you chose.
-  if (job.state === "done") right = job.skipped ? (job.skip_reason ? "skipped" : "already there") : "done";
-  else if (job.state === "error") right = "failed";
-  // The word of the button that did it (review of 2026-10-05).
-  else if (job.state === "cancelled") right = "stopped";
-  else if (job.state === "waiting") right = "waiting";
+  // Done, failed, stopped and waiting are said by the line's own stop
+  // ("In your folder", "Failed", "Stopped", "Waiting"): said again on the
+  // right, every state was written twice (loop round 1, 2026-10-23).
+  // "Already there" has no line, so it keeps its word.
+  if (job.state === "done") right = job.skipped ? (job.skip_reason ? "skipped" : "already there") : "";
+  else if (["error", "cancelled", "waiting"].includes(job.state)) right = "";
   // Running, and the tool has given no percentage yet -- or never gives one
   // (XHS-Downloader). The time it has been working is the one true thing to
   // show; a silent 0% bar looks exactly like a crash (decision 33).
@@ -1993,7 +2003,9 @@ function jobProgress(job) {
   // The time left only when the tool knows it (yt-dlp said "NA" at 100%,
   // seen 2026-09-25) -- never a guessed one.
   else {
-    const eta = job.eta != null && job.state === "running" ? formatTime(job.eta) + " left" : "";
+    // One way to write a time on a row, "1 min 15 s": "0:16 left" sat
+    // beside "1 min 15 s" and "3 s" (loop round 1, 2026-10-23).
+    const eta = job.eta != null && job.state === "running" ? formatElapsed(Math.round(job.eta)) + " left" : "";
     // "picture 86%" then "sound 12%": an MP4 comes down as two files, each
     // counting to 100%. Named only when yt-dlp's codecs say which.
     right = [job.part && job.part + " " + job.percent.trim(), !job.part && job.percent,
@@ -2307,6 +2319,8 @@ async function refresh() {
   $("queue-info").textContent = waiting
     ? `Downloads — ${running} running, ${waiting} waiting`
     : jobs.length ? `Downloads (${jobs.length})` : "Downloads";
+  // Only when it has something to clear (decision 40): failed rows stay.
+  $("clear").classList.toggle("hidden", !jobs.some((j) => j.state === "done" || j.state === "cancelled"));
 
   const busy = running + waiting > 0;
   if (busy && !polling) { polling = true; setTimeout(tick, 700); }
@@ -2329,9 +2343,10 @@ function toolRow(tool, progress) {
   row.className = "tool";
 
   const badges = [];
-  if (tool.essential) badges.push('<span class="badge">base</span>');
+  // "base" was jargon, and a green "installed" on 8 rows of a list called
+  // "Installed programs" said nothing (loop round 1, 2026-10-23).
+  if (tool.essential) badges.push('<span class="badge">needed by all</span>');
   if (tool.installed && tool.outside) badges.push('<span class="badge alert">not ours</span>');
-  else if (tool.installed) badges.push('<span class="badge ok">installed</span>');
   if (tool.update_available) badges.push('<span class="badge alert">update</span>');
   for (const need of tool.requires || []) {
     const missing = need === "Python" ? tool.blocked
@@ -2359,9 +2374,8 @@ function toolRow(tool, progress) {
   const size = tool.size ? ` · ${Math.round(tool.size / 1048576)} MB` : "";
   const version = tool.installed
     // No version known (TikTokDownloader and KS-Downloader are never started
-    // just to ask): say nothing -- the "installed" badge already says it,
-    // and it said it twice.
-    ? shortVersion(tool.version || tool.release_installed || "")
+    // just to ask, decision 31): said, not left blank.
+    ? shortVersion(tool.version || tool.release_installed || "") || "version not known"
     : (tool.latest ? "not installed · latest " + shortVersion(tool.latest) + size : "not installed");
 
   row.innerHTML = `
@@ -3060,14 +3074,13 @@ function renderSites() {
     expired: (p) => `The log-in has expired (${new Date(p.ends * 1000).toLocaleDateString()}). Log in again.`,
     none: () => "Not logged in.",
   };
-  const label = { logged_in: "Logged in", expired: "Log in again", none: "Log in" };
+  const label = { logged_in: "Log in again", expired: "Log in again", none: "Log in" };
   // The log-in sites in their order, then the sites with a program and no
   // log-in in Teleloadzai.
   const toolsOf = new Map(siteTools.map((s) => [s.id, s]));
   const rows = loginPlatforms.map((p) => ({ id: p.id, name: p.name, login: p, tools: toolsOf.get(p.id) }))
     .concat(siteTools.filter((s) => !loginablePlatforms[s.id])
       .map((s) => ({ id: s.id, name: s.name, login: null, tools: s })));
-  const shown = new Set();
   for (const site of rows) {
     const row = cell("div");
     row.setAttribute("role", "row");
@@ -3079,9 +3092,17 @@ function renderSites() {
     const tools = site.tools ? site.tools.tools : [];
     if (tools.length > 1) {
       // The card's switch, here too (model S2, 2026-10-23): program names,
-      // every one visible (decision 13). What each gives, and which is our
-      // default, is in the tooltip -- the long lists ("gallery-dl — photos,
-      // carousels, stories (default)") are gone.
+      // every one visible (decision 13). What the chosen one gives, and
+      // which is the usual one, in a line under it as on the card -- they
+      // lived in a tooltip the keyboard never reaches (loop round 1).
+      const why = document.createElement("span");
+      why.className = "hint program-why";
+      const sayWhy = () => {
+        const chosen = tools.find((t) => t.id === site.tools.chosen) || tools[0];
+        const usual = tools.find((t) => t.id === site.tools.default);
+        why.textContent = `${chosen.name}: ${chosen.why}.`
+          + (usual && usual.id !== chosen.id ? ` Usual: ${usual.name}.` : "");
+      };
       const pick = document.createElement("span");
       pick.className = "seg-track";
       pick.setAttribute("role", "group");
@@ -3096,37 +3117,46 @@ function renderSites() {
           if (button.getAttribute("aria-pressed") === "true") return;
           for (const other of pick.children) other.setAttribute("aria-pressed", String(other === button));
           site.tools.chosen = tool.id;
+          sayWhy();
           await api("/api/settings", { tool_choice: { [site.id]: tool.id } });
           notify("Saved: " + site.name + " links will use " + tool.name + ".");
         });
         pick.appendChild(button);
       }
-      program.appendChild(pick);
+      sayWhy();
+      pick.setAttribute("aria-describedby", "why-" + site.id);
+      why.id = "why-" + site.id;
+      program.classList.add("program-pick");
+      program.append(pick, why);
     } else if (tools.length === 1) {
       program.textContent = tools[0].name;
     }
 
     if (site.login && !loginIsBlocked) {
       const state = site.login.state || "none";
-      shown.add(state);
-      const button = document.createElement("button");
-      button.className = "ghost tiny login-site login-" + state;
-      button.textContent = label[state];
       const said = words[state](site.login);
+      // The state in words, the action on the button: a green "Logged in"
+      // button opened a new log-in window, a label that read as a status
+      // (loop round 1, 2026-10-23).
+      if (state !== "none") {
+        const sign = document.createElement("span");
+        sign.className = "login-sign login-" + state;
+        sign.textContent = state === "logged_in" ? "Logged in" : "Expired";
+        sign.title = said;
+        login.appendChild(sign);
+      }
+      const button = document.createElement("button");
+      button.className = "ghost tiny login-site";
+      button.textContent = label[state];
       button.title = said;
-      button.setAttribute("aria-label", site.name + ": " + said + " " + label[state] + ".");
+      button.setAttribute("aria-label", label[state] + ": " + site.name + ". " + said);
       button.addEventListener("click", () => openLogin(site.login));
       login.appendChild(button);
     }
     row.append(name, program, login);
     table.appendChild(row);
   }
-  // The key, only for the signs actually on screen.
-  const key = [["logged_in", "logged in"], ["expired", "expired — log in again"]]
-    .filter(([s]) => shown.has(s))
-    .map(([s, text]) => `<span class="login-key login-${s}">${text}</span>`).join("");
-  $("login-legend").innerHTML = key;
-  $("login-legend").classList.toggle("hidden", !key);
+  // No colour key under the list: each sign carries its words (loop round 1).
 }
 
 /** "2 h ago", "3 days ago" -- from a real timestamp, never an estimate. */
