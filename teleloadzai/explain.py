@@ -174,7 +174,7 @@ KNOWN: tuple[Known, ...] = (
     Known(
         words=("unsupported url",),
         tools=("yt-dlp", "gallery-dl"),
-        title="This tool found nothing it can download on this page.",
+        title="This program found nothing it can download on this page.",
         retry=False,
         next_step=("Check that the link opens the video or the post itself, "
                    "not a home page, a profile or a search."),

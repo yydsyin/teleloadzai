@@ -613,14 +613,14 @@ def _sound_of(written: list[Path], request: Request,
     candidates = [p for p in written if p.suffix.lower() in _SOUND_SUFFIXES and p.is_file()]
     if not candidates:
         raise RunnerError(
-            "The tool downloaded no video or sound file, so there is no MP3 to "
+            "The program downloaded no video or sound file, so there is no MP3 to "
             "make.")
     # A track with no sound is a step, not a source: N_m3u8DL-RE hands back
     # the picture and the sound as two files, and the picture failed first --
     # the row said "the MP3 failed" beside a real MP3 (round 8, real tool).
     sources = [p for p in candidates if _has_sound(p)]
     if not sources:
-        raise RunnerError("The tool downloaded a video with no sound, so there is "
+        raise RunnerError("The program downloaded a video with no sound, so there is "
                           "no MP3 to make.")
     # The "Save as" name fits one file; several keep the tool's own names.
     chosen = request.out_name if len(sources) == 1 else ""
@@ -990,7 +990,7 @@ def unavailable_reason(tool_id: str) -> str | None:
     if tool_id in NOT_READY:
         return NOT_READY[tool_id]
     if not can_run(tool_id):
-        return "Teleloadzai does not know how to drive this tool yet"
+        return "Teleloadzai does not know how to drive this program yet"
     return None
 
 

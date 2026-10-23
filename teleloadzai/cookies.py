@@ -331,7 +331,7 @@ def inspect(path: Path) -> dict:
     if not rows:
         if any("{" in line for line in lines[:5]):
             raise CookieFileError(
-                "That file is JSON, not the format the download tools read. In "
+                "That file is JSON, not the format the download programs read. In "
                 "your cookie extension, choose the export called "
                 "\"Netscape\" or \"cookies.txt\"."
             )

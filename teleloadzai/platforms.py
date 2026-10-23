@@ -112,7 +112,7 @@ PLATFORMS: tuple[Platform, ...] = (
     # Kuaishou at all ("the ks app was not found").
     Platform("kuaishou", "Kuaishou",
              ("kuaishou.com", "gifshow.com"),
-             (ToolOption("ks-downloader", "the only tool that works on Kuaishou today"),)),
+             (ToolOption("ks-downloader", "the only program that works on Kuaishou today"),)),
     Platform("xiaohongshu", "Xiaohongshu",
              ("xiaohongshu.com", "xhslink.com"),
              (ToolOption("xhs-downloader", "video and photos, no watermark"),)),

@@ -46,7 +46,6 @@
   ::selection { background: color-mix(in srgb, var(--go) 55%, transparent); color: var(--ink); }
   html { scrollbar-color: color-mix(in srgb, var(--soft) 45%, transparent) transparent; accent-color: var(--accent); }
   .wrap { max-width: 860px; margin: 0 auto; }
-  h1 { font-size: 19px; margin: 0; letter-spacing: -.02em; font-weight: 700; white-space: nowrap; }
   .sub { color: var(--soft); font-size: 13px; }
   /* Layout A: one bar across the whole window -- the name, the link box,
      Settings. Pulled to the window's edges, its content kept on the column. */
@@ -89,6 +88,11 @@
   }
   #jobs-empty svg { width: 64px; height: 64px; margin-bottom: 14px; color: var(--line-strong); }
   #jobs-empty .empty-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  /* Under an open card the room is short: the sentence's second line was
+     cut in half at the window's foot in full screen (first review of the
+     redesign, 2026-10-23). The drawing and one line are enough there. */
+  .wrap:has(#result:not(.hidden)) #jobs-empty { padding-top: 12px; }
+  .wrap:has(#result:not(.hidden)) #sites-hint { display: none; }
   /* Nothing to list: no box. A 765 px empty box with two lines in its
      middle read as a blank document (review of 2026-10-22). */
   #jobs-card:has(#jobs:empty) { background: transparent; border-color: transparent; }
@@ -169,9 +173,9 @@
     background: color-mix(in srgb, var(--ink) 6%, transparent); border-color: transparent;
   }
 
-  /* Few text sizes, not nine: 12 small labels, 13 help, 15 body and
-     controls, 17 section titles, 18 screen titles, 22 Settings page
-     titles (DESIGN.md, Typography). */
+  /* Eight text sizes: 12 small labels, 13 help, 14 small controls, 15 body
+     and controls, 16 the list's title and the link, 17 section titles, 18
+     screen titles, 22 Settings page titles (DESIGN.md, Typography). */
   h2.section {
     font-size: 17px; font-weight: 600; margin: 30px 0 4px;
     padding-top: 18px; border-top: 1px solid var(--line);
@@ -288,9 +292,15 @@
   .state-done .job-right .small { color: var(--ok-text); font-weight: 600; }
   h2.section:focus { outline: none; }
   .label { font-weight: 500; }
+  /* 24 px tall at least, the smallest target WCAG 2.5.8 allows: it was 20
+     (first review of the redesign, 2026-10-23). */
   details.more > summary {
     cursor: pointer; color: var(--accent); font-size: 13px; margin-top: 10px;
-    list-style-position: inside;
+    list-style-position: inside; padding-block: 2px;
+  }
+  /* Windows' "Show animations" off: nothing slides, the bar jumps. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
   }
   details.more[open] > summary { margin-bottom: 6px; }
 
@@ -430,6 +440,10 @@
   .opt-row:not(:has(.opt-control > :not(.hidden):not(.sr-only))) { display: none; }
   #result.dead-end #row-format, #result.dead-end #row-quality { display: none; }
   .opt-name { flex: 1; font-weight: 600; }
+  /* What the chosen program gives, under its switch: in the card's header
+     it sat 160 px above the switch it explains (first review of the
+     redesign, 2026-10-23). Lined up with the row's name. */
+  #tool-why { margin: -6px 0 0; padding: 0 0 10px 44px; }
   .opt-control {
     display: flex; align-items: center; justify-content: flex-end;
     gap: 8px; flex-wrap: wrap; min-width: 0;
@@ -530,11 +544,15 @@
   .stop.failed::before { border-color: var(--bad); background: var(--bad); }
   .stop.halted { color: var(--ink); }
   .stop.halted::before { border-color: var(--soft); background: var(--soft); }
-  .seg { flex: 1; min-width: 12px; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .seg { flex: 1; min-width: 12px; height: 3px; border-radius: 99px; background: var(--line); overflow: hidden; }
+  /* Started -> Downloading is a step, not a distance: as wide as the bar, it
+     turned green with the first bytes and a row at 3.0 % looked half done
+     (first review of the redesign, 2026-10-23). The bar takes the room. */
+  .seg[data-seg="start"] { flex: 0 0 24px; }
   .seg.passed { background: var(--ok); }
   .bar { height: 3px; margin: 0; }
   /* A tool being installed (Settings -> Tools) keeps a plain bar. */
-  .tool .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+  .tool .bar { height: 4px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 8px; }
   /* 0.7 s, the refresh rhythm: one update glides into the next. Before
      2026-09-25 the bar was rebuilt every refresh and never moved at all. */
   .bar > i { display: block; height: 100%; width: 0; background: var(--ink); }
@@ -544,12 +562,18 @@
   .state-cancelled .bar > i, .state-error .bar > i { background: var(--soft); }
   /* Only the stop where the parcel is keeps its name: five rows repeated
      "Started -- Downloading -- In your folder" fifteen times, and the list
-     read as a wireframe (review of 2026-10-22). A finished row needs no
-     line at all: "done" and its Open say it. */
-  .stop:not(.now):not(.failed):not(.halted) { font-size: 0; gap: 0; }
-  .state-done .track, .state-skipped .track { display: none; }
-  /* Only the parcel moving now is in full colour; finished ones go quiet. */
-  .job.state-done .job-name, .job.state-skipped .job-name { color: var(--soft); }
+     read as a wireframe (review of 2026-10-22). */
+  .stop:not(.now):not(.failed):not(.halted):not(.waiting) { font-size: 0; gap: 0; }
+  /* Waiting for its turn: a named grey stop -- three empty circles said
+     nothing (first review of the redesign, 2026-10-23). */
+  .stop.waiting { color: var(--soft); }
+  /* The parcel arrives: a finished row keeps its line, all green, and the
+     last stop says "In your folder". Without it the end of the story was
+     the quietest row on screen -- grey title, a 12 px "done" (same review). */
+  .job.state-done .stop[data-stop="end"].passed { font-size: 12px; gap: 5px; font-weight: 600; }
+  .state-skipped .track { display: none; }
+  /* "Already there" goes quiet: nothing came down. */
+  .job.state-skipped .job-name { color: var(--soft); }
   .state-error .job-right .small { color: var(--bad); font-weight: 600; }
   .small { font-size: 12px; color: var(--soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
@@ -615,7 +639,7 @@
   <!-- Decisions 8 and 19, built 2026-10-21: the updates waiting, and one
        press for all of them. Shown in "Ask me first" mode only. -->
   <!-- A thin line now, not a whole box (layout A). -->
-  <div class="hidden" data-view="main" id="update-bar" role="region" aria-label="Tool updates">
+  <div class="hidden" data-view="main" id="update-bar" role="region" aria-label="Program updates">
     <span id="update-bar-text"></span>
     <button class="tiny" id="update-bar-all">Update all</button>
     <button class="ghost tiny" id="update-bar-later">Later</button>
@@ -648,7 +672,6 @@
         <div class="title" id="title" role="heading" aria-level="2">…</div>
         <div class="meta" id="meta"></div>
         <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span></div>
-        <div class="hint hidden" id="tool-why" style="margin-top:6px"></div>
         <div class="hint warn-text hidden" id="short-link-note" style="margin-top:6px">Teleloadzai could not open this short link to see where it leads, so it cannot tell which site it is from. If the download fails, paste the full link from the post instead.</div>
         <div class="hint hidden" id="tool-need" style="margin-top:8px;padding:6px 10px;border-width:1px;border-style:solid;border-radius:8px">
           <span id="tool-need-text"></span>
@@ -657,7 +680,7 @@
         <div class="hint hidden" id="blocked-tools" style="margin-top:6px"></div>
         <div class="hint hidden" id="probe-note" style="margin-top:6px"></div>
         <details class="more hidden" id="probe-words" style="margin-top:6px">
-          <summary class="hint">Show the tool's message</summary>
+          <summary class="hint">Show the program's message</summary>
           <div class="hint" id="probe-words-text" style="margin-top:4px; word-break:break-word"></div>
         </details>
       </div>
@@ -692,12 +715,16 @@
       </div>
       <div class="opt-row" id="row-tool">
         <span class="opt-icon icon-tool" aria-hidden="true"></span>
-        <span class="opt-name" aria-hidden="true">Tool</span>
-        <span class="sr-only hidden" id="tool-pick-label">Tool</span>
+        <!-- "Program", as in Settings -> Programs: the card said "Tool" for the
+             same thing (the user's choice of one word, 2026-10-23). -->
+        <span class="opt-name" aria-hidden="true">Program</span>
+        <span class="sr-only hidden" id="tool-pick-label">Program</span>
         <span class="opt-control">
-          <span class="switch seg-track hidden" id="tool-pick" role="group" aria-label="Tool for this download"></span>
+          <span class="switch seg-track hidden" id="tool-pick" role="group" aria-label="Program for this download"
+                aria-describedby="tool-why"></span>
         </span>
       </div>
+      <div class="hint hidden" id="tool-why"></div>
       <div class="opt-foot">
         <!-- A link its own tool could not read, for a reason nobody knows:
              updating is the first thing to try (decision 8) -- the card
@@ -758,7 +785,7 @@
     </div>
     <div class="row" style="margin-top:10px">
       <button class="ghost" id="welcome-done">Got it</button>
-      <button class="ghost" id="welcome-tools-open">Manage tools</button>
+      <button class="ghost" id="welcome-tools-open">Manage programs</button>
     </div>
   </div>
 
@@ -1338,7 +1365,7 @@ function steppedText(chosen, usual) {
   const why = usual.need.logged_in
     ? `needs your ${site} cookies, and cookies are switched off in Settings → Accounts.`
     : `needs you to be logged in to ${site}.`;
-  return `Using ${chosen.name}: ${usual.name}, the usual tool for ${site}, ${why}`;
+  return `Using ${chosen.name}: ${usual.name}, the usual program for ${site}, ${why}`;
 }
 
 /** The chosen tool decides the tag, and whether we must install first. */
@@ -2035,8 +2062,19 @@ function paintTrack(row, job, percent) {
     if (index >= 0 && index < reached) stop.classList.add("passed");
     if (index >= 0 && index === reached) stop.classList.add(mark);
   }
+  row.querySelector('[data-stop="start"]').textContent = "Started";
+  row.querySelector('[data-stop="down"]').textContent = "Downloading";
   row.querySelector('[data-stop="after"]').textContent = after;
   row.querySelector('[data-stop="end"]').textContent = job.skipped ? "Already there" : "In your folder";
+  // The stop says what happened there: a failed row read "Started" on its
+  // red dot, which sounds like good news, and a waiting row was three empty
+  // circles (first review of the redesign, 2026-10-23).
+  const here = row.querySelector(`[data-stop="${order[reached]}"]`);
+  if (here && mark === "failed") here.textContent = "Failed";
+  if (here && mark === "halted" && !job.skipped) here.textContent = "Stopped";
+  const first = row.querySelector('[data-stop="start"]');
+  first.classList.toggle("waiting", job.state === "waiting");
+  if (job.state === "waiting") first.textContent = "Waiting";
   for (const seg of row.querySelectorAll("[data-seg]")) {
     const index = order.indexOf(seg.dataset.seg);
     seg.classList.toggle("hidden", index < 0);
@@ -2343,7 +2381,7 @@ function toolRow(tool, progress) {
   if (failed) {
     row.querySelector(".err").textContent =
       progress.error === "python_missing"
-        ? "Python is needed for this tool. See below."
+        ? "Python is needed for this program. See below."
         : progress.error;
   }
   return row;
@@ -2574,7 +2612,7 @@ async function tryPreview(job, button) {
   $("ytdlp-channel").value = "preview";
   await api("/api/tools/check", { id: "yt-dlp" });
   await loadTools();
-  notify("yt-dlp now comes from its preview builds (Settings → Tools to go back).");
+  notify("yt-dlp now comes from its preview builds (Settings → Programs to go back).");
   updateAndRetry(job, button);
 }
 
@@ -2588,7 +2626,7 @@ function douyinNote(job) {
 
 const UPDATE_MODE_HINTS = {
   ask: "A bar shows the updates waiting. A failed download offers “Update and retry”.",
-  auto: "Tools update by themselves when they have no download running, and a failed download is updated and retried once.",
+  auto: "Programs update by themselves when they have no download running, and a failed download is updated and retried once.",
   manual: "Nothing is checked or offered by itself. The “update” badges below still show.",
 };
 
@@ -2760,7 +2798,7 @@ $("need-tool-install").addEventListener("click", async () => {
   $("need-tool-install").disabled = false;
   if (result && result.state === "error") {
     $("need-tool-text").textContent = result.error === "python_missing"
-      ? "This tool needs Python. Open Settings to install it."
+      ? "This program needs Python. Open Settings to install it."
       : "Install failed: " + result.error;
     return;
   }

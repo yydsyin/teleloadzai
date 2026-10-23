@@ -45,6 +45,14 @@ typography:
     fontSize: "15px"
     fontWeight: 400
     lineHeight: 1.5
+  list-title:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, system-ui, sans-serif"
+    fontSize: "16px"
+    fontWeight: 600
+  control-small:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 500
   help:
     fontFamily: "Segoe UI Variable Text, Segoe UI, system-ui, sans-serif"
     fontSize: "13px"
@@ -181,12 +189,14 @@ Warm, low-chroma paper and ink, with one saturated yellow kept for the single ac
 - **Pane title** (600, 22px): the title of a Settings page (Downloads, Sites, Programs).
 - **Screen title** (600, 18px): "Paste a link", and "Settings" in the bar.
 - **Section title** (600, 17px): the empty list's sentence and section headings.
-- **Body** (400, 15px, 1.5): everything else, controls included. The link field is 16px. In full screen (≥ 1200 px wide) the body is 16px.
+- **List title** (600, 16px): "Downloads (3)" over the list. The link field's text is 16px too.
+- **Body** (400, 15px, 1.5): everything else, buttons and fields included. In full screen (≥ 1200 px wide) the body is 16px.
+- **Small control** (500, 14px): the options inside a switch, the Quality list, the program column on Sites, the updates band, a warning card.
 - **Help** (400, 13px, 14px in full screen): help lines and meta lines. Lines stay under 72 characters.
 - **Label** (12px, tabular numbers): sizes, speeds, times, the step names.
 
 ### Named Rules
-**The Few Sizes Rule.** Use the sizes above, no new ones. A new screen picks one of these roles.
+**The Few Sizes Rule.** Eight sizes: 12, 13, 14, 15, 16, 17, 18, 22. No new ones. A new screen picks one of these roles.
 
 ## Layout
 
@@ -239,7 +249,9 @@ Icons are simple line drawings (24-unit grid, 2 px stroke, round ends). They are
 - **Errors:** a red line of text under the field.
 
 ### The card (a parcel's label)
-A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the title, and a grey meta line ("YouTube · yt-dlp"). The × closes it. Under it come **choice rows**: a 32 px icon tile tinted yellow, the name (Format, Quality, Tool) and the control on the right. **A row with nothing to choose is not drawn** (decision 40). The foot holds Download on the right.
+A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the title, and a grey meta line ("YouTube · yt-dlp"). The × closes it. Under it come **choice rows**: a 32 px icon tile tinted yellow, the name (Format, Quality, Program) and the control on the right. **A row with nothing to choose is not drawn** (decision 40). What the chosen program gives ("TikTokDownloader: higher quality.") is a help line **under its switch**, lined up with the row's name. The foot holds Download on the right.
+
+**One word:** the thing that downloads is a **program** everywhere on screen (the card, Settings → Programs, the messages), never a "tool".
 
 ### Switches
 - **Two-way switch (Windows 11):** a soft track (ink 8 %). The chosen option is a raised card-coloured button in ink, and the others are soft-ink text. Used for MP3 | MP4 and the program names (decision 13). "Selected" is the raised button, never a fill.
@@ -248,9 +260,9 @@ A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the ti
 ### The downloads list (tracking)
 Each row has the name, then numbers on the right joined with " · " (12.3 MB / 45.6 MB · 2.1 MB/s · 16 s left). Under that is the **tracking line**: Started → Downloading → [Joining / Making the MP3, only once announced] → In your folder.
 - Stops are 9 px dots: green when passed; yellow with an ink ring for **now**; red for failed; grey for stopped.
-- **Only the stop where the parcel is now keeps its name.** The other stops are dots only.
-- The segment after Downloading **is** the progress bar. It moves with `scaleX` over 0.7 s, the refresh rhythm.
-- Finished and "already there" rows drop the line and go grey; "done" itself is green.
+- **Only the stop where the parcel is now keeps its name**, and it says what happened there: "Waiting", "Failed", "Stopped". The other stops are dots only.
+- Started → Downloading is a short fixed step (24 px). The segment after Downloading **is** the progress bar and takes the rest of the row, so the green never shows more than was measured. It moves with `scaleX` over 0.7 s, the refresh rhythm.
+- **The parcel arrives:** a finished row keeps its line, all green, ending on "In your folder"; its title stays in ink. An "already there" row drops the line and goes grey: nothing came down.
 - **When the list is empty:** no box, just a parcel drawing and "Your downloads will appear here."
 
 ### Settings (the Windows Settings model)
