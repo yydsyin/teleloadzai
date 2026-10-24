@@ -338,6 +338,8 @@ QUEUE = Queue(max_parallel, store=DATA_DIR / "jobs.json")
 # The end-of-download message asks the setting at the moment it would show,
 # so switching it off works at once.
 notify.enabled = lambda: load_settings()["notify_done"]
+# ...and only once nothing waits or runs: one message for a whole playlist.
+notify.busy = lambda: QUEUE.unfinished() > 0
 tools.set_preview("yt-dlp", load_settings()["ytdlp_channel"] == "preview")
 
 

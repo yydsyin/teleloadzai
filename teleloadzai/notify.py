@@ -11,7 +11,9 @@ then "Teleloadzai", seen by the user. Nothing is written to the registry.
 
 The message is shown only when the Teleloadzai window is not in front (the row
 already says it there), and downloads that end within a few seconds share one
-message. Its tray icon lives only while the message is up. A click on the box
+message -- and nothing is said while another download still waits or runs:
+the last one's end says them all. Its tray icon lives only while the
+message is up. A click on the box
 brings the window back; a click from Windows' notification list does not --
 Windows never sends it back for this kind of message (tried 2026-10-24).
 """
@@ -29,11 +31,14 @@ from .config import APP_NAME
 
 GROUP_SECONDS = 3.0         # ends this close together share one message
 
-# Set by the app: is the setting on? (server) and what a click does (__main__).
+# Set by the app: is the setting on? is anything still waiting or running?
+# (server) and what a click does (__main__).
 enabled: Callable[[], bool] = lambda: True
+busy: Callable[[], bool] = lambda: False
 on_click: Callable[[], None] | None = None
 
-_pending: list[tuple[str, str]] = []        # (name, "done" | "already" | "failed")
+# (name, "done" | "already" | "failed", files in that row)
+_pending: list[tuple[str, str, int]] = []
 _lock = threading.Lock()
 _timer: threading.Timer | None = None
 _shows: "queue.Queue[tuple[str, str]]" = queue.Queue()
@@ -61,30 +66,46 @@ def window_in_front() -> bool:
     return owner.value == os.getpid()
 
 
-def ended(name: str, how: str) -> None:
-    """A download ended: "done", "already" (nothing downloaded) or "failed".
-    Said a few seconds later, together with the others that end meanwhile."""
+def ended(name: str, how: str, files: int = 1) -> None:
+    """A download ended: "done", "already" (nothing downloaded) or "failed";
+    ``files`` > 1 for a row that brought several (a playlist in one row).
+    Said once nothing is left waiting or running, with every end since."""
     global _timer
     if sys.platform != "win32":
         return
     with _lock:
-        _pending.append((name or "A download", how))
+        _pending.append((name or "A download", how, files))
         if _timer is None:
             _timer = threading.Timer(GROUP_SECONDS, _flush)
             _timer.daemon = True
             _timer.start()
 
 
-def words(ends: list[tuple[str, str]]) -> tuple[str, str]:
+def check() -> None:
+    """A download left without an end to say (stopped by hand): the ends
+    still waiting are said if it was the last one running."""
+    global _timer
+    with _lock:
+        if _pending and _timer is None and sys.platform == "win32":
+            _timer = threading.Timer(GROUP_SECONDS, _flush)
+            _timer.daemon = True
+            _timer.start()
+
+
+def words(ends: list[tuple[str, str, int]]) -> tuple[str, str]:
     """(title, text) for these ends -- plain sentences, the file name only."""
-    failed = sum(1 for _, how in ends if how == "failed")
+    failed = sum(1 for _, how, _n in ends if how == "failed")
     if len(ends) == 1:
-        name, how = ends[0]
+        name, how, files = ends[0]
         name = name if len(name) <= 120 else name[:119] + "…"
         if how == "failed":
             return "Download failed", f"{name} failed. Open {APP_NAME} to see why."
         if how == "already":
             return "Nothing downloaded", f"{name} was already in your folder."
+        if files > 1:
+            # A playlist in one row: its first file's name said "one video
+            # arrived" when 29 did (found 2026-10-24).
+            return "Download finished", f"{name}: {files} files are in your folder."
         return "Download finished", f"{name} is in your folder."
     done = len(ends) - failed
     title = "Downloads finished" if not failed else "Downloads ended"
@@ -95,9 +116,18 @@ def words(ends: list[tuple[str, str]]) -> tuple[str, str]:
 
 def _flush() -> None:
     global _timer
+    # Nothing is said while another download still waits or runs: a playlist
+    # chosen video by video gave close to one message per video (found
+    # 2026-10-24). The ends wait; the last download's end says them all.
+    try:
+        still = busy()
+    except Exception:
+        still = False
     with _lock:
-        ends, _pending[:] = list(_pending), []
         _timer = None
+        if still:
+            return
+        ends, _pending[:] = list(_pending), []
     try:
         wanted = enabled()
     except Exception:

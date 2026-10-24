@@ -671,15 +671,20 @@ class Queue:
             # A Windows message when the user is elsewhere (Phase 2 item 6).
             # Not for a Stop: the user did it, and is looking.
             with self._lock:
-                state, skipped = job.state, job.skipped
+                state, skipped, count = job.state, job.skipped, len(job.files)
                 saved = Path(job.files[0]).name if job.files else ""
                 # Never the link: a message on the screen says a name only
                 # ("A download failed" when there is none).
                 named = job.title or saved
-            if state == DONE:
+            if state == DONE and count > 1:
+                # A playlist in one row: its title and how many files.
+                notify.ended(named, "done", count)
+            elif state == DONE:
                 notify.ended(saved or named, "already" if skipped else "done")
             elif state == ERROR:
                 notify.ended(named, "failed")
+            else:
+                notify.check()      # stopped: maybe the last one running
             with self._lock:
                 self._workers.discard(threading.current_thread())
             self._pump()
