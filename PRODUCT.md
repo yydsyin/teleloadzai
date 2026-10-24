@@ -38,7 +38,8 @@ The main moment (confirmed 2026-10-21): **paste one link, get it.** The download
 - **Built 2026-10-24:** the link from the clipboard + a Paste button — only links are taken from what was copied, and nothing is kept; a switch in Settings, on by default.
 - **Built 2026-10-24:** Ctrl+Enter = Download, written on the button — the only shortcut (the user's rule: no useless keys).
 - **Built 2026-10-24:** MP3 tags + cover art — title, artist and the video's picture inside every MP3 (Windows Explorer shows them); where no picture is known, the row says "Saved without a cover picture."
-- **Chosen to come after the redesign (2026-10-21), still to build:** a Windows notification; subtitles. The design must give them their place from the start.
+- **Built 2026-10-24:** a Windows message when a download ends, only while the user is in another window ("Me at the zoo.mp3 is in your folder."; several at once in one message); a click on it brings Teleloadzai back; a switch in Settings, on by default.
+- **Chosen to come after the redesign (2026-10-21), still to build:** subtitles. The design must give them their place from the start.
 - No DRM sites, ever. No browser extension (the stores refuse YouTube downloaders).
 
 ## Brand Commitments

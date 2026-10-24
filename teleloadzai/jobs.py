@@ -673,7 +673,9 @@ class Queue:
             with self._lock:
                 state, skipped = job.state, job.skipped
                 saved = Path(job.files[0]).name if job.files else ""
-                named = job.title or saved or job.url
+                # Never the link: a message on the screen says a name only
+                # ("A download failed" when there is none).
+                named = job.title or saved
             if state == DONE:
                 notify.ended(saved or named, "already" if skipped else "done")
             elif state == ERROR:

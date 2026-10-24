@@ -300,6 +300,10 @@ Over the Downloads list:
 - **Side menu:** icon + name, 40 px rows. The open page is raised on a card.
 - **Groups:** cards of rows with a name (600), an optional help line (13 px soft), and the control on the right.
 - **Paused:** while log-ins are paused, the whole Sites page except its switch is at 45 % opacity, greyscale, and out of reach (`inert`).
+- **Downloads page, its switches in order:** Ask where to save each file · Use a link I copied · **Tell me when a download ends** (a bell icon; "A Windows message, only while you are in another window. Click it while it is on screen to come back.").
+
+### The Windows message (outside the window)
+Drawn by Windows, not by the page: "Teleloadzai" on top, a title ("Download finished", "Download failed", "Nothing downloaded", "Downloads finished", "Downloads ended") and one sentence with the file name only — never a link. Its icon is Windows' standard program icon until step 6 gives Teleloadzai its own.
 
 ### Bands and messages
 - **Updates band:** a yellow-tinted band under the bar, not a card.
