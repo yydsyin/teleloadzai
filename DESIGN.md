@@ -284,6 +284,8 @@ Over the Downloads list:
 
 "Clear finished" stays in the header. Nothing shows before it is needed.
 
+**Interrupted downloads** (cut off when Teleloadzai closed) get the updates band's tint: a yellow band over the list, "1 download did not finish when Teleloadzai closed.", with a ghost **Continue it / Continue them**. Each such row says "Interrupted" on its stop and has its own Continue and Remove. Nothing restarts by itself.
+
 ### Settings (the Windows Settings model)
 - **Side menu:** icon + name, 40 px rows. The open page is raised on a card.
 - **Groups:** cards of rows with a name (600), an optional help line (13 px soft), and the control on the right.
