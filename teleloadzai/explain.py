@@ -289,6 +289,32 @@ KNOWN: tuple[Known, ...] = (
               "the language of Windows. Matched on the code, not the words, "
               "because the words change with the language of Windows."),
     ),
+    # Our own sentences (dialogs.TOO_LONG, and the "Save as" one), not a
+    # tool's: listed so the failed row offers no Retry -- a Retry goes back
+    # to the same folder and the same name, and gets the same answer.
+    Known(
+        words=("folder's path is too long for windows",),
+        tools=("yt-dlp", "gallery-dl", "streamlink", "n-m3u8dl-re", "xhs-downloader",
+               "tiktokdownloader", "ks-downloader"),
+        title="This folder's path is too long for Windows.",
+        retry=False,
+        next_step=("Choose a folder with a shorter path in Settings → Downloads, "
+                   "then paste the link again."),
+        seen=("2026-10-24, real runs (yt-dlp, N_m3u8DL-RE, TikTokDownloader) in "
+              "a 205-character folder: refused in words, nothing created. "
+              "Before, a 278-character path gave '[Errno 2] No such file or "
+              "directory'."),
+    ),
+    Known(
+        words=("chosen in \"save as\" is too long for windows",),
+        tools=("yt-dlp", "streamlink", "n-m3u8dl-re", "tiktokdownloader", "ks-downloader"),
+        title="The name chosen in \"Save as\" is too long for Windows.",
+        retry=False,
+        next_step=("Paste the link again and choose a shorter name, or a folder "
+                   "with a shorter path."),
+        seen=("2026-10-24, a real yt-dlp run: an 80-character name in a "
+              "150-character folder was refused in words before starting."),
+    ),
     Known(
         words=("did not start", "over proxy"),
         tools=("tiktokdownloader",),

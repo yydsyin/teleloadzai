@@ -2292,7 +2292,8 @@ function jobRow(job) {
       <span class="stop hidden" data-stop="after"></span><span class="seg hidden" data-seg="after"></span>
       <span class="stop" data-stop="end">In your folder</span>
     </div>
-    ${job.error && !(job.state === "error" && job.error_from_tool) ? '<div class="err"></div>' : ""}
+    ${job.error && !(job.state === "error" && (job.error_from_tool || (job.explain || {}).known))
+      ? '<div class="err"></div>' : ""}
     ${job.cookie_note && job.state !== "done" ? `<div class="hint warn-text" style="margin-top:6px">
         ⚠️ Running without your cookies: ${job.cookie_note}.
       </div>` : ""}

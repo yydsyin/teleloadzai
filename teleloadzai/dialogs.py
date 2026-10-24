@@ -98,6 +98,49 @@ def safe_filename(name: str, fallback: str = "download") -> str:
 UNKNOWN = "unknown"
 
 
+# Windows refuses a path over 260 characters (259 and the closing zero)
+# unless long paths are switched on -- off on the user's PC (LongPathsEnabled
+# = 0, read 2026-10-24). A TikTok caption of 120 characters in a deep folder
+# gave a 278-character path, and the row showed a raw "[Errno 2] No such file
+# or directory". Counted in UTF-16 units, Windows' own unit: an emoji is two.
+PATH_LIMIT = 259
+# Kept free after a name for what the programs add to it. The longest seen
+# (2026-10-24): our ".teleloadzai-audio.mp4.cover" (28), N_m3u8DL-RE's
+# "<name>\meta_selected.json" (19), yt-dlp's ".tlz<hex>" tag (10) and
+# ".part" pieces, a "name (12)" number (5).
+NAME_ENDING = 40
+# A folder that leaves less than this for a name is refused, in words.
+MIN_NAME = 20
+TOO_LONG = ("This folder's path is too long for Windows to save a file in it. "
+            "Choose a folder with a shorter path in Settings.")
+
+
+class PathTooLong(ValueError):
+    """The folder (or the name chosen in "Save as") leaves no room."""
+
+
+def units(text: str) -> int:
+    """Length as Windows counts it (UTF-16 units)."""
+    return len(text.encode("utf-16-le")) // 2
+
+
+def name_room(folder: Path, ending: int = NAME_ENDING) -> int:
+    """How long a name may be in `folder`, in UTF-16 units. Raises
+    PathTooLong when it is less than MIN_NAME."""
+    room = PATH_LIMIT - units(str(folder)) - 1 - ending
+    if room < MIN_NAME:
+        raise PathTooLong(TOO_LONG)
+    return room
+
+
+def fit_name(folder: Path, base: str, ending: int = NAME_ENDING) -> str:
+    """`base`, cut so that the full path stays under Windows' limit."""
+    room = name_room(folder, ending)
+    while units(base) > room:
+        base = base[:-1]
+    return base.rstrip(" .") or UNKNOWN
+
+
 def free_name(folder: Path, base: str, extension: str) -> str:
     """`base`, or `base (2)`, `base (3)`... -- the first one not in `folder`.
 

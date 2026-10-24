@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import children, cookies, explain
-from .dialogs import MEDIA_ENDING
+from .dialogs import MEDIA_ENDING, NAME_ENDING, PATH_LIMIT, PathTooLong, name_room, units
 from .paths import BIN_DIR, make_folder
 
 # Keeps the black console window from flashing when the GUI runs a tool.
@@ -390,12 +390,25 @@ def _output_arguments(
     # the row said "done" (seen 2026-09-27).
     number = "%(playlist_index& {}|)s"
     if out_path is not None:
+        # The user's name is never cut (Windows asked about that one); one
+        # that leaves no room for yt-dlp's endings is said in words.
+        if units(str(out_path.with_suffix(""))) + NAME_ENDING > PATH_LIMIT:
+            raise PathTooLong("The name chosen in \"Save as\" is too long for Windows once "
+                              "Teleloadzai adds its working endings. Choose a shorter name "
+                              "or folder.")
         # The user's name is text, not a template: a "%" in it is doubled.
         target = str(out_path.with_suffix("")).replace("%", "%%") + number + tag + ".%(ext)s"
         tidy: list[str] = []
     else:
         folder = str(out_dir).replace("%", "%%")
-        target = str(Path(folder) / f"%(title)s{number}{tag}.%(ext)s")
+        # The title is cut to what the folder leaves under Windows' 260
+        # characters, in BYTES (`.NB`): a character never takes more UTF-16
+        # units than UTF-8 bytes, and whole characters only (probed
+        # 2026-10-24: "源世纪…" at 10 -> 9 bytes, "abc😍" at 5 -> "abc").
+        # Not yt-dlp's --trim-filenames: with a dot in the title ("Mr. Smith
+        # v1.2 …") it left a 54-character name whole.
+        room = name_room(out_dir)
+        target = str(Path(folder) / f"%(title).{room}B{number}{tag}.%(ext)s")
         # yt-dlp names the file from the title: "… VIDEO.mp4" came out
         # "… VIDEO.mp4.mp4". Its own option drops that ending first.
         tidy = ["--replace-in-metadata", "title", MEDIA_ENDING, ""]

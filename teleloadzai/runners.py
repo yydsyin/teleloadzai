@@ -37,7 +37,8 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 from . import children, cookies, explain, toolservers, tools, ytdlp
-from .dialogs import UNKNOWN, free_name, without_media_ending
+from .dialogs import (NAME_ENDING, UNKNOWN, PathTooLong, fit_name, free_name, name_room,
+                      units, without_media_ending)
 from .paths import BIN_DIR, DATA_DIR, make_folder
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -940,10 +941,17 @@ def _file_name(request: Request, found: str = "") -> str:
     when its title was on the card.
     """
     if request.out_name:
+        # The user's own name is never cut: Windows asked about that one.
+        if units(request.out_name) > name_room(request.out_dir):
+            raise PathTooLong("The name chosen in \"Save as\" is too long for Windows once "
+                              "Teleloadzai adds its working endings. Choose a shorter name "
+                              "or folder.")
         return request.out_name
+    # Cut to what the folder leaves (a deep folder + a long caption went over
+    # Windows' 260 characters, 2026-10-24).
     name = found or _clean_name({"desc": request.title})
     if name:
-        return name
+        return fit_name(request.out_dir, name)
     return free_name(request.out_dir, UNKNOWN, "mp3" if request.mode == "mp3" else "mp4")
 
 
@@ -1150,6 +1158,11 @@ def run(
             raise RunnerError(f"{tool_id} is not installed")
         exe, head = found, []
 
+    # gallery-dl and XHS-Downloader name their files themselves, inside the
+    # work folder ("teleloadzai-1a2b3c4d\", 21 more): a folder with no room
+    # for a name is said in words BEFORE anything runs, not left to a raw
+    # error. (Our own names are cut to fit: `_file_name`.)
+    name_room(request.out_dir, NAME_ENDING + units("teleloadzai-00000000\\"))
     work = _work_folder(request.out_dir, tool_id)
     keep = False
     try:
