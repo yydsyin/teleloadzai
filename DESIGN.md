@@ -266,6 +266,24 @@ Each row has the name, then numbers on the right joined with " · " (12.3 MB / 4
 - **The parcel arrives:** a finished row keeps its line, all green, ending on "In your folder"; its title stays in ink. An "already there" row drops the line and goes grey: nothing came down.
 - **When the list is empty:** no box, just a parcel drawing and "Your downloads will appear here."
 
+### Several links (one card)
+One paste of several links gives **one card**, never a second list of "found links". It shows:
+- the title "3 links", and a meta line "YouTube 2 · TikTok 1";
+- the links, each with its program in soft ink: a short list that scrolls past about 4 lines, so Download stays in sight;
+- "**Not added:**" with one reason per line;
+- the same rows as the single card: Format, Quality ("Best — each video at its own best size", or the kbps list for MP3), Folder;
+- the yellow **Download N**.
+
+While this card is open, the list under it may shrink to 96 px, so the main screen never scrolls.
+
+### List tools
+Over the Downloads list:
+- **from 2 rows:** a real total in the header ("5 of 8 finished · 2 failed"), with a 4 px green bar;
+- **from 4 rows:** a two-way-switch style row of filters with counts (All · Running · Waiting · Done · Failed, in red when not chosen);
+- **from 2 retryable failed rows:** a ghost "Retry all failed" on the right.
+
+"Clear finished" stays in the header. Nothing shows before it is needed.
+
 ### Settings (the Windows Settings model)
 - **Side menu:** icon + name, 40 px rows. The open page is raised on a card.
 - **Groups:** cards of rows with a name (600), an optional help line (13 px soft), and the control on the right.
