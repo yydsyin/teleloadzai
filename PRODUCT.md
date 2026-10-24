@@ -33,6 +33,7 @@ The main moment (confirmed 2026-10-21): **paste one link, get it.** The download
 - Every button, list and switch has a real action seen working (decision 40); only real choices are shown.
 - A task never looks frozen (decision 33); a problem is always said (decision 34).
 - **Built 2026-10-24:** several links at once — one paste, one card, one folder window; status filters with counts, "Retry all failed", a total ("5 of 8 finished").
+- **Built 2026-10-24:** the user picks how several links or a YouTube playlist are handled, and the pick is kept — **Same for all** (one set of choices) or **Choose for each** (each video's own format, quality, program and, with "Ask where to save", its own window). Programs that name their files themselves (gallery-dl, XHS-Downloader) are asked a folder, never a name they would throw away.
 - **Built 2026-10-24:** a list that survives closing — the last 200 rows come back; downloads cut off by closing come back interrupted and wait for "Continue"; closing during a download asks first.
 - **Built 2026-10-24:** the link from the clipboard + a Paste button — only links are taken from what was copied, and nothing is kept; a switch in Settings, on by default.
 - **Built 2026-10-24:** Ctrl+Enter = Download, written on the button — the only shortcut (the user's rule: no useless keys).

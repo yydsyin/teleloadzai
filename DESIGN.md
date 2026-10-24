@@ -278,6 +278,12 @@ One paste of several links gives **one card**, never a second list of "found lin
 - the same rows as the single card: Format, Quality ("Best — each video at its own best size", or the kbps list for MP3), Folder;
 - the yellow **Download N**.
 
+Under its title, a **Choices** row (the stack icon, a two-way switch): **Same for all · Choose for each**. The user's pick is kept.
+- **Same for all**: as above.
+- **Choose for each**: Format and Quality for all are not drawn; each video is a row instead — its title (soft ink while it is read), then a small MP3 / MP4 switch (28 px high, 13 px text), a Quality list only when the video has a real choice, and a Program list where the site has several (else the program's name in soft ink). Rows are separated by a line; the list scrolls in the card (up to 30vh; 18vh in the compact step, where each row wraps onto two lines). While the videos are read, the title counts ("Reading the videos… 3 of 8") and the meta line says "Download now: videos not read yet come at their best size."
+- **A playlist** uses the same card: the title "Team Fortress 2 [2010 Version] — 29 videos", its videos as the rows (their titles, not links), "…and N more videos" past 50 in Same for all.
+- In the compact step the Choices row is tighter (34 px), so the screen does not scroll at 520×700.
+
 While this card is open, the list under it may shrink to 96 px, so the main screen never scrolls.
 
 ### List tools
