@@ -585,8 +585,13 @@ class Queue:
             # ffprobe takes a moment per file.
             note = ""
             if job.mode == "mp3":
-                note = ytdlp.cover_note(
-                    [f for f in result.files if f not in getattr(result, "skipped", [])])
+                made = [f for f in result.files if f not in getattr(result, "skipped", [])]
+                # The kbps only for yt-dlp: the other programs' MP3 is made
+                # by our FFmpeg, always at the kbps asked (measured 2026-09-26
+                # and again 2026-10-24).
+                note = " ".join(filter(None, [
+                    ytdlp.kbps_note(made, job.quality) if job.tool == "yt-dlp" else "",
+                    ytdlp.cover_note(made)]))
 
             with self._lock:
                 # A stopped row keeps files only for a live recording, which

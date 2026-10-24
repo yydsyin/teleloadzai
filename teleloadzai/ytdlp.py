@@ -234,6 +234,38 @@ def cover_note(files: list[Path]) -> str:
     return f"{len(bare)} of {len(mp3s)} MP3s were saved without a cover picture."
 
 
+def _kbps(path: Path) -> int | None:
+    """The MP3's bitrate in kbps, read with ffprobe; None when unknown."""
+    ffmpeg = find_tool("ffmpeg")
+    probe = ffmpeg.with_name("ffprobe.exe") if ffmpeg else None
+    if probe is None or not probe.is_file() or not path.is_file():
+        return None
+    try:
+        found = subprocess.run(
+            [str(probe), "-v", "error", "-select_streams", "a:0",
+             "-show_entries", "stream=bit_rate", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, stdin=subprocess.DEVNULL,
+            timeout=60, creationflags=_NO_WINDOW)
+        return round(int(found.stdout.strip()) / 1000)
+    except Exception:
+        return None
+
+
+def kbps_note(files: list[Path], asked: str) -> str:
+    """yt-dlp keeps a site's ready MP3 as it is ("Not converting audio …
+    already in target format mp3", seen 2026-10-24 on TikTok and SoundCloud),
+    so a kbps asked above it is not what the file holds. Said from the file
+    itself, only when it is clearly lower (decision 34)."""
+    if not str(asked).isdigit():
+        return ""
+    for f in files:
+        real = _kbps(f) if f.suffix.lower() == ".mp3" else None
+        if real and real < int(asked) * 0.9:
+            return (f"Saved at {real} kbps, not {asked}: the site already gave an MP3, "
+                    "kept as it is — converting it cannot add quality.")
+    return ""
+
+
 def _ffmpeg_arguments() -> list[str]:
     """Tell yt-dlp where ffmpeg is, when it is not beside it."""
     ffmpeg = find_tool("ffmpeg")
@@ -429,6 +461,13 @@ def _output_arguments(
         audio_quality = "0" if quality == "best" else f"{quality}K"
         return [
             *tidy,
+            # Never TikTok's "audio" format: it is the post's MUSIC, not its
+            # sound. Seen 2026-10-24 on a "Believer" post: "audio" = 30 s of
+            # the song, the video's own sound = 204 s -- the MP3 was the song
+            # clip, and the row said done. Its only mark is that id; where
+            # another site's sound-only format has it, the video's own sound
+            # is taken instead (right, only bigger).
+            "-f", "bestaudio[format_id!=audio]/best",
             "-x",
             "--audio-format", "mp3",
             "--audio-quality", audio_quality,
