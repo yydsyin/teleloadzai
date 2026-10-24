@@ -544,6 +544,7 @@
   .icon-branch { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='6' r='2'/%3E%3Ccircle cx='6' cy='18' r='2'/%3E%3Ccircle cx='18' cy='8' r='2'/%3E%3Cpath d='M6 8v8M18 10a6 6 0 0 1-6 6H8'/%3E%3C/svg%3E"); }
   .icon-key { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='15' r='4'/%3E%3Cpath d='m10.8 12.2 9.2-9.2M17 6l3 3M14 9l2 2'/%3E%3C/svg%3E"); }
   .icon-clipboard { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='4' width='14' height='17' rx='2'/%3E%3Cpath d='M9 4V3h6v1M9 4h6v2H9zM9 11h6M9 15h4'/%3E%3C/svg%3E"); }
+  .icon-bell { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0'/%3E%3C/svg%3E"); }
   .icon-door { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8M10 12h11M18 9l3 3-3 3'/%3E%3C/svg%3E"); }
   #go, #batch-go { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E"); }
   #go:not(.ghost), #batch-go { display: inline-flex; align-items: center; gap: 8px; }
@@ -990,6 +991,16 @@
             <span class="set-sub">When you come back to Teleloadzai. Only a link is taken from what you copied, and nothing is kept.</span>
           </span>
           <span class="set-control"><input type="checkbox" class="toggle" id="use-clipboard"></span>
+        </label>
+        <!-- Phase 2 item 6 (2026-10-24): a Windows message, only when the
+             window is not in front. -->
+        <label class="set-row" style="cursor:pointer">
+          <span class="opt-icon icon-bell" aria-hidden="true"></span>
+          <span class="set-main">
+            <span class="set-name">Tell me when a download ends</span>
+            <span class="set-sub">A Windows message, only while you are in another window. Click it while it is on screen to come back.</span>
+          </span>
+          <span class="set-control"><input type="checkbox" class="toggle" id="notify-done"></span>
         </label>
         <div class="set-row">
           <span class="opt-icon icon-stack" aria-hidden="true"></span>
@@ -3868,6 +3879,13 @@ $("record-minutes").addEventListener("change", async () => {
     + $("record-minutes").selectedOptions[0].text + ".");
 });
 
+$("notify-done").addEventListener("change", async () => {
+  const on = $("notify-done").checked;
+  await api("/api/settings", { notify_done: on });
+  notify(on ? "Saved: a Windows message tells you when a download ends while you are elsewhere."
+            : "Saved: no Windows message. The Downloads list still shows every end.");
+});
+
 $("use-clipboard").addEventListener("change", async () => {
   const on = $("use-clipboard").checked;
   await api("/api/settings", { use_clipboard: on });
@@ -4313,6 +4331,7 @@ async function forgetCookies() {
   });
   $("ask-where").checked = askWhere;
   $("use-clipboard").checked = settings.use_clipboard !== false;
+  $("notify-done").checked = settings.notify_done !== false;
   severalMode = settings.several_mode === "each" ? "each" : "same";
   updateGoLabel();
 

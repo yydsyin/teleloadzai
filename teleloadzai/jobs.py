@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import children, cookies, explain, runners, ytdlp
+from . import children, cookies, explain, notify, runners, ytdlp
 
 WAITING, RUNNING, DONE, ERROR, CANCELLED = "waiting", "running", "done", "error", "cancelled"
 ACTIVE_STATES = (WAITING, RUNNING)
@@ -668,6 +668,16 @@ class Queue:
                         piece.unlink()
                     except OSError:
                         pass            # still held: a leftover, never a crash
+            # A Windows message when the user is elsewhere (Phase 2 item 6).
+            # Not for a Stop: the user did it, and is looking.
+            with self._lock:
+                state, skipped = job.state, job.skipped
+                saved = Path(job.files[0]).name if job.files else ""
+                named = job.title or saved or job.url
+            if state == DONE:
+                notify.ended(saved or named, "already" if skipped else "done")
+            elif state == ERROR:
+                notify.ended(named, "failed")
             with self._lock:
                 self._workers.discard(threading.current_thread())
             self._pump()

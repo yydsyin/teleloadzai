@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import cookies, dialogs, explain, login, runners, toolservers, tools, ytdlp
+from . import cookies, dialogs, explain, login, notify, runners, toolservers, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import Queue
@@ -82,6 +82,9 @@ def load_settings() -> dict:
         # "each" (a row of choices per video). The user's own pick, kept
         # (asked 2026-10-24: "its users to choose what mode").
         "several_mode": "each" if stored.get("several_mode") == "each" else "same",
+        # A Windows message when a download ends and the window is not in
+        # front (Phase 2 item 6). On by default; some people dislike them.
+        "notify_done": bool(stored.get("notify_done", True)),
     }
 
 
@@ -332,6 +335,9 @@ def max_parallel() -> int:
 # in the folder .gitignore already keeps out of git. Loaded by __main__
 # AFTER the port is claimed (decision 21), never at import.
 QUEUE = Queue(max_parallel, store=DATA_DIR / "jobs.json")
+# The end-of-download message asks the setting at the moment it would show,
+# so switching it off works at once.
+notify.enabled = lambda: load_settings()["notify_done"]
 tools.set_preview("yt-dlp", load_settings()["ytdlp_channel"] == "preview")
 
 
@@ -958,6 +964,8 @@ class Handler(BaseHTTPRequestHandler):
                 settings["use_clipboard"] = bool(body["use_clipboard"])
             if body.get("several_mode") in ("same", "each"):
                 settings["several_mode"] = body["several_mode"]
+            if "notify_done" in body:        # False is a real value, not "missing"
+                settings["notify_done"] = bool(body["notify_done"])
             if isinstance(body.get("tool_choice"), dict):
                 # One site at a time from the page. Only a tool that site
                 # really lists; choosing the default removes the entry, so

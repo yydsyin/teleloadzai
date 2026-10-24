@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import cookies, login, runners, toolservers
+from . import cookies, login, notify, runners, toolservers
 from .config import APP_NAME, APP_VERSION
 from .server import QUEUE, claim, forget_if_once, holder_is_us, serve, start_background
 
@@ -90,6 +90,9 @@ def open_window(port: int, httpd=None) -> int:
 
     httpd, url = start_background(port, httpd)
     failed = False
+    # Before any window exists: Windows names our messages after this id --
+    # "Teleloadzai", where it said "Python" (seen by the user, 2026-10-24).
+    notify.set_app_id()
     print(f"{APP_NAME} {APP_VERSION}  -  close the window to stop.")
     try:
         width, height, x, y = opening_place()
@@ -99,6 +102,14 @@ def open_window(port: int, httpd=None) -> int:
             min_size=WINDOW_MINIMUM,
         )
         window.events.closing += ask_before_closing
+
+        def to_front() -> None:
+            """A click on the end-of-download message brings the window back
+            (Phase 2 item 6): out of the taskbar if minimised, then in front."""
+            window.restore()
+            window.show()
+
+        notify.on_click = to_front
         # A "Forget them" that Windows refused last time happens now, before
         # WebView2 takes hold of the folder again.
         login.forget_pending()
@@ -119,6 +130,7 @@ def open_window(port: int, httpd=None) -> int:
         stopped = QUEUE.stop_all()
         if stopped:
             print(f"{stopped} download(s) stopped.")
+        notify.close()          # no icon may stay in the notification area
         for server in toolservers.ALL:
             if server.stop_now():
                 print(f"{server.name}'s server stopped.")
