@@ -235,7 +235,7 @@ Icons are simple line drawings (24-unit grid, 2 px stroke, round ends). They are
 ## Components
 
 ### Buttons
-- **Download:** yellow, ink text, a download icon, 40 px high, padding 8px 24px. It is the only one of its kind.
+- **Download:** yellow, ink text, a download icon, 40 px high, padding 8px 24px. It is the only one of its kind. Its key is written after its words, "Ctrl+Enter", 12px, ink mixed 72 % into the yellow (5.3:1, measured) — only while the key works: not on a grey "Try anyway", not while disabled. Ctrl+Enter is the app's only shortcut (the user's rule: no useless keys); Enter (Read) and Esc (close) are not written.
 - **Filled:** ink fill with paper text, for main actions other than Download.
 - **Outline ("ghost"):** transparent, soft-ink text, a 1 px line border. Read once a card shows, "Try anyway", and row actions.
 - **Tiny:** 30 px high, 13px text, for actions inside a row.

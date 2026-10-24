@@ -525,6 +525,13 @@
   .icon-door { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8M10 12h11M18 9l3 3-3 3'/%3E%3C/svg%3E"); }
   #go, #batch-go { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E"); }
   #go:not(.ghost), #batch-go { display: inline-flex; align-items: center; gap: 8px; }
+  /* Its key, written on it -- after the text, so the page can rewrite the
+     words ("Download…", "Download 3") without erasing it. Shown only where
+     the key works: a filled, live Download (Phase 2 item 4). */
+  #go:not(.ghost):not(:disabled)::after, #batch-go:not(:disabled)::after {
+    content: "Ctrl+Enter"; margin-left: 4px; font-size: 12px; font-weight: 500;
+    color: color-mix(in srgb, var(--go-ink) 72%, var(--go));
+  }
   .opt-foot {
     display: flex; align-items: center; gap: 8px; justify-content: flex-end;
     padding-top: 12px; border-top: 1px solid var(--line);
@@ -789,7 +796,7 @@
              updating is the first thing to try (decision 8) -- the card
              offered only a grey "Try anyway" (review of 2026-09-27). -->
         <button class="hidden" id="probe-update" style="margin-left:auto"></button>
-        <button id="go" style="margin-left:auto">Download</button>
+        <button id="go" style="margin-left:auto" aria-keyshortcuts="Control+Enter">Download</button>
       </div>
     </div>
 
@@ -835,7 +842,7 @@
         <span class="opt-control"><span class="hint" id="batch-folder"></span></span>
       </div>
       <div class="opt-foot">
-        <button id="batch-go">Download</button>
+        <button id="batch-go" aria-keyshortcuts="Control+Enter">Download</button>
       </div>
     </div>
   </div>
@@ -1181,6 +1188,9 @@ async function api(path, body) {
 
 let mode = "mp4";
 let currentUrl = "";
+// The link box's text when the card was read: Ctrl+Enter downloads only
+// what the box still shows, never an older card under a new link.
+let cardBox = "";
 let qualityLists = { mp3: ["best"], mp4: ["best"] };
 let polling = false;
 let askWhere = true;
@@ -1769,6 +1779,7 @@ async function read() {
     return;
   }
   if (url !== typed) $("url").value = url;    // show the link we took out
+  cardBox = $("url").value;
   const mine = ++readNumber;
   currentUrl = url;
   $("batch").classList.add("hidden");
@@ -3036,6 +3047,22 @@ function closeCard() {
   $("url").focus();
   setReadLabel();
 }
+// Ctrl+Enter presses the card's Download -- the one key that saves a step:
+// paste, then download, without the mouse (Phase 2 item 4; the user kept
+// only this one, "no useless shortcuts"). Only the filled, live button,
+// the one that shows the key: never "Try anyway" against a warning, never
+// from Settings, never twice from a held key.
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || !event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
+  if (event.repeat || document.querySelector(".wrap").dataset.showing !== "main") return;
+  // Another link typed since the card: read it, as Enter would.
+  if ($("url").value.trim() && $("url").value !== cardBox) { event.preventDefault(); read(); return; }
+  const go = !$("batch").classList.contains("hidden") ? $("batch-go")
+    : !$("result").classList.contains("hidden") ? $("go") : null;
+  if (!go || go.disabled || go.classList.contains("hidden") || go.classList.contains("ghost")) return;
+  event.preventDefault();
+  go.click();
+});
 $("result-close").addEventListener("click", closeCard);
 $("batch-close").addEventListener("click", closeCard);
 
@@ -3134,7 +3161,9 @@ window.addEventListener("focus", () => useClipboard(false));
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") useClipboard(false);
 });
-$("url").addEventListener("keydown", (event) => { if (event.key === "Enter") read(); });
+// Ctrl+Enter is Download's key, handled with it: here it re-read the link
+// instead, and nothing was downloaded (seen in the test, 2026-10-24).
+$("url").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.ctrlKey) read(); });
 // A message that stays can be put away with one click.
 $("status").addEventListener("click", () => setStatus(""));
 $("status").title = "Click to close";
@@ -3284,6 +3313,7 @@ function batchTool(found, wanted) {
 }
 
 async function readMany(links) {
+  cardBox = $("url").value;
   const mine = ++readNumber;
   stopWaiting();
   currentUrl = "";
