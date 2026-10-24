@@ -179,6 +179,20 @@ class Job:
     # the post, our own fetch of its file (runners.Request.stop).
     stop: threading.Event = field(default_factory=threading.Event, repr=False)
 
+    def _on_disk(self) -> dict:
+        """For a finished row only: {"on_disk": files still there,
+        "disk_bytes": their size}. A file moved or deleted since is said."""
+        if self.state != DONE or not self.files:
+            return {}
+        present, size = 0, 0
+        for name in self.files:
+            try:
+                size += os.stat(name).st_size
+                present += 1
+            except OSError:
+                pass
+        return {"on_disk": present, "disk_bytes": size}
+
     def as_dict(self) -> dict:
         """What the UI sees. The process handle never leaves this module."""
         return {
@@ -190,6 +204,10 @@ class Job:
             "eta": self.eta, "done_bytes": self.done_bytes, "total_bytes": self.total_bytes,
             "estimated": self.estimated, "files": self.files, "error": self.error,
             "note": self.note,
+            # A finished row's files as they are NOW on the disk: how many are
+            # still there, and their size -- asked to the files themselves,
+            # never remembered (the compact finished row, 2026-10-24).
+            **self._on_disk(),
             # The PATH never leaves this module -- only whether cookies were
             # used, and the reason when they were not.
             # Either road counts. Saying "no cookies" after a job that used

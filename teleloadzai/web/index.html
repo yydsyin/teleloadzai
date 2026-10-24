@@ -603,6 +603,28 @@
   .job { border-top: 1px solid var(--line); padding: 12px 0; position: relative; }
   .job:first-child { border-top: 0; }
   .job-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  /* A finished row: one line (chosen 2026-10-24 from drawn pictures). The
+     tracking line is for a download on its way; once it has arrived, the
+     row says where it is and how big, and offers it. */
+  .job.compact .track { display: none; }
+  .job.compact .job-top { align-items: center; flex-wrap: nowrap; }
+  .job.compact .job-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job.compact .job-right { flex: none; display: inline-flex; align-items: center; gap: 0; }
+  .job.compact .small { color: var(--soft); white-space: pre; }
+  .ftag {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .03em;
+    padding: 2px 7px; border-radius: 6px; margin-right: 10px; vertical-align: 1px;
+    background: color-mix(in srgb, var(--ink) 9%, var(--card)); color: var(--soft);
+  }
+  .done-at { font-size: 13px; font-weight: 600; color: var(--ok-text); }
+  .done-at.gone { color: var(--soft); font-weight: 500; }
+  .job.compact .done-at:not(.gone) + .small:not(:empty)::before { content: " · "; }
+  .done-links { display: inline-flex; gap: 14px; margin-left: 16px; }
+  .link-btn {
+    min-height: 28px; padding: 0 2px; border: 0; background: none; cursor: pointer;
+    color: var(--ink); font-size: 13px; text-decoration: underline; text-underline-offset: 3px;
+  }
+  .link-btn:hover { color: var(--accent); }
   .job-name { font-weight: 500; word-break: break-word; }
   /* At the smallest window a long name was squeezed into an 83 px column,
      8 lines tall, beside a progress line that never wrapped (review of
@@ -2172,6 +2194,14 @@ function failButtons(job) {
   ].filter(Boolean).join("\n");
 }
 
+/** A finished row with its file(s): ONE line -- a format tag, the name, "In
+ *  your folder · 4.7 MB", Open · Show in folder. Its tracking line said
+ *  nothing more once all green, and four green lines read as a chart (the
+ *  user, 2026-10-24: "this page so weird"; chosen from drawn pictures). */
+function compactRow(job) {
+  return job.state === "done" && !job.skipped && (job.files || []).length > 0;
+}
+
 /** What moves while a job runs: the bar and the line on the right. */
 function jobProgress(job) {
   const percent = parseFloat((job.percent || "0").replace("%", ""))
@@ -2184,7 +2214,14 @@ function jobProgress(job) {
   // ("In your folder", "Failed", "Stopped", "Waiting"): said again on the
   // right, every state was written twice (loop round 1, 2026-10-23).
   // "Already there" has no line, so it keeps its word.
-  if (job.state === "done") right = job.skipped ? (job.skip_reason ? "skipped" : "already there") : "";
+  if (job.state === "done" && compactRow(job)) {
+    // The compact finished row: its size, read from the disk by the server
+    // ("In your folder" is the word beside it; nothing when the file is gone).
+    const n = (job.files || []).length;
+    right = !job.on_disk ? ""
+      : [n > 1 ? `${job.on_disk} files` : "", formatSize(job.disk_bytes || 0)].filter(Boolean).join(" · ");
+  }
+  else if (job.state === "done") right = job.skipped ? (job.skip_reason ? "skipped" : "already there") : "";
   else if (["error", "cancelled", "waiting"].includes(job.state)) right = "";
   // A live recording has a real measure: the time against its limit
   // (decision 33's own example, "14 of 60 minutes" -- never shown until
@@ -2323,6 +2360,7 @@ function sayState(row, job) {
 /** Everything that changes the SHAPE of a row. Same shape -> update in place. */
 function jobShape(job) {
   return JSON.stringify([job.state, job.interrupted, job.skipped, job.skip_reason, job.error, job.note,
+    Boolean(job.on_disk),
     job.cookie_note, job.other_tool && job.other_tool.id, loginOffer(job),
     job.tool, job.target, job.title, job.mode, job.quality]);
 }
@@ -2337,13 +2375,23 @@ function jobRow(job) {
   const { percent, right } = jobProgress(job);
 
   const canCancel = job.state === "waiting" || job.state === "running";
+  const compact = compactRow(job);
+  if (compact) row.classList.add("compact");
 
   row.innerHTML = `
     <div class="job-top">
       <span class="job-name"></span><span class="sr-only job-state"></span>
       <span class="job-right">
+        ${compact ? `<span class="done-at${job.on_disk ? "" : " gone"}">${job.on_disk
+          ? "In your folder" : "Not in the folder any more"}</span>` : ""}
         <span class="small"></span>
         ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
+        ${compact ? `<span class="done-links">${job.on_disk
+          ? `<button class="link-btn" data-open="${job.id}">Open</button><button
+          class="link-btn" data-reveal="${job.id}">Show in folder</button>`
+          // Its file moved or deleted: Open and Show in folder could only
+          // answer an error (decision 40) -- the row can go instead.
+          : `<button class="link-btn" data-dismiss="${job.id}">Remove</button>`}</span>` : ""}
       </span>
     </div>
     <div class="track" aria-hidden="true">
@@ -2358,7 +2406,7 @@ function jobRow(job) {
         ⚠️ Running without your cookies: ${job.cookie_note}.
       </div>` : ""}
     ${job.state === "done" && job.note && !job.skipped ? '<div class="hint job-note" style="margin-top:6px"></div>' : ""}
-    ${job.state === "done" && (job.files || []).length ? `<div class="row" style="margin-top:6px">
+    ${job.state === "done" && (job.files || []).length && !compact ? `<div class="row" style="margin-top:6px">
         <button class="ghost tiny" data-open="${job.id}">Open</button>
         <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
       </div>` : ""}
@@ -2425,6 +2473,21 @@ function jobRow(job) {
     : job.mode === "mp4" && original ? original : job.mode.toUpperCase();
   row.querySelector(".job-name").textContent =
     [shown, [kind, quality].filter(Boolean).join(" ")].filter(Boolean).join("  ·  ");
+  if (compact) {
+    // The format in a tag, the name without its ending: "#music .mp3" and
+    // "#music .mp4" were the only difference between two rows (2026-10-24).
+    // A row of several files (a playlist) is named by its title.
+    const name = row.querySelector(".job-name");
+    const tag = document.createElement("span");
+    tag.className = "ftag";
+    tag.textContent = [original && job.mode === "mp4" ? "Files" : job.mode.toUpperCase(), quality]
+      .filter(Boolean).join(" · ");
+    const plain = files.length > 1 ? (job.title || fileName(files[0]))
+      : fileName(files[0]).replace(/\s*\.[a-z0-9]{2,4}$/i, "");
+    name.textContent = "";
+    name.append(tag, plain);
+    name.title = files.length > 1 ? plain : fileName(files[0]);
+  }
   row.querySelector(".small").textContent = right;
   paintTrack(row, job, percent);
   sayState(row, job);
@@ -2611,7 +2674,10 @@ function paintListTools(jobs) {
   $("list-total").textContent = show
     ? `${ended} of ${jobs.length} finished` + (failed ? ` · ${failed} failed` : "") : "";
   $("list-total").classList.toggle("hidden", !show);
-  $("list-bar").classList.toggle("hidden", !show);
+  // The bar only while something is on its way: all green under a finished
+  // list was one more line saying nothing (2026-10-24).
+  $("list-bar").classList.toggle("hidden",
+    !show || !jobs.some((j) => j.state === "waiting" || j.state === "running"));
   $("list-bar").firstElementChild.style.transform = `scaleX(${show ? ended / jobs.length : 0})`;
   // One failed row has its own Retry; from two, one button for all of them.
   $("retry-failed").classList.toggle("hidden", retryable(jobs).length < 2);
