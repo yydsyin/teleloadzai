@@ -133,6 +133,14 @@
   .list-bar { height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 0 0 10px; }
   .list-bar > i { display: block; height: 100%; width: 100%; background: var(--ok); transform-origin: left;
     transform: scaleX(0); transition: transform .7s linear; }
+  /* The updates band's tint: something to act on, not an error. */
+  .resume-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px;
+    padding: 6px 6px 6px 12px; border-radius: 10px; font-size: 14px;
+    background: color-mix(in srgb, var(--go) 16%, var(--card));
+    border: 1px solid color-mix(in srgb, var(--go) 45%, var(--line));
+  }
+  .resume-bar span { flex: 1; min-width: 200px; }
   .list-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
   .list-actions { margin-left: auto; display: flex; gap: 6px; }
   #list-filters:not(:has(button:not(.hidden))) { display: none; }
@@ -847,6 +855,12 @@
          counts, Media Downloader's asked-for total). Drawn only when the
          list is long enough to need it. -->
     <div class="list-bar hidden" id="list-bar" aria-hidden="true"><i></i></div>
+    <!-- Downloads cut off when Teleloadzai closed (Phase 2 item 2): they
+         wait for the user, never restart by themselves. -->
+    <div class="resume-bar hidden" id="resume-bar" role="status">
+      <span id="resume-text"></span>
+      <button class="ghost tiny" id="resume-all">Continue them</button>
+    </div>
     <div class="list-tools hidden" id="list-tools">
       <span class="seg-track" id="list-filters" role="group" aria-label="Show"></span>
       <span class="list-actions">
@@ -2193,7 +2207,7 @@ function paintTrack(row, job, percent) {
   // circles (first review of the redesign, 2026-10-23).
   const here = row.querySelector(`[data-stop="${order[reached]}"]`);
   if (here && mark === "failed") here.textContent = "Failed";
-  if (here && mark === "halted" && !job.skipped) here.textContent = "Stopped";
+  if (here && mark === "halted" && !job.skipped) here.textContent = job.interrupted ? "Interrupted" : "Stopped";
   const first = row.querySelector('[data-stop="start"]');
   first.classList.toggle("waiting", job.state === "waiting");
   if (job.state === "waiting") first.textContent = "Waiting";
@@ -2218,14 +2232,15 @@ function paintTrack(row, job, percent) {
  *  "Bilibili trip.mp4, Open" and no state (loop round 2, 2026-10-23). */
 function sayState(row, job) {
   const said = job.state === "done" ? (job.skipped ? "" : "Done, in your folder.")
-    : job.state === "error" ? "Failed." : job.state === "cancelled" ? "Stopped."
+    : job.state === "error" ? "Failed."
+    : job.state === "cancelled" ? (job.interrupted ? "Interrupted when Teleloadzai closed." : "Stopped.")
     : job.state === "waiting" ? "Waiting." : "";
   row.querySelector(".job-state").textContent = said ? " " + said : "";
 }
 
 /** Everything that changes the SHAPE of a row. Same shape -> update in place. */
 function jobShape(job) {
-  return JSON.stringify([job.state, job.skipped, job.skip_reason, job.error,
+  return JSON.stringify([job.state, job.interrupted, job.skipped, job.skip_reason, job.error,
     job.cookie_note, job.other_tool && job.other_tool.id, loginOffer(job),
     job.tool, job.target, job.title, job.mode, job.quality]);
 }
@@ -2275,8 +2290,12 @@ function jobRow(job) {
         <button class="ghost tiny" data-open="${job.id}">Open</button>
         <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
       </div>` : ""}
+    ${job.state === "cancelled" && job.interrupted ? `<div class="hint" style="margin-top:6px">
+        Teleloadzai was closed during this download.${job.live
+          ? " A live stream cannot pick up where it was: Continue records again from now." : ""}
+      </div>` : ""}
     ${job.state === "cancelled" ? `<div class="row" style="margin-top:6px">
-        <button class="ghost tiny" data-retry="${job.id}">Download again</button>
+        <button class="ghost tiny" data-retry="${job.id}">${job.interrupted ? "Continue" : "Download again"}</button>
         <button class="ghost tiny" data-dismiss="${job.id}">Remove</button>
       </div>` : ""}
     ${job.state === "error" && (job.files || []).length ? `<div class="hint" style="margin-top:6px">
@@ -2446,8 +2465,12 @@ async function refresh() {
   $("queue-info").textContent = waiting
     ? `Downloads — ${running} running, ${waiting} waiting`
     : jobs.length ? `Downloads (${jobs.length})` : "Downloads";
-  // Only when it has something to clear (decision 40): failed rows stay.
-  $("clear").classList.toggle("hidden", !jobs.some((j) => j.state === "done" || j.state === "cancelled"));
+  // Only when it has something to clear (decision 40): failed and
+  // interrupted rows stay.
+  $("clear").classList.toggle("hidden",
+    !jobs.some((j) => j.state === "done" || (j.state === "cancelled" && !j.interrupted)));
+  // The kept list could not be read: said once, never a silent empty list.
+  if (data.load_problem && !loadProblemSaid) { loadProblemSaid = true; setStatus(data.load_problem); }
   paintListTools(jobs);
 
   const busy = running + waiting > 0;
@@ -2494,7 +2517,7 @@ function paintListTools(jobs) {
   }
   // A real count, never an estimate (decision 33): finished = done, failed
   // or stopped, out of every row.
-  const ended = jobs.filter((j) => ["done", "error", "cancelled"].includes(j.state)).length;
+  const ended = jobs.filter((j) => ["done", "error", "cancelled"].includes(j.state) && !j.interrupted).length;
   const failed = count("error");
   const show = jobs.length >= 2;
   $("list-total").textContent = show
@@ -2504,8 +2527,32 @@ function paintListTools(jobs) {
   $("list-bar").firstElementChild.style.transform = `scaleX(${show ? ended / jobs.length : 0})`;
   // One failed row has its own Retry; from two, one button for all of them.
   $("retry-failed").classList.toggle("hidden", retryable(jobs).length < 2);
+  // Cut off when Teleloadzai closed: nothing restarts by itself (the user's
+  // choice, 2026-10-24) -- one button continues them all.
+  const cut = jobs.filter((j) => j.state === "cancelled" && j.interrupted).length;
+  $("resume-text").textContent = cut === 1 ? "1 download did not finish when Teleloadzai closed."
+    : `${cut} downloads did not finish when Teleloadzai closed.`;
+  $("resume-all").textContent = cut === 1 ? "Continue it" : "Continue them";
+  $("resume-bar").classList.toggle("hidden", !cut);
   $("list-tools").classList.toggle("hidden", !long && $("retry-failed").classList.contains("hidden"));
 }
+
+let loadProblemSaid = false;
+
+$("resume-all").addEventListener("click", async () => {
+  const rows = lastJobs.filter((j) => j.state === "cancelled" && j.interrupted);
+  const button = $("resume-all");
+  button.disabled = true;
+  let again = 0;
+  for (const job of rows) {
+    const answer = await api("/api/job/" + job.id + "/retry", {});
+    if (!answer.error) again++;
+  }
+  button.disabled = false;
+  await refresh();
+  notify(again === rows.length ? (again === 1 ? "1 download continues." : `${again} downloads continue.`)
+    : `${again} of ${rows.length} downloads continue; the others are no longer in the list.`);
+});
 
 $("retry-failed").addEventListener("click", async () => {
   const rows = retryable(lastJobs);

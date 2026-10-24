@@ -10,6 +10,7 @@ The queue owns the running process of each job, which is what makes
 from __future__ import annotations
 
 import glob
+import json
 import os
 import re
 import subprocess
@@ -24,6 +25,14 @@ from . import children, cookies, explain, runners, ytdlp
 
 WAITING, RUNNING, DONE, ERROR, CANCELLED = "waiting", "running", "done", "error", "cancelled"
 ACTIVE_STATES = (WAITING, RUNNING)
+
+# The list survives closing (Phase 2 item 2, 2026-10-24): these fields of
+# each row are kept in data/jobs.json. Never a cookie: not the cookie file's
+# path, not its note -- the error words are already washed (decision 37).
+_KEPT = ("id", "url", "mode", "quality", "title", "folder", "target", "tool",
+         "platform", "skipped", "skip_reason", "state", "files", "error",
+         "error_from_tool", "limit_minutes", "live", "interrupted")
+HISTORY_LIMIT = 200         # rows kept; the oldest finished ones go first
 
 
 # Stop a tool AND every process it started (moved to children.py, 2026-10-18).
@@ -159,6 +168,9 @@ class Job:
     writing: list[Path] = field(default_factory=list, repr=False)
     live: bool = False          # yt-dlp said it is recording a live stream
     limit_reached: bool = False # ...and its time limit ended it (on_live)
+    # Stopped because Teleloadzai closed, not by the user: its half-written
+    # file is KEPT, and the row offers Continue at the next start.
+    interrupted: bool = False
     process: subprocess.Popen | None = field(default=None, repr=False)
     # Set by Stop, for the steps that hold no process: a server tool reading
     # the post, our own fetch of its file (runners.Request.stop).
@@ -199,13 +211,14 @@ class Job:
             # 2026-10-23). streamlink only ever records live streams.
             "live": self.live or self.tool == "streamlink",
             "limit_minutes": self.limit_minutes,
+            "interrupted": self.interrupted,
         }
 
 
 class Queue:
     """Holds the jobs and decides when each one starts."""
 
-    def __init__(self, max_parallel: Callable[[], int]) -> None:
+    def __init__(self, max_parallel: Callable[[], int], store: Path | None = None) -> None:
         self._max_parallel = max_parallel
         self._jobs: dict[str, Job] = {}
         self._order: list[str] = []          # oldest first
@@ -213,6 +226,73 @@ class Queue:
         self._workers: set[threading.Thread] = set()
         # Tools being updated: their waiting jobs do not start meanwhile.
         self._held: set[str] = set()
+        # Where the list is kept between two runs (None: not kept, in tests).
+        self._store = store
+        self._save_lock = threading.Lock()
+        # Said once on the page when the kept list could not be read.
+        self.load_problem = ""
+
+    # -- the list kept between two runs ---------------------------------------
+
+    def load(self) -> None:
+        """Bring back the list of the last run. A row that was waiting or
+        running then (a crash, a closed console) comes back interrupted:
+        nothing starts by itself (the user's choice, 2026-10-24)."""
+        if self._store is None or not self._store.is_file():
+            return
+        try:
+            rows = json.loads(self._store.read_text(encoding="utf-8"))["jobs"]
+            loaded = []
+            for row in rows:
+                kept = {k: row[k] for k in _KEPT if k in row}
+                job = Job(**kept)
+                if job.state in ACTIVE_STATES:
+                    job.state, job.interrupted = CANCELLED, True
+                loaded.append(job)
+        except (OSError, ValueError, KeyError, TypeError) as problem:
+            # Never a silent empty list (decision 34): the file is kept aside
+            # under another name, and the page says so once.
+            aside = self._store.with_name("jobs (unreadable).json")
+            try:
+                os.replace(self._store, aside)
+            except OSError:
+                pass
+            self.load_problem = (f"The list of your last downloads could not be read "
+                                 f"({type(problem).__name__}). It was kept as {aside.name}.")
+            return
+        with self._lock:
+            for job in loaded[-HISTORY_LIMIT:]:
+                self._jobs[job.id] = job
+                self._order.append(job.id)
+
+    def save(self) -> None:
+        """Write the list, newest HISTORY_LIMIT rows, to a temporary file
+        first, then put it in place: a crash mid-write never leaves half a
+        list (CLAUDE.md §2.2)."""
+        if self._store is None:
+            return
+        with self._lock:
+            # The oldest finished rows go first; a row in progress never does.
+            extra = len(self._order) - HISTORY_LIMIT
+            for job_id in [i for i in self._order if self._jobs[i].state not in ACTIVE_STATES][:max(0, extra)]:
+                del self._jobs[job_id]
+                self._order.remove(job_id)
+            rows = [{k: getattr(self._jobs[i], k) for k in _KEPT} for i in self._order]
+        text = json.dumps({"version": 1, "jobs": rows}, ensure_ascii=False, indent=1)
+        with self._save_lock:
+            temp = self._store.with_name(self._store.name + ".tmp")
+            try:
+                self._store.parent.mkdir(parents=True, exist_ok=True)
+                temp.write_text(text, encoding="utf-8")
+                os.replace(temp, self._store)
+            except OSError as problem:
+                # The downloads go on; only the memory of them is not kept.
+                print(f"Could not keep the list of downloads: {problem}")
+
+    def unfinished(self) -> int:
+        """Downloads waiting or running now: asked before the window closes."""
+        with self._lock:
+            return sum(1 for j in self._jobs.values() if j.state in ACTIVE_STATES)
 
     # -- public ------------------------------------------------------------
 
@@ -245,6 +325,7 @@ class Queue:
                 self._jobs[job.id] = job
                 self._order.append(job.id)
         self._pump()
+        self.save()
         return job
 
     def all(self) -> list[dict]:
@@ -267,6 +348,7 @@ class Queue:
         if process and process.poll() is None:
             stop_tree(process)      # the worker sees CANCELLED and stays quiet
         self._pump()
+        self.save()
         return True
 
     # Retry lives in server.py now (`queue_download(..., replace=)`): it must
@@ -296,11 +378,14 @@ class Queue:
     def stop_all(self) -> int:
         """Stop every job, waiting or running. Used when the app closes:
         until 2026-10-18 a download went on unseen after the window closed,
-        and yt-dlp wrote its cookie jar back after "Forget when I close"."""
+        and yt-dlp wrote its cookie jar back after "Forget when I close".
+        Since 2026-10-24 each one is marked INTERRUPTED: it keeps its
+        half-written file and comes back at the next start, to continue."""
         with self._lock:
             active = [i for i in self._order if self._jobs[i].state in ACTIVE_STATES]
             for job_id in active:           # waiting ones first: none may start
                 self._jobs[job_id].state = CANCELLED
+                self._jobs[job_id].interrupted = True
                 self._jobs[job_id].stop.set()
             processes = [self._jobs[i].process for i in active]
             workers = list(self._workers)
@@ -313,6 +398,7 @@ class Queue:
         deadline = time.time() + 8
         for worker in workers:
             worker.join(max(0.0, deadline - time.time()))
+        self.save()
         return len(active)
 
     def remove(self, job_id: str) -> bool:
@@ -325,19 +411,22 @@ class Queue:
                 return False
             del self._jobs[job_id]
             self._order.remove(job_id)
-            return True
+        self.save()
+        return True
 
     def clear_finished(self) -> int:
         """Done, "already there" and stopped rows -- never a failed one: its
         words and its Retry went with the rest in one click, and "finished"
         reads as "succeeded" (loop round 1, 2026-10-23). A failed row has
-        its own Remove."""
+        its own Remove. Nor an interrupted one: it is not finished."""
         with self._lock:
-            finished = [i for i in self._order if self._jobs[i].state in ("done", "cancelled")]
+            finished = [i for i in self._order if self._jobs[i].state in ("done", "cancelled")
+                        and not self._jobs[i].interrupted]
             for job_id in finished:
                 del self._jobs[job_id]
                 self._order.remove(job_id)
-            return len(finished)
+        self.save()
+        return len(finished)
 
     # -- inside ------------------------------------------------------------
 
@@ -396,6 +485,7 @@ class Queue:
             with self._lock:
                 if not job.title:
                     job.title = title
+            self.save()
 
         def on_live() -> None:
             """yt-dlp is recording a live stream. The "Stop a live recording
@@ -538,6 +628,7 @@ class Queue:
                 destinations = list(job.destinations)
                 writing = list(job.writing)
                 live = job.live
+                interrupted = job.interrupted
             # A live recording ended by Stop is KEPT, not cleaned up: yt-dlp
             # writes it as `<name>.part` in MPEG-TS (its default for a live
             # stream), so it becomes `<name>.ts` under a free name.
@@ -550,7 +641,10 @@ class Queue:
             # Here the tool has ended (download() returned), so Windows no
             # longer holds its files open and they can go. Never after a live
             # recording: a `.part` that could not be renamed is still it.
-            if stopped and not live:
+            # Interrupted by the app closing: its `.part` stays, so Continue
+            # can pick it up (yt-dlp resumes it, unless "Save as" chose the
+            # name: then it starts again, --force-overwrites says no-continue).
+            if stopped and not live and not interrupted:
                 for piece in _leftovers(destinations, job.started - 2, writing):
                     try:
                         piece.unlink()
@@ -559,3 +653,4 @@ class Queue:
             with self._lock:
                 self._workers.discard(threading.current_thread())
             self._pump()
+            self.save()

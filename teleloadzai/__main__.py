@@ -60,6 +60,24 @@ def say_port_taken(port: int, show_box: bool) -> None:
         ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x40)   # "i" icon
 
 
+def ask_before_closing() -> bool:
+    """Closing during a download asks first (Phase 2 item 2, 2026-10-24).
+    pywebview cancels the close when a `closing` handler returns False (read
+    in its winforms code, 6.2.1). Windows writes the buttons in its own
+    language: Yes closes, No (the default) keeps the window open."""
+    left = QUEUE.unfinished()
+    if not left or sys.platform != "win32":
+        return True
+    import ctypes
+    one = left == 1
+    text = (f"{'1 download is' if one else f'{left} downloads are'} not finished.\n\n"
+            f"Close {APP_NAME} anyway? {'It stops' if one else 'They stop'} now, and "
+            f"{'comes' if one else 'come'} back the next time you open {APP_NAME}, ready to continue.")
+    # MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST
+    answer = ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x4 | 0x20 | 0x100 | 0x10000 | 0x40000)
+    return answer == 6          # IDYES
+
+
 def open_window(port: int, httpd=None) -> int:
     """Open the native window. Falls back to the browser if it cannot.
     Returns the exit code: 1 when closing could not forget the log-ins."""
@@ -75,11 +93,12 @@ def open_window(port: int, httpd=None) -> int:
     print(f"{APP_NAME} {APP_VERSION}  -  close the window to stop.")
     try:
         width, height, x, y = opening_place()
-        webview.create_window(
+        window = webview.create_window(
             APP_NAME, url,
             width=width, height=height, x=x, y=y,
             min_size=WINDOW_MINIMUM,
         )
+        window.events.closing += ask_before_closing
         # A "Forget them" that Windows refused last time happens now, before
         # WebView2 takes hold of the folder again.
         login.forget_pending()
@@ -159,6 +178,9 @@ def main() -> int:
             print(f"{dropped} cookies of sites no longer supported were removed.")
     except Exception as problem:
         print(f"Could not tidy the cookie file: {problem}")
+    # The list of the last run, after the sweep above has moved what cut-off
+    # downloads finished: only now is the port ours (decision 21).
+    QUEUE.load()
 
     if args.no_browser:
         serve(port=args.port, open_browser=False, httpd=httpd)

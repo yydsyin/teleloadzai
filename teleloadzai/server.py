@@ -273,7 +273,10 @@ def max_parallel() -> int:
     return max(1, min(MAX_PARALLEL_LIMIT, value))
 
 
-QUEUE = Queue(max_parallel)
+# The list survives closing (Phase 2 item 2, 2026-10-24): data/jobs.json,
+# in the folder .gitignore already keeps out of git. Loaded by __main__
+# AFTER the port is claimed (decision 21), never at import.
+QUEUE = Queue(max_parallel, store=DATA_DIR / "jobs.json")
 tools.set_preview("yt-dlp", load_settings()["ytdlp_channel"] == "preview")
 
 
@@ -549,7 +552,7 @@ class Handler(BaseHTTPRequestHandler):
                     # Said with its real name: rows read "Update
                     # tiktokdownloader" (review of 2026-09-28).
                     job["tool_name"] = tool_name(job["tool"])
-                self._json({"jobs": jobs})
+                self._json({"jobs": jobs, "load_problem": QUEUE.load_problem})
                 return
 
             if path == "/api/tools":
