@@ -78,6 +78,10 @@ def load_settings() -> dict:
         # (Phase 2 item 3, 2026-10-24). On by default, as in Open Video
         # Downloader; only the links ever leave `clipboard_links`.
         "use_clipboard": bool(stored.get("use_clipboard", True)),
+        # Several links or a playlist: "same" (one set of choices for all) or
+        # "each" (a row of choices per video). The user's own pick, kept
+        # (asked 2026-10-24: "its users to choose what mode").
+        "several_mode": "each" if stored.get("several_mode") == "each" else "same",
     }
 
 
@@ -499,6 +503,8 @@ def detection_json(result: Detection) -> dict:
                 "need": login.need(platform.id, option.tool_id, cookies_on),
                 # The buttons the window may show for this tool, and no other.
                 "choices": runners.CHOICES.get(option.tool_id, {"mp4": ""}),
+                # Formats where it names the file itself: asked a folder.
+                "names_itself": list(runners.NAMES_ITSELF.get(option.tool_id, ())),
             }
             for option in offered
         ],
@@ -669,6 +675,7 @@ class Handler(BaseHTTPRequestHandler):
                 "extractor": info.extractor, "is_playlist": info.is_playlist,
                 "entries": info.entries, "max_height": info.max_height,
                 "heights": list(info.heights),
+                "items": [{"url": u, "title": t, "duration": d} for u, t, d in info.items],
             })
             return
 
@@ -949,6 +956,8 @@ class Handler(BaseHTTPRequestHandler):
                 settings["cookies_keep"] = body["cookies_keep"]
             if "use_clipboard" in body:      # False is a real value, not "missing"
                 settings["use_clipboard"] = bool(body["use_clipboard"])
+            if body.get("several_mode") in ("same", "each"):
+                settings["several_mode"] = body["several_mode"]
             if isinstance(body.get("tool_choice"), dict):
                 # One site at a time from the page. Only a tool that site
                 # really lists; choosing the default removes the entry, so

@@ -126,6 +126,22 @@
   .batch-links li { display: flex; gap: 12px; justify-content: space-between; padding: 4px 0; }
   .batch-links .link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .batch-links .prog { flex: none; color: var(--soft); }
+  #batch-row-mode { margin-top: 10px; }
+  /* "Choose for each": a row of choices per video, so the list gets more
+     room; Format and Quality for all are not drawn (each row has its own). */
+  #batch.each .batch-links { max-height: min(300px, 30vh); }
+  #batch.each #batch-row-format, #batch.each #batch-row-quality { display: none; }
+  .batch-links li.each {
+    flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .batch-links li.each:last-child { border-bottom: 0; }
+  .each-title { flex: 1 1 220px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .each-title.reading { color: var(--soft); }
+  .each-choices { display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: wrap; }
+  .each-choices .seg-track button { min-height: 28px; padding: 0 10px; font-size: 13px; }
+  .each-choices select { font-size: 13px; }
+  .each-choices .prog { color: var(--soft); }
   #batch-skipped { margin-top: 8px; line-height: 1.6; }
   /* Over the list: its total, then filters with counts and the bulk buttons. */
   #list-total { margin-left: auto; margin-right: 4px; }
@@ -432,6 +448,12 @@
     .preview .thumb { width: 96px; height: 54px; }
     .controls { margin-top: 10px; }
     .opt-row { min-height: 46px; padding: 5px 0; }
+    /* The "Choices" switch, tighter: at 520x700 its 57 px made the page
+       scroll by 11 px (measured 2026-10-24). */
+    #batch-row-mode { min-height: 34px; padding: 2px 0; margin-top: 6px; }
+    /* Its rows wrap on two lines here: the list scrolls in the card, not the
+       page (520x700, 2026-10-24). */
+    #batch.each .batch-links { max-height: 18vh; }
     .opt-foot { padding-top: 8px; }
     .wrap[data-showing="main"] > #jobs-card { min-height: 150px; }
   }
@@ -816,6 +838,16 @@
     <button class="ghost tiny" id="batch-close" aria-label="Close this card">×</button>
     <div class="title" id="batch-title" role="heading" aria-level="2"></div>
     <div class="meta" id="batch-sites"></div>
+    <!-- The user's own pick, kept (asked 2026-10-24): one set of choices for
+         all, or a row of choices per video. -->
+    <div class="opt-row" id="batch-row-mode">
+      <span class="opt-icon icon-stack" aria-hidden="true"></span>
+      <span class="opt-name">Choices</span>
+      <span class="opt-control seg-track" role="group" aria-label="Choices for these videos">
+        <button class="smode" data-smode="same" aria-pressed="true">Same for all</button>
+        <button class="smode" data-smode="each" aria-pressed="false">Choose for each</button>
+      </span>
+    </div>
     <ul class="batch-links" id="batch-links"></ul>
     <div class="hint hidden" id="batch-skipped"></div>
     <div class="controls">
@@ -827,7 +859,7 @@
           <button class="bchoice" data-bmode="mp4" aria-pressed="true">MP4</button>
         </span>
       </div>
-      <div class="opt-row">
+      <div class="opt-row" id="batch-row-quality">
         <span class="opt-icon icon-sliders" aria-hidden="true"></span>
         <span class="opt-name" aria-hidden="true">Quality</span>
         <span class="opt-control">
@@ -1332,11 +1364,21 @@ function updateGoLabel() {
   }
 }
 
+/** Does this tool name its files itself in this format (server:
+ *  runners.NAMES_ITSELF)? Then a "Save as" name would be thrown away, and a
+ *  folder window is asked instead. */
+function namesItself(tool, fmt) {
+  return Boolean(tool && (tool.names_itself || []).includes(fmt));
+}
+
 /**
  * What the file will be called when no title was read -- per road, because
  * the roads differ (checked in runners._file_name and dialogs.save_file).
  */
 function unknownNameText(tool) {
+  if (askWhere && namesItself(tool, mode)) {
+    return `A folder window will open: ${tool.name} names the file itself.`;
+  }
   if (askWhere) return 'The "Save as" window will suggest the name "unknown".';
   const id = tool && tool.id;
   if (id === "streamlink" || id === "n-m3u8dl-re") return 'The file will be named "unknown".';
@@ -1784,6 +1826,8 @@ async function read() {
   currentUrl = url;
   $("batch").classList.add("hidden");
   batch = [];
+  batchPlaylist = null;
+  eachRead++;
   $("result").classList.add("hidden");
   $("unsupported").classList.add("hidden");
   stopWaiting();
@@ -1978,6 +2022,11 @@ async function readLink(url, mine) {
     $("thumb").classList.add("hidden");
     probeProblem = true;
     showChosenTool();         // the needs line may no longer offer the reader
+  } else if ((info.items || []).length > 1) {
+    // A playlist (its videos have pages of their own): the several-links
+    // card, with its "Same for all / Choose for each" (2026-10-24).
+    openPlaylist(found, info, found.final_url || url);
+    return;                   // it says its own title aloud
   } else {
     $("title").textContent = info.title;
     currentTitle = info.title || "";
@@ -3047,6 +3096,8 @@ function closeCard() {
   $("result").classList.add("hidden");
   $("batch").classList.add("hidden");
   batch = [];
+  batchPlaylist = null;
+  eachRead++;                 // its videos still being read are dropped
   $("read").disabled = false;
   currentUrl = "";
   $("url").value = "";
@@ -3251,8 +3302,18 @@ $("go").addEventListener("click", async () => {
   }
   const title = currentTitle;
   let target = "";
+  let folder = "";
+  const tool = chosenTool();
 
-  if (askWhere) {
+  if (askWhere && namesItself(tool, mode)) {
+    // gallery-dl, XHS-Downloader: a typed name was thrown away -- only the
+    // folder is ever used, so only the folder is asked (2026-10-24).
+    setStatus(`Choose the folder in the Windows window: ${tool.name} names the file itself…`);
+    const chosen = await api("/api/pick-folder", {});
+    if (chosen.error) { setStatus("Error: " + chosen.error); return; }
+    if (chosen.cancelled || !chosen.folder) { setStatus("Cancelled."); return; }
+    folder = chosen.folder;
+  } else if (askWhere) {
     setStatus("Choose where to save it in the Windows window…");
     const chosen = await api("/api/save-as", { suggested: title, mode });
     if (chosen.error) { setStatus("Error: " + chosen.error); return; }
@@ -3261,7 +3322,7 @@ $("go").addEventListener("click", async () => {
   }
 
   const job = await api("/api/download", {
-    url: currentUrl, mode, title, target,
+    url: currentUrl, mode, title, target, folder,
     // A hidden list is a choice the tool never receives: say so, send "best".
     quality: $("quality").classList.contains("hidden") ? "best" : $("quality").value,
     tool: (chosenTool() || {}).id || "yt-dlp",
@@ -3289,6 +3350,187 @@ const BATCH_MAX = 50;
 let batch = [];             // [{url, found, tool}] in the order pasted
 let batchExtra = 0;         // links past BATCH_MAX, said on the card
 let batchMode = "mp4";
+// "same": one Format / Quality / folder for all. "each": a row of choices per
+// video -- the user's own pick, kept in Settings (asked 2026-10-24).
+let severalMode = "same";
+// The card is a playlist: {url, title, count, found}. Its videos are the rows
+// (50 at most); "Same for all" downloads the whole list as one job.
+let batchPlaylist = null;
+let eachRead = 0;           // reads of the "each" rows: a newer card drops an older one
+
+/** The programs a row may use: the site's, installed. */
+function rowTools(item) {
+  return ((item.found && item.found.tools) || []).filter((t) => t.installed);
+}
+
+/** A row's program: the one chosen on it, else the one "Same for all" gives. */
+function rowTool(item) {
+  return rowTools(item).find((t) => t.id === item.toolId) || item.tool;
+}
+
+/** The sizes a row offers -- the same rule as the one-link card: MP3 our own
+ *  kbps list, MP4 only the heights the video HAS, and only for a program
+ *  that receives a size (decision 40). */
+function rowQualities(item) {
+  const tool = rowTool(item);
+  const takes = ((tool && tool.choices) || {})[item.fmt];
+  if (item.fmt === "mp3") return takes === "kbps" ? (qualityLists.mp3 || ["best"]) : ["best"];
+  const info = item.info || {};
+  if (takes !== "height" || !info.max_height) return ["best"];
+  return (qualityLists.mp4 || ["best"]).filter((v) => v === "best"
+    || (Number(v) < info.max_height && (info.heights || []).includes(Number(v))));
+}
+
+/** A row's own starting choices: what "Same for all" would give it. */
+function startRow(item) {
+  if (item.fmt) return;
+  item.fmt = batchMode;
+  item.toolId = item.tool ? item.tool.id : "";
+  item.quality = batchMode === "mp3" ? $("batch-quality").value || "best" : "best";
+}
+
+/** One video's row of choices ("Choose for each"). Text only, never HTML:
+ *  titles and links are whatever the site or the paste said. */
+function eachRow(item) {
+  const li = document.createElement("li");
+  li.className = "each";
+  const name = document.createElement("span");
+  name.className = "each-title" + (item.info === undefined && !item.title ? " reading" : "");
+  name.textContent = item.title || shortLink(item.url);
+  name.title = item.url;
+  const box = document.createElement("span");
+  box.className = "each-choices";
+  const label = item.title || shortLink(item.url);
+  const tool = rowTool(item);
+  const choices = (tool && tool.choices) || {};
+
+  // Format: MP3 only where some program of the site makes one.
+  const seg = document.createElement("span");
+  seg.className = "seg-track";
+  seg.setAttribute("role", "group");
+  seg.setAttribute("aria-label", "Format for " + label);
+  const formats = rowTools(item).some((t) => "mp3" in (t.choices || {})) ? ["mp3", "mp4"] : ["mp4"];
+  for (const f of formats) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "fchoice";
+    b.dataset.fmt = f;
+    b.textContent = f === "mp3" ? "MP3" : (choices.label || "MP4");
+    b.setAttribute("aria-pressed", String(item.fmt === f));
+    b.addEventListener("click", () => {
+      item.fmt = f;
+      // MP3 on a program that makes none moves the row to one that does,
+      // as the one-link card does (decision 13, point 2).
+      if (f === "mp3" && !("mp3" in ((rowTool(item) || {}).choices || {}))) {
+        const maker = rowTools(item).find((t) => "mp3" in (t.choices || {}));
+        if (maker) item.toolId = maker.id;
+      }
+      item.quality = "best";
+      redrawRow(item);
+    });
+    seg.appendChild(b);
+  }
+  box.appendChild(seg);
+
+  // Quality: drawn only when there is a real choice.
+  const sizes = rowQualities(item);
+  if (sizes.length > 1) {
+    const q = document.createElement("select");
+    q.className = "each-quality";
+    q.setAttribute("aria-label", "Quality for " + label);
+    // The row's own format, not the one-link card's (`qualityLabel` reads that).
+    for (const v of sizes) {
+      q.add(new Option(v === "best" ? "Best" : v + (item.fmt === "mp3" ? " kbps" : "p"), v));
+    }
+    q.value = sizes.includes(item.quality) ? item.quality : "best";
+    item.quality = q.value;
+    q.addEventListener("change", () => { item.quality = q.value; });
+    box.appendChild(q);
+  } else {
+    item.quality = "best";
+  }
+
+  // Program: a list where the site has several installed, else its name.
+  const tools = rowTools(item).filter((t) => item.fmt !== "mp3" || "mp3" in (t.choices || {}));
+  if (tools.length > 1) {
+    const p = document.createElement("select");
+    p.className = "each-tool";
+    p.setAttribute("aria-label", "Program for " + label);
+    for (const t of tools) p.add(new Option(t.name, t.id));
+    p.value = tool ? tool.id : tools[0].id;
+    p.addEventListener("change", () => { item.toolId = p.value; redrawRow(item); });
+    box.appendChild(p);
+  } else {
+    const p = document.createElement("span");
+    p.className = "prog";
+    p.textContent = tool ? tool.name : "…";
+    box.appendChild(p);
+  }
+  li.append(name, box);
+  li._item = item;
+  return li;
+}
+
+function redrawRow(item) {
+  const old = [...$("batch-links").children].find((li) => li._item === item);
+  if (!old) { renderBatch(); return; }
+  const focused = document.activeElement;
+  const where = focused && old.contains(focused)
+    ? (focused.dataset.fmt ? `[data-fmt="${focused.dataset.fmt}"]` : "." + focused.className) : "";
+  const fresh = eachRow(item);
+  old.replaceWith(fresh);
+  // The keyboard stays where it was: a row redrawn under it lost the focus.
+  if (where) { const again = fresh.querySelector(where); if (again) again.focus(); }
+}
+
+/** "Choose for each": read each video (title and real sizes), four at a
+ *  time, so its row can offer what it really has. A playlist's titles are
+ *  already known; its sizes are not. */
+async function readEach() {
+  const mine = ++eachRead;
+  const todo = batch.filter((i) => i.tool && i.info === undefined);
+  let next = 0;
+  const worker = async () => {
+    while (next < todo.length) {
+      const item = todo[next++];
+      if (!(item.found && item.found.read_by)) { item.info = null; continue; }
+      let info;
+      try { info = await api("/api/probe", { url: item.url }); }
+      catch (problem) { info = { error: String(problem) }; }
+      if (mine !== eachRead) return;
+      item.info = info.error ? null : info;
+      if (!item.title && info.title) {
+        item.title = info.items && info.items.length > 1
+          ? `${info.title} — ${info.items.length} videos` : info.title;
+      }
+      renderBatch();
+    }
+  };
+  // Four at a time, as the links are checked. It barely helps on YouTube
+  // (29 videos: 22 read after 160 s with two, all 29 in 156 s with four):
+  // each read is yt-dlp's own heavy work. Hence Download is never held.
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  if (mine === eachRead) renderBatch();
+}
+
+/** A playlist link: its videos become the card's rows (read 2026-10-24: a
+ *  YouTube playlist's items are links to their own pages). */
+function openPlaylist(found, info, url) {
+  // Called from inside the read: its readNumber stays, so the read's own end
+  // gives the Read button back.
+  stopWaiting();
+  $("result").classList.add("hidden");
+  currentUrl = "";
+  batchPlaylist = { url, title: info.title || "", count: info.items.length, found };
+  batchExtra = Math.max(0, info.items.length - BATCH_MAX);
+  batch = info.items.slice(0, BATCH_MAX).map((it) => ({
+    url: it.url, found, tool: null, title: it.title || "", duration: it.duration }));
+  batchMode = mode;
+  $("batch").classList.remove("hidden");
+  renderBatch();
+  if (severalMode === "each") readEach();
+  $("announce").textContent = $("batch-title").textContent;
+}
 
 /** "youtube.com/watch?v=jNQXAC9IVRw", cut to fit a row. */
 function shortLink(url) {
@@ -3327,6 +3569,8 @@ async function readMany(links) {
   $("url").removeAttribute("aria-invalid");
   setStatus("");
   batchExtra = Math.max(0, links.length - BATCH_MAX);
+  batchPlaylist = null;
+  eachRead++;                 // an older card's reads must not come back
   batch = links.slice(0, BATCH_MAX).map((url) => ({ url, found: null, tool: null }));
   batchMode = mode;           // MP3 stays from one paste to the next, as on the card
   $("batch").classList.remove("hidden");
@@ -3350,6 +3594,7 @@ async function readMany(links) {
   setReadLabel();
   renderBatch();
   $("announce").textContent = $("batch-title").textContent + ". " + $("batch-sites").textContent;
+  if (severalMode === "each") readEach();
 }
 
 function renderBatch() {
@@ -3368,25 +3613,52 @@ function renderBatch() {
     item.tool = pick.tool;
     if (f.ffmpeg_missing) noFfmpeg = true;
   }
-  if (batchExtra) skipped.push(`${batchExtra} more: ${BATCH_MAX} links at most at once. Paste the rest after.`);
+  const each = severalMode === "each";
+  const list0 = batchPlaylist;
+  if (batchExtra && !list0) skipped.push(`${batchExtra} more: ${BATCH_MAX} links at most at once. Paste the rest after.`);
+  // A playlist's videos past 50 still come down with "Same for all" (one job
+  // takes the whole list); one by one, 50 is the most the card can hold.
+  if (batchExtra && list0 && each) {
+    skipped.push(`${batchExtra} more videos: ${BATCH_MAX} at most when choosing for each video. ` +
+      "“Same for all” takes the whole playlist.");
+  }
   const ready = batch.filter((i) => i.tool);
+  if (each) ready.forEach(startRow);
+  // "Choose for each": the rows wait for their video to be read (decision 33:
+  // the count, never a frozen card).
+  const pendingRows = each ? ready.filter((i) => i.info === undefined).length : 0;
 
   // While reading, a real count (decision 33); then how many will come down.
   $("batch-title").textContent = reading ? `Reading the links… ${read} of ${batch.length}`
+    : pendingRows ? `Reading the videos… ${ready.length - pendingRows} of ${ready.length}`
+    : list0 ? `${list0.title || "Playlist"} — ${list0.count} videos`
     : ready.length === 1 ? "1 link" : `${ready.length} links`;
   const sites = new Map();
   for (const item of ready) sites.set(item.found.platform, (sites.get(item.found.platform) || 0) + 1);
-  $("batch-sites").textContent = [...sites].map(([name, n]) => `${name} ${n}`).join(" · ");
+  // Reading takes about 5 s a video on YouTube (156 s for 29, four at a
+  // time: yt-dlp's own work, not the wait), so Download is not held: what
+  // a row not read yet will get is said instead.
+  $("batch-sites").textContent = [...sites].map(([name, n]) => `${name} ${n}`).join(" · ")
+    + (pendingRows ? " · Download now: videos not read yet come at their best size." : "");
 
   // Text only, never HTML: these are whatever was pasted.
   const list = $("batch-links");
+  // A read that ends rebuilds the rows: the keyboard stays on the row and
+  // the control it was on.
+  const focused = document.activeElement;
+  const keepRow = focused && focused.closest ? focused.closest("li.each") : null;
+  const keepItem = keepRow ? keepRow._item : null;
+  const keepWhere = keepItem
+    ? (focused.dataset.fmt ? `[data-fmt="${focused.dataset.fmt}"]` : "." + focused.className) : "";
+  const scrolled = list.scrollTop;
   list.textContent = "";
   for (const item of batch) {
     if (item.found && !item.tool) continue;       // said under "Not added"
+    if (each && item.tool) { list.appendChild(eachRow(item)); continue; }
     const li = document.createElement("li");
     const link = document.createElement("span");
     link.className = "link";
-    link.textContent = shortLink(item.url);
+    link.textContent = item.title || shortLink(item.url);
     link.title = item.url;
     const prog = document.createElement("span");
     prog.className = "prog";
@@ -3394,7 +3666,23 @@ function renderBatch() {
     li.append(link, prog);
     list.appendChild(li);
   }
+  if (list0 && !each && batchExtra) {
+    const li = document.createElement("li");
+    li.className = "prog";
+    li.textContent = `…and ${batchExtra} more videos`;
+    list.appendChild(li);
+  }
   list.classList.toggle("hidden", !list.children.length);
+  list.scrollTop = scrolled;
+  if (keepItem) {
+    const row = [...list.children].find((li) => li._item === keepItem);
+    const again = row && row.querySelector(keepWhere);
+    if (again) again.focus();
+  }
+  $("batch").classList.toggle("each", each);
+  for (const b of document.querySelectorAll(".smode")) {
+    b.setAttribute("aria-pressed", String(b.dataset.smode === severalMode));
+  }
 
   if (noFfmpeg) skipped.unshift("FFmpeg is not installed, and every download needs it. Paste one link alone: its card installs it.");
   const box = $("batch-skipped");
@@ -3427,13 +3715,27 @@ function renderBatch() {
   }
   select.classList.toggle("hidden", !mp3);
   $("batch-quality-why").classList.toggle("hidden", mp3);
-  $("batch-folder").textContent = askWhere ? "You choose it when you press Download"
-    : ($("folder").value || "The folder in Settings");
+  $("batch-folder").textContent = !askWhere ? ($("folder").value || "The folder in Settings")
+    : each ? "You choose each video's name and folder when you press Download"
+    : "You choose it when you press Download";
 
   const go = $("batch-go");
-  go.textContent = ready.length ? `Download ${ready.length}` : "Download";
+  const count = list0 && !each && ready.length ? list0.count : ready.length;
+  go.textContent = count ? `Download ${count}` : "Download";
   go.classList.toggle("hidden", !reading && !ready.length);
   go.disabled = reading || noFfmpeg;
+}
+
+for (const b of document.querySelectorAll(".smode")) {
+  b.addEventListener("click", () => {
+    if (severalMode === b.dataset.smode) return;
+    severalMode = b.dataset.smode;
+    // Kept for the next time (the user's pick); a failed save is said.
+    api("/api/settings", { several_mode: severalMode })
+      .catch((problem) => setStatus("Could not save this choice: " + problem));
+    renderBatch();
+    if (severalMode === "each") readEach();
+  });
 }
 
 for (const b of document.querySelectorAll(".bchoice")) {
@@ -3443,6 +3745,7 @@ for (const b of document.querySelectorAll(".bchoice")) {
 $("batch-go").addEventListener("click", async () => {
   const ready = batch.filter((i) => i.tool);
   if (!ready.length) return;
+  if (severalMode === "each") { downloadEach(ready); return; }
   let folder = "";
   // One folder window for all of them, never one per link (the user's
   // choice, 2026-10-24); each file keeps the name its program gives it.
@@ -3457,23 +3760,80 @@ $("batch-go").addEventListener("click", async () => {
   go.disabled = true;
   const refused = [];
   let added = 0;
-  for (const item of ready) {
-    go.textContent = `Adding ${added + refused.length + 1} of ${ready.length}…`;
+  // A playlist, "Same for all": ONE job for the whole list, all its videos
+  // (past 50 too), each named by its own title -- the folder window above,
+  // never one "Save as" name that became "name 1", "name 2"… (seen
+  // 2026-10-24 on an Instagram post; the same rule for a playlist).
+  const jobs = batchPlaylist
+    ? [{ url: batchPlaylist.url, found: batchPlaylist.found, tool: ready[0].tool, title: batchPlaylist.title }]
+    : ready;
+  for (const item of jobs) {
+    go.textContent = `Adding ${added + refused.length + 1} of ${jobs.length}…`;
     const answer = await api("/api/download", {
-      url: item.url, mode: batchMode, title: "", target: "",
+      url: item.url, mode: batchMode, title: item.title || "", target: "",
       quality: batchMode === "mp3" ? $("batch-quality").value : "best",
       tool: item.tool.id, platform: item.found.platform_id || "", folder,
     });
     if (answer.error) refused.push(`${shortLink(item.url)}: ${answer.error}`);
     else added++;
   }
+  const whole = batchPlaylist ? batchPlaylist.count : 0;
   closeCard();
   refresh();
   // Every link accounted for: a refused one is said, never dropped (decision 34).
-  const done = added === 1 ? "1 download added." : `${added} downloads added.`;
+  const done = whole && added ? `The playlist was added: ${whole} videos, in one row.`
+    : added === 1 ? "1 download added." : `${added} downloads added.`;
   if (refused.length) setStatus(`${done} Not added: ${refused.join(" · ")}`);
   else notify(done);
 });
+
+/** "Choose for each": each row with its own Format, Quality and program --
+ *  and, with "Ask where to save" on, its own "Save as" window, one after
+ *  another (decision 22's one folder window is for "Same for all"). A window
+ *  closed with Cancel skips that video only, and is said. */
+async function downloadEach(ready) {
+  const go = $("batch-go");
+  go.disabled = true;
+  const refused = [];
+  const cancelled = [];
+  let added = 0;
+  for (const [n, item] of ready.entries()) {
+    const label = item.title || shortLink(item.url);
+    const tool = rowTool(item);
+    let target = "";
+    let folder = "";
+    if (askWhere) {
+      go.textContent = `Choosing ${n + 1} of ${ready.length}…`;
+      // A program that names its files itself is asked a folder, never a
+      // name it would throw away (gallery-dl, XHS-Downloader).
+      const own = namesItself(tool, item.fmt);
+      setStatus(own ? `Choose the folder for “${label}” in the Windows window: ${tool.name} names the file itself…`
+        : `Choose where to save “${label}” in the Windows window…`);
+      const chosen = own ? await api("/api/pick-folder", {})
+        : await api("/api/save-as", { suggested: item.title || "", mode: item.fmt });
+      if (chosen.error) { refused.push(`${label}: ${chosen.error}`); continue; }
+      if (chosen.cancelled || !(chosen.path || chosen.folder)) { cancelled.push(label); continue; }
+      target = chosen.path || "";
+      folder = chosen.folder || "";
+    }
+    go.textContent = `Adding ${n + 1} of ${ready.length}…`;
+    const answer = await api("/api/download", {
+      url: item.url, mode: item.fmt, title: item.title || "", target,
+      quality: item.quality || "best",
+      tool: tool.id, platform: item.found.platform_id || "", folder,
+    });
+    if (answer.error) refused.push(`${label}: ${answer.error}`);
+    else added++;
+  }
+  closeCard();
+  refresh();
+  const done = added === 1 ? "1 download added." : `${added} downloads added.`;
+  const said = [done,
+    cancelled.length ? `Not added (Cancel pressed): ${cancelled.join(" · ")}` : "",
+    refused.length ? `Not added: ${refused.join(" · ")}` : ""].filter(Boolean).join(" ");
+  if (cancelled.length || refused.length) setStatus(said);
+  else notify(done);
+}
 
 $("clear").addEventListener("click", async () => { await api("/api/jobs/clear", {}); refresh(); });
 
@@ -3953,6 +4313,7 @@ async function forgetCookies() {
   });
   $("ask-where").checked = askWhere;
   $("use-clipboard").checked = settings.use_clipboard !== false;
+  severalMode = settings.several_mode === "each" ? "each" : "same";
   updateGoLabel();
 
   if (!settings.setup_done) {      // first launch: one line (decision 17)

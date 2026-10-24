@@ -163,6 +163,11 @@ class MediaInfo:
     # Every picture height the site really has, up to max_height. A smaller
     # choice is offered only if it exists: TikTok's "480p" gave 576p.
     heights: tuple[int, ...] = ()
+    # A playlist's videos, each (link, title, seconds) -- only when EVERY
+    # item is a link to its own page. Read 2026-10-24: a YouTube playlist's
+    # 29 items are `_type: url` with "watch?v=…" links; an Instagram post's
+    # 3 items have no page, only a passing file address, and stay one post.
+    items: tuple[tuple[str, str, int | None], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -323,6 +328,11 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
     # What "Best" delivers: the height of the format the rule picked. Not the
     # tallest listed -- TikTok lists 720p, the rule gives 576p.
     picked = data.get("height") if isinstance(data.get("height"), int) else None
+    items: tuple[tuple[str, str, int | None], ...] = ()
+    if is_playlist and entries and all(
+            isinstance(e, dict) and e.get("_type") == "url"
+            and str(e.get("url") or "").startswith("http") for e in entries):
+        items = tuple((e["url"], e.get("title") or "", e.get("duration")) for e in entries)
 
     return MediaInfo(
         title=data.get("title") or "(no title)",
@@ -335,6 +345,7 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
         entries=len(entries) if is_playlist else 1,
         max_height=picked,
         heights=tuple(h for h in heights if picked is None or h <= picked),
+        items=items,
     )
 
 

@@ -1052,6 +1052,17 @@ CHOICES: dict[str, dict] = {
 }
 
 
+# The formats in which a tool names its files itself, from the post: a name
+# typed in "Save as" never reaches it (`_move_out` keeps the tool's names).
+# XHS-Downloader's single MP3 is the exception -- ours, from its video
+# (`_sound_of`). The window asks these for a FOLDER, not a name it would
+# throw away (found 2026-10-24, checking "Choose for each" on every tool).
+NAMES_ITSELF: dict[str, tuple[str, ...]] = {
+    "gallery-dl": ("mp4", "mp3"),
+    "xhs-downloader": ("mp4",),
+}
+
+
 def can_run(tool_id: str) -> bool:
     """True when we know how to drive this tool at all."""
     return tool_id in RECIPES or tool_id in ("yt-dlp", "tiktokdownloader", "ks-downloader")

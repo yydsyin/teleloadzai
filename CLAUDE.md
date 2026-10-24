@@ -64,7 +64,11 @@ One desktop interface that groups the best video/audio download tools behind a s
 - **Targeted edits only.** Never rewrite a whole file without need. Change the smallest possible fragment.
 - **Say which files are touched**, every time.
 - 🚨 **NEVER a script that can erase a file.** Use the edit tool, which replaces a precise fragment and fails cleanly. If a script is truly unavoidable (mass replacement), it writes a **temporary file** and replaces the original only after full success — never open the target for writing first.
-- ⚠️ **A CHANGE OF FORM MAKES EVERYTHING THAT DEPENDED ON IT SUSPECT.** An id, a class, a data format, a route, a rule: list what depended on it and check each one. *(Renaming the app in one place left the token header, `launch.json` and six docstrings behind.)*
+- 🚨 **A CHANGE REACHES MORE THAN THE LINE CHANGED.** Before saying "done", list everything the change touches, check each one, and **adapt what no longer fits the new code** — where adapting is not simple, propose the fix. Three lists, every time:
+  - **every program it drives** — all of them, not only yt-dlp, in one table: works / does not / fix proposed;
+  - **every screen, at the user's two sizes** (small window, full screen), when the layout can move — never a third size unasked;
+  - **every name, id, route, data format or rule** that depended on what changed.
+  *(The user's rule, 2026-10-24, joining three: this line's old "a change of form makes everything that depended on it suspect" — renaming the app in one place left the token header, `launch.json` and six docstrings behind; the two sizes, until then only in my memory; and "every function that calls the tools is checked for all of them" — "Choose for each" sent a "Save as" name that gallery-dl and XHS-Downloader throw away.)*
 - **Bugs: describe first, fix only after a yes.** Report any bug found along the way, even outside the current task.
 
 ### 2.3 After every finished step
