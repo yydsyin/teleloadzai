@@ -157,6 +157,13 @@ def _login_saved(kept: int) -> None:
 login.on_saved = _login_saved
 
 
+def _retry_folder(old) -> str:
+    """The folder a Retry goes to: the first try's, when it still exists.
+    A row from several links went to the folder chosen for them; its Retry
+    must not land in the Settings folder instead (2026-10-24)."""
+    return str(old.folder) if old.folder and Path(old.folder).is_dir() else ""
+
+
 def _retry_target(old) -> str:
     """The "Save as" path a Retry or "Download again" may reuse.
 
@@ -175,7 +182,7 @@ def _retry_target(old) -> str:
 
 def queue_download(url: str, mode: str, quality: str, title: str, target: str,
                    tool: str, platform: str, force: bool = False,
-                   replace: str = "") -> tuple[dict, int]:
+                   replace: str = "", folder: str = "") -> tuple[dict, int]:
     """Check a download request and put it in the queue. Returns (json, status).
 
     ``replace`` is the id of a finished job this one takes the place of --
@@ -199,13 +206,18 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
         quality = "best"
     if tools.installed_path(tool) is None:
         return {"error": f"{tool} is not installed"}, 400
+    # Several links go to ONE folder chosen in the Windows window (the user's
+    # choice, 2026-10-24), and a Retry goes back to where its first try
+    # went. Only a folder that exists: never one made up by a page.
+    if folder and not Path(folder).is_dir():
+        return {"error": f"The folder {folder} does not exist."}, 400
     # Cookies, when the user has them on AND this tool can take them. `note`
     # is the sentence for the case where it cannot -- it travels with the job
     # so the row can say it instead of failing in silence.
     on = load_settings()["cookies_enabled"]
     # "" when nobody could read the title: the row says so, and the file is
     # named "unknown" -- never the raw link (the user, 2026-09-26).
-    job = QUEUE.add(url, mode, quality, title, download_folder(),
+    job = QUEUE.add(url, mode, quality, title, Path(folder) if folder else download_folder(),
                     Path(target) if target else None, force=force, tool=tool,
                     limit_minutes=record_minutes(),
                     cookie_file=cookies.path_for(tool, on),
@@ -666,8 +678,20 @@ class Handler(BaseHTTPRequestHandler):
                 target=(body.get("target") or "").strip(),
                 tool=(body.get("tool") or "yt-dlp").strip(),
                 platform=(body.get("platform") or "").strip(),
+                folder=(body.get("folder") or "").strip(),
             )
             self._json(answer, status)
+            return
+
+        if path == "/api/pick-folder":
+            # One folder for several links: the Windows window, and the answer
+            # -- the Settings folder is NOT changed (Browse… does that).
+            try:
+                chosen = dialogs.pick_folder(download_folder())
+            except dialogs.DialogError as problem:
+                self._json({"error": str(problem)}, 500)
+                return
+            self._json({"cancelled": True} if chosen is None else {"folder": str(chosen)})
             return
 
         if path.startswith("/api/job/") and path.endswith("/switch"):
@@ -683,7 +707,7 @@ class Handler(BaseHTTPRequestHandler):
             answer, status = queue_download(
                 url=old.url, mode=old.mode, quality=old.quality, title=old.title,
                 target=_retry_target(old), tool=(body.get("tool") or "").strip(),
-                platform=old.platform, replace=old.id,
+                platform=old.platform, replace=old.id, folder=_retry_folder(old),
             )
             self._json(answer, status)
             return
@@ -733,7 +757,7 @@ class Handler(BaseHTTPRequestHandler):
             answer, status = queue_download(
                 url=old.url, mode=old.mode, quality=old.quality, title=old.title,
                 target=_retry_target(old), tool=old.tool, platform=old.platform,
-                force=bool(body.get("force")), replace=old.id,
+                force=bool(body.get("force")), replace=old.id, folder=_retry_folder(old),
             )
             self._json(answer, status)
             return

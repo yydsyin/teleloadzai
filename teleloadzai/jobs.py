@@ -390,6 +390,13 @@ class Queue:
             with self._lock:
                 job.destinations.append(path)
 
+        def on_title(title: str) -> None:
+            """yt-dlp's own title, for a row added with none read (several
+            links at once). A title the card read is never replaced."""
+            with self._lock:
+                if not job.title:
+                    job.title = title
+
         def on_live() -> None:
             """yt-dlp is recording a live stream. The "Stop a live recording
             after" setting reached streamlink only, while Settings promised
@@ -445,7 +452,7 @@ class Queue:
                     out_path=Path(job.target) if job.target else None,
                     force=job.force, cookie_file=cookie_file, on_step=on_step,
                     on_destination=on_destination, on_writing=on_writing,
-                    on_live=on_live,
+                    on_live=on_live, on_title=on_title,
                 )
             else:
                 # A specialist tool cannot be told an exact file name, so it

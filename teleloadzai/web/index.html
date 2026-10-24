@@ -107,7 +107,38 @@
   }
   #update-bar-text { flex: 1; min-width: 200px; }
   #update-bar button { min-height: 32px; }
-  #result { position: relative; }
+  #result, #batch { position: relative; }
+  #batch-close {
+    position: absolute; top: 8px; right: 8px; min-width: 28px; min-height: 28px;
+    padding: 0; font-size: 18px; line-height: 1; border-color: transparent;
+  }
+  #batch .title, #batch .meta { padding-right: 30px; }
+  /* The links of one paste, each with its program: a short list inside the
+     card, scrolling past 6 lines so Download stays in sight. */
+  .batch-links {
+    list-style: none; margin: 10px 0 0; padding: 6px 0 0; border-top: 1px solid var(--line);
+    max-height: min(196px, 15vh); overflow-y: auto; font-size: 13px;
+  }
+  /* This card is taller than one link's: under it the list gives up room,
+     or the main screen scrolled (measured at 860x814, 2026-10-24). The
+     empty list's drawing goes; a list with rows keeps two in sight. */
+  .wrap:has(#batch:not(.hidden)) > #jobs-card { min-height: 96px; }
+  .wrap:has(#batch:not(.hidden)) #jobs-empty { display: none; }
+  .batch-links li { display: flex; gap: 12px; justify-content: space-between; padding: 4px 0; }
+  .batch-links .link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .batch-links .prog { flex: none; color: var(--soft); }
+  #batch-skipped { margin-top: 8px; line-height: 1.6; }
+  /* Over the list: its total, then filters with counts and the bulk buttons. */
+  #list-total { margin-left: auto; margin-right: 4px; }
+  .list-bar { height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 0 0 10px; }
+  .list-bar > i { display: block; height: 100%; width: 100%; background: var(--ok); transform-origin: left;
+    transform: scaleX(0); transition: transform .7s linear; }
+  .list-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .list-actions { margin-left: auto; display: flex; gap: 6px; }
+  #list-filters:not(:has(button:not(.hidden))) { display: none; }
+  .job.filtered-out { display: none; }
+  #list-filters button { min-height: 30px; padding: 0 10px; font-size: 13px; }
+  #list-filters button[data-filter="error"]:not([aria-pressed="true"]) { color: var(--bad); }
   #result-close {
     position: absolute; top: 8px; right: 8px; min-width: 28px; min-height: 28px;
     padding: 0; font-size: 18px; line-height: 1; border-color: transparent;
@@ -152,8 +183,8 @@
   button:not(:disabled):active { transform: translateY(1px); }
   /* The one yellow on screen: the step that matters. A doubtful card turns
      it into an outline ("Try anyway", .ghost) -- it stays grey then. */
-  #go:not(.ghost) { background: var(--go); color: var(--go-ink); padding: 8px 24px; }
-  #go:not(.ghost):not(:disabled):hover { background: var(--go-hover); }
+  #go:not(.ghost), #batch-go { background: var(--go); color: var(--go-ink); padding: 8px 24px; }
+  #go:not(.ghost):not(:disabled):hover, #batch-go:not(:disabled):hover { background: var(--go-hover); }
   button.ghost:not(:disabled):hover { border-color: color-mix(in srgb, var(--soft) 60%, var(--line)); color: var(--ink); }
   /* Where the keyboard is, always visible. The link box had `outline: none`
      and only a 1 px border change to show it (critique, 2026-09-25). */
@@ -459,7 +490,7 @@
   }
   /* Icons drawn here, not inside the buttons: the page rewrites the MP4
      button's text ("You get: original files"), which would erase them. */
-  .opt-icon::after, .choice[data-mode]:not(.only)::before, #go:not(.ghost)::before {
+  .opt-icon::after, .choice[data-mode]:not(.only)::before, .bchoice::before, #go:not(.ghost)::before, #batch-go::before {
     content: ""; width: 17px; height: 17px; flex: none; background: currentColor;
     -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
   }
@@ -469,8 +500,8 @@
   #row-format:has(.choice[data-mode="mp3"][aria-pressed="true"]) .opt-icon {
     --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E");
   }
-  .icon-film, .choice[data-mode="mp4"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4'/%3E%3C/svg%3E"); }
-  .choice[data-mode="mp3"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E"); }
+  .icon-film, .choice[data-mode="mp4"], .bchoice[data-bmode="mp4"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4'/%3E%3C/svg%3E"); }
+  .choice[data-mode="mp3"], .bchoice[data-bmode="mp3"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E"); }
   .icon-sliders { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6'/%3E%3C/svg%3E"); }
   .icon-tool { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z'/%3E%3C/svg%3E"); }
   .icon-download { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E"); }
@@ -483,8 +514,8 @@
   .icon-branch { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='6' r='2'/%3E%3Ccircle cx='6' cy='18' r='2'/%3E%3Ccircle cx='18' cy='8' r='2'/%3E%3Cpath d='M6 8v8M18 10a6 6 0 0 1-6 6H8'/%3E%3C/svg%3E"); }
   .icon-key { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='15' r='4'/%3E%3Cpath d='m10.8 12.2 9.2-9.2M17 6l3 3M14 9l2 2'/%3E%3C/svg%3E"); }
   .icon-door { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8M10 12h11M18 9l3 3-3 3'/%3E%3C/svg%3E"); }
-  #go { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E"); }
-  #go:not(.ghost) { display: inline-flex; align-items: center; gap: 8px; }
+  #go, #batch-go { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E"); }
+  #go:not(.ghost), #batch-go { display: inline-flex; align-items: center; gap: 8px; }
   .opt-foot {
     display: flex; align-items: center; gap: 8px; justify-content: flex-end;
     padding-top: 12px; border-top: 1px solid var(--line);
@@ -670,8 +701,10 @@
   <div class="linkbox" data-view="main">
     <label class="screen-title linkbox-title" for="url">Paste a link</label>
     <div class="row">
-      <input type="text" id="url" placeholder="https://..." autocomplete="off" spellcheck="false"
-             aria-describedby="url-error">
+      <!-- Said before anything is pasted (the user, 2026-10-24): several
+           videos are several links in one paste, one per line. -->
+      <input type="text" id="url" placeholder="https://…   One link, or several: one per line"
+             autocomplete="off" spellcheck="false" aria-describedby="url-error">
       <button id="read">Read</button>
     </div>
     <!-- A problem with what was typed is said HERE, where the eyes are: it
@@ -759,6 +792,45 @@
     </div>
   </div>
 
+  <!-- Several links in one paste (Phase 2 item 1, 2026-10-24): ONE card,
+       never a second list of "found links" (the study: JDownloader's
+       LinkGrabber is what makes it feel technical). Titles are not read
+       first -- 3 to 10 s a link; each program names its file. -->
+  <div class="card hidden" data-view="main" id="batch">
+    <button class="ghost tiny" id="batch-close" aria-label="Close this card">×</button>
+    <div class="title" id="batch-title" role="heading" aria-level="2"></div>
+    <div class="meta" id="batch-sites"></div>
+    <ul class="batch-links" id="batch-links"></ul>
+    <div class="hint hidden" id="batch-skipped"></div>
+    <div class="controls">
+      <div class="opt-row" id="batch-row-format">
+        <span class="opt-icon icon-film" aria-hidden="true"></span>
+        <span class="opt-name">Format</span>
+        <span class="opt-control seg-track" role="group" aria-label="Format for all these links">
+          <button class="bchoice" data-bmode="mp3" aria-pressed="false">MP3</button>
+          <button class="bchoice" data-bmode="mp4" aria-pressed="true">MP4</button>
+        </span>
+      </div>
+      <div class="opt-row">
+        <span class="opt-icon icon-sliders" aria-hidden="true"></span>
+        <span class="opt-name" aria-hidden="true">Quality</span>
+        <span class="opt-control">
+          <label class="sr-only" for="batch-quality">Quality</label>
+          <select id="batch-quality" class="hidden"></select>
+          <span class="hint" id="batch-quality-why">Best — each video at its own best size</span>
+        </span>
+      </div>
+      <div class="opt-row">
+        <span class="opt-icon icon-folder" aria-hidden="true"></span>
+        <span class="opt-name">Folder</span>
+        <span class="opt-control"><span class="hint" id="batch-folder"></span></span>
+      </div>
+      <div class="opt-foot">
+        <button id="batch-go">Download</button>
+      </div>
+    </div>
+  </div>
+
   <div class="card hidden warn" data-view="main" id="unsupported">
     <div class="title" id="unsupported-title"></div>
     <div class="hint" id="unsupported-note" style="margin-top:6px"></div>
@@ -768,7 +840,18 @@
   <div class="card" data-view="main" id="jobs-card">
     <div class="head">
       <span class="hint" id="queue-info" role="heading" aria-level="2">Downloads</span>
+      <span class="small hidden" id="list-total"></span>
       <button class="ghost tiny" id="clear">Clear finished</button>
+    </div>
+    <!-- A long list stays readable (the study: Parabolic's filters with
+         counts, Media Downloader's asked-for total). Drawn only when the
+         list is long enough to need it. -->
+    <div class="list-bar hidden" id="list-bar" aria-hidden="true"><i></i></div>
+    <div class="list-tools hidden" id="list-tools">
+      <span class="seg-track" id="list-filters" role="group" aria-label="Show"></span>
+      <span class="list-actions">
+        <button class="ghost tiny hidden" id="retry-failed">Retry all failed</button>
+      </span>
     </div>
     <div id="jobs"></div>
     <!-- What goes here, while nothing does. Which sites work: the empty
@@ -1631,9 +1714,18 @@ function linkIn(text) {
   return /^[^\s\/]+\.[a-z]{2,}(\/\S*)?$/i.test(text) ? text : "";
 }
 
+/** Every link in a text, in order, each once. */
+function linksIn(text) {
+  const found = text.match(/https?:\/\/[^\s"'<>，。！？、]+/gi) || [];
+  return [...new Set(found)];
+}
+
 async function read() {
   const typed = $("url").value.trim();
   if (!typed) return;
+  // Several links typed or kept in the box (Read pressed again): one card.
+  const several = linksIn(typed);
+  if (several.length > 1) { readMany(several); return; }
   const url = linkIn(typed);
   $("url").removeAttribute("aria-invalid");
   $("url-error").classList.add("hidden");
@@ -1654,6 +1746,8 @@ async function read() {
   if (url !== typed) $("url").value = url;    // show the link we took out
   const mine = ++readNumber;
   currentUrl = url;
+  $("batch").classList.add("hidden");
+  batch = [];
   $("result").classList.add("hidden");
   $("unsupported").classList.add("hidden");
   stopWaiting();
@@ -2206,10 +2300,15 @@ function jobRow(job) {
   // Several files (a post's items, numbered): the chosen name exists on no
   // disk -- "Post.mp4" was shown for "Post 1.mp4", "Post 2.mp4"… (2026-09-27).
   const files = job.files || [];
+  // A row added from several links has no title yet: its link until yt-dlp
+  // tells the title as it starts; a title nobody gave is said, with the
+  // link, so a failed one among ten can still be told apart (2026-10-24).
   const shown = files.length > 1 ? `${fileName(files[0])} and ${files.length - 1} more`
     : job.target ? fileName(job.target)
     : (job.files || []).length ? fileName(job.files[0])
-    : job.title || "Unknown title";
+    : job.title ? job.title
+    : ["waiting", "running"].includes(job.state) ? shortLink(job.url)
+    : `Unknown title — ${shortLink(job.url)}`;
   // "Me at the zoo · MP4 720" said no unit, "name.mp4 · MP4" said the format
   // twice, and a gallery-dl job said "MP4" where the card had said "the
   // post's original files" (round 1 of the loop, 2026-09-26).
@@ -2349,11 +2448,79 @@ async function refresh() {
     : jobs.length ? `Downloads (${jobs.length})` : "Downloads";
   // Only when it has something to clear (decision 40): failed rows stay.
   $("clear").classList.toggle("hidden", !jobs.some((j) => j.state === "done" || j.state === "cancelled"));
+  paintListTools(jobs);
 
   const busy = running + waiting > 0;
   if (busy && !polling) { polling = true; setTimeout(tick, 700); }
   return busy;
 }
+
+// The list's filters, its total and "Retry all failed" (several links,
+// 2026-10-24). Filters from 4 rows: below that, the whole list is in sight.
+const LIST_FILTERS = [["all", "All"], ["running", "Running"], ["waiting", "Waiting"],
+                      ["done", "Done"], ["error", "Failed"]];
+let listFilter = "all";
+let lastJobs = [];
+for (const [key, name] of LIST_FILTERS) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.filter = key;
+  button.dataset.name = name;
+  button.addEventListener("click", () => { listFilter = key; paintListTools(lastJobs); });
+  $("list-filters").appendChild(button);
+}
+
+/** Rows that will have a Retry of their own: not those whose link itself
+ *  is the problem (failChoice's "hopeless"). */
+const retryable = (jobs) => jobs.filter((j) => j.state === "error" && !failChoice(j).hopeless);
+
+function paintListTools(jobs) {
+  lastJobs = jobs;
+  const count = (key) => key === "all" ? jobs.length : jobs.filter((j) => j.state === key).length;
+  const long = jobs.length >= 4;
+  // A filter that has nothing left goes back to All: an empty list under
+  // "Failed" after the last retry read as "everything is gone".
+  if (!long || !count(listFilter)) listFilter = "all";
+  for (const button of $("list-filters").children) {
+    const key = button.dataset.filter;
+    const n = count(key);
+    button.textContent = `${button.dataset.name} ${n}`;
+    button.setAttribute("aria-pressed", String(key === listFilter));
+    button.classList.toggle("hidden", !long || (key !== "all" && !n));
+  }
+  for (const job of jobs) {
+    const row = jobRows.get(job.id);
+    if (row) row.classList.toggle("filtered-out", listFilter !== "all" && job.state !== listFilter);
+  }
+  // A real count, never an estimate (decision 33): finished = done, failed
+  // or stopped, out of every row.
+  const ended = jobs.filter((j) => ["done", "error", "cancelled"].includes(j.state)).length;
+  const failed = count("error");
+  const show = jobs.length >= 2;
+  $("list-total").textContent = show
+    ? `${ended} of ${jobs.length} finished` + (failed ? ` · ${failed} failed` : "") : "";
+  $("list-total").classList.toggle("hidden", !show);
+  $("list-bar").classList.toggle("hidden", !show);
+  $("list-bar").firstElementChild.style.transform = `scaleX(${show ? ended / jobs.length : 0})`;
+  // One failed row has its own Retry; from two, one button for all of them.
+  $("retry-failed").classList.toggle("hidden", retryable(jobs).length < 2);
+  $("list-tools").classList.toggle("hidden", !long && $("retry-failed").classList.contains("hidden"));
+}
+
+$("retry-failed").addEventListener("click", async () => {
+  const rows = retryable(lastJobs);
+  const button = $("retry-failed");
+  button.disabled = true;
+  let again = 0;
+  for (const job of rows) {
+    const answer = await api("/api/job/" + job.id + "/retry", {});
+    if (!answer.error) again++;
+  }
+  button.disabled = false;
+  await refresh();
+  notify(again === rows.length ? `${again} downloads started again.`
+    : `${again} of ${rows.length} downloads started again; the others are no longer in the list.`);
+});
 
 async function tick() {
   const busy = await refresh();
@@ -2794,7 +2961,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!$("status").classList.contains("hidden")) { setStatus(""); return; }
   if (document.querySelector(".wrap").dataset.showing === "settings") { showView("main"); return; }
-  if (!$("result").classList.contains("hidden")) closeCard();
+  if (!$("result").classList.contains("hidden") || !$("batch").classList.contains("hidden")) closeCard();
 });
 
 /** The card's ×, and Esc: the card goes, as after Download, and a read still
@@ -2803,6 +2970,8 @@ function closeCard() {
   readNumber++;
   stopWaiting();
   $("result").classList.add("hidden");
+  $("batch").classList.add("hidden");
+  batch = [];
   $("read").disabled = false;
   $("read").textContent = "Read";
   currentUrl = "";
@@ -2810,6 +2979,7 @@ function closeCard() {
   $("url").focus();
 }
 $("result-close").addEventListener("click", closeCard);
+$("batch-close").addEventListener("click", closeCard);
 
 $("settings-toggle").addEventListener("click", () => {
   showView(document.querySelector(".wrap").dataset.showing === "settings" ? "main" : "settings");
@@ -2861,7 +3031,20 @@ $("status").title = "Click to close";
 // Pasting a link IS asking to read it (chosen by the user 2026-09-25). The
 // box holds the new text only after the event, hence the zero delay. Read
 // stays, to read again.
-$("url").addEventListener("paste", () => setTimeout(read, 0));
+$("url").addEventListener("paste", (event) => {
+  // The box is one line: the browser glues pasted lines together with
+  // nothing between them ("…IVRwhttps://www.tiktok…"). The links are taken
+  // from the paste itself, before that (several links, 2026-10-24).
+  const pasted = (event.clipboardData && event.clipboardData.getData("text")) || "";
+  const several = linksIn(pasted);
+  if (several.length > 1) {
+    event.preventDefault();
+    $("url").value = several.join(" ");
+    readMany(several);
+    return;
+  }
+  setTimeout(read, 0);
+});
 
 /**
  * Anything that destroys asks twice, on the button itself: the first click
@@ -2949,6 +3132,200 @@ $("go").addEventListener("click", async () => {
   $("url").value = "";
   $("url").focus();
   refresh();
+});
+
+// ---- Several links at once (Phase 2 item 1, 2026-10-24) -------------------
+// One paste of several links gives ONE card: each link, its site's program,
+// one Format and one Download. No title is read first (3-10 s a link): each
+// program names its file, and yt-dlp tells the title as it starts.
+
+const BATCH_MAX = 50;
+let batch = [];             // [{url, found, tool}] in the order pasted
+let batchExtra = 0;         // links past BATCH_MAX, said on the card
+let batchMode = "mp4";
+
+/** "youtube.com/watch?v=jNQXAC9IVRw", cut to fit a row. */
+function shortLink(url) {
+  const bare = String(url || "").replace(/^https?:\/\/(www\.)?/i, "");
+  return bare.length > 60 ? bare.slice(0, 59) + "…" : bare;
+}
+
+/** The program a link gets here: the one the single card would start on
+ *  (decision 13 -- the user's Sites choice first, and a tool that needs no
+ *  log-in when the usual one's is missing), installed, and one that makes
+ *  an MP3 when MP3 is asked. Or {why} when no program can take it. */
+function batchTool(found, wanted) {
+  const all = found.tools || [];
+  const usable = all.filter((t) => t.installed);
+  if (!usable.length) {
+    return { why: `${all.length ? all[0].name : "its program"} is not installed. Paste this link alone to install it.` };
+  }
+  const first = all[0];
+  const n = first && first.need;
+  let tool = usable[0];
+  if (n && n.kind === "login" && !n.met) tool = usable.find((t) => t.id !== first.id && !t.need) || tool;
+  if (wanted === "mp3" && !("mp3" in (tool.choices || {}))) {
+    const maker = usable.find((t) => "mp3" in (t.choices || {}));
+    if (!maker) return { why: "no program here makes an MP3 of it." };
+    tool = maker;
+  }
+  return { tool };
+}
+
+async function readMany(links) {
+  const mine = ++readNumber;
+  stopWaiting();
+  currentUrl = "";
+  for (const id of ["result", "unsupported", "url-error"]) $(id).classList.add("hidden");
+  $("url").removeAttribute("aria-invalid");
+  setStatus("");
+  batchExtra = Math.max(0, links.length - BATCH_MAX);
+  batch = links.slice(0, BATCH_MAX).map((url) => ({ url, found: null, tool: null }));
+  batchMode = mode;           // MP3 stays from one paste to the next, as on the card
+  $("batch").classList.remove("hidden");
+  $("read").disabled = true;
+  $("read").textContent = "Reading…";
+  renderBatch();
+  // Four at a time: each may follow a short link over the network.
+  const items = batch;
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const item = items[next++];
+      try { item.found = await api("/api/detect", { url: item.url }); }
+      catch (problem) { item.found = { error: String(problem) }; }
+      if (mine === readNumber) renderBatch();
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  if (mine !== readNumber) return;
+  $("read").disabled = false;
+  $("read").textContent = "Read";
+  renderBatch();
+  $("announce").textContent = $("batch-title").textContent + ". " + $("batch-sites").textContent;
+}
+
+function renderBatch() {
+  const read = batch.filter((i) => i.found).length;
+  const reading = read < batch.length;
+  const skipped = [];
+  let noFfmpeg = false;
+  for (const item of batch) {
+    item.tool = null;
+    const f = item.found;
+    if (!f) continue;
+    if (f.error) { skipped.push(`${shortLink(item.url)}: ${f.error}`); continue; }
+    if (!f.supported) { skipped.push(`${f.platform}: Teleloadzai does not download ${f.platform}.`); continue; }
+    const pick = batchTool(f, batchMode);
+    if (!pick.tool) { skipped.push(`${f.platform}: ${pick.why}`); continue; }
+    item.tool = pick.tool;
+    if (f.ffmpeg_missing) noFfmpeg = true;
+  }
+  if (batchExtra) skipped.push(`${batchExtra} more: ${BATCH_MAX} links at most at once. Paste the rest after.`);
+  const ready = batch.filter((i) => i.tool);
+
+  // While reading, a real count (decision 33); then how many will come down.
+  $("batch-title").textContent = reading ? `Reading the links… ${read} of ${batch.length}`
+    : ready.length === 1 ? "1 link" : `${ready.length} links`;
+  const sites = new Map();
+  for (const item of ready) sites.set(item.found.platform, (sites.get(item.found.platform) || 0) + 1);
+  $("batch-sites").textContent = [...sites].map(([name, n]) => `${name} ${n}`).join(" · ");
+
+  // Text only, never HTML: these are whatever was pasted.
+  const list = $("batch-links");
+  list.textContent = "";
+  for (const item of batch) {
+    if (item.found && !item.tool) continue;       // said under "Not added"
+    const li = document.createElement("li");
+    const link = document.createElement("span");
+    link.className = "link";
+    link.textContent = shortLink(item.url);
+    link.title = item.url;
+    const prog = document.createElement("span");
+    prog.className = "prog";
+    prog.textContent = item.tool ? item.tool.name : "…";
+    li.append(link, prog);
+    list.appendChild(li);
+  }
+  list.classList.toggle("hidden", !list.children.length);
+
+  if (noFfmpeg) skipped.unshift("FFmpeg is not installed, and every download needs it. Paste one link alone: its card installs it.");
+  const box = $("batch-skipped");
+  box.textContent = "";
+  if (skipped.length) {
+    const head = document.createElement("b");
+    head.textContent = "Not added:";
+    box.appendChild(head);
+    for (const line of skipped) {
+      const div = document.createElement("div");
+      div.textContent = line;
+      box.appendChild(div);
+    }
+  }
+  box.classList.toggle("hidden", !skipped.length);
+
+  for (const b of document.querySelectorAll(".bchoice")) {
+    b.setAttribute("aria-pressed", String(b.dataset.bmode === batchMode));
+  }
+  // MP3: our own FFmpeg settings, the whole list (decision 13, point 3).
+  // MP4: each video's own best -- no size is known before reading each one.
+  const mp3 = batchMode === "mp3";
+  const select = $("batch-quality");
+  if (mp3 && select.dataset.filled !== "mp3") {
+    const keep = select.value;
+    select.innerHTML = (qualityLists.mp3 || ["best"])
+      .map((v) => `<option value="${v}">${v === "best" ? "Best" : v + " kbps"}</option>`).join("");
+    if (keep) select.value = keep;
+    select.dataset.filled = "mp3";
+  }
+  select.classList.toggle("hidden", !mp3);
+  $("batch-quality-why").classList.toggle("hidden", mp3);
+  $("batch-folder").textContent = askWhere ? "You choose it when you press Download"
+    : ($("folder").value || "The folder in Settings");
+
+  const go = $("batch-go");
+  go.textContent = ready.length ? `Download ${ready.length}` : "Download";
+  go.classList.toggle("hidden", !reading && !ready.length);
+  go.disabled = reading || noFfmpeg;
+}
+
+for (const b of document.querySelectorAll(".bchoice")) {
+  b.addEventListener("click", () => { batchMode = b.dataset.bmode; renderBatch(); });
+}
+
+$("batch-go").addEventListener("click", async () => {
+  const ready = batch.filter((i) => i.tool);
+  if (!ready.length) return;
+  let folder = "";
+  // One folder window for all of them, never one per link (the user's
+  // choice, 2026-10-24); each file keeps the name its program gives it.
+  if (askWhere) {
+    setStatus("Choose the folder for these downloads in the Windows window…");
+    const chosen = await api("/api/pick-folder", {});
+    if (chosen.error) { setStatus("Error: " + chosen.error); return; }
+    if (chosen.cancelled || !chosen.folder) { setStatus("Cancelled. Nothing was added."); return; }
+    folder = chosen.folder;
+  }
+  const go = $("batch-go");
+  go.disabled = true;
+  const refused = [];
+  let added = 0;
+  for (const item of ready) {
+    go.textContent = `Adding ${added + refused.length + 1} of ${ready.length}…`;
+    const answer = await api("/api/download", {
+      url: item.url, mode: batchMode, title: "", target: "",
+      quality: batchMode === "mp3" ? $("batch-quality").value : "best",
+      tool: item.tool.id, platform: item.found.platform_id || "", folder,
+    });
+    if (answer.error) refused.push(`${shortLink(item.url)}: ${answer.error}`);
+    else added++;
+  }
+  closeCard();
+  refresh();
+  // Every link accounted for: a refused one is said, never dropped (decision 34).
+  const done = added === 1 ? "1 download added." : `${added} downloads added.`;
+  if (refused.length) setStatus(`${done} Not added: ${refused.join(" · ")}`);
+  else notify(done);
 });
 
 $("clear").addEventListener("click", async () => { await api("/api/jobs/clear", {}); refresh(); });

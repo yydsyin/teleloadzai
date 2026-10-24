@@ -63,6 +63,11 @@ _FILE_TEMPLATE = f"after_move:{_FILE_TAG}\t%(filepath)s"
 # hunt, 2026-10-18, with the real yt-dlp on @LofiGirl/live).
 _LIVE_TAG = "TLZ_L"
 _LIVE_TEMPLATE = f"before_dl:{_LIVE_TAG}\t%(is_live)s"
+# The video's title, said as the download starts: several links pasted at
+# once are added with no title read first (a read takes 3-10 s a link), and
+# their rows showed nothing to recognise (several links, 2026-10-24).
+_TITLE_TAG = "TLZ_T"
+_TITLE_TEMPLATE = f"before_dl:{_TITLE_TAG}\t%(title)s"
 _DESTINATION = "[download] Destination: "
 # The files yt-dlp writes AFTER the download, under their final names. A Stop
 # during these steps left a half MP3 that the next try called "already
@@ -438,6 +443,7 @@ def download(
     on_destination: Callable[[Path], None] | None = None,
     on_writing: Callable[[Path], None] | None = None,
     on_live: Callable[[], None] | None = None,
+    on_title: Callable[[str], None] | None = None,
 ) -> DownloadResult:
     """Download one link as MP3 or MP4, reporting progress line by line.
 
@@ -467,6 +473,7 @@ def download(
         "--progress", "--progress-template", _PROGRESS_TEMPLATE,
         "--print", _FILE_TEMPLATE,
         "--print", _LIVE_TEMPLATE,
+        "--print", _TITLE_TEMPLATE,
         # `--print` turns quiet mode on, and quiet mode hides "[Merger]" and
         # "[ExtractAudio]" -- the only signs of the step after the download.
         # Probed on this exact command, 2026-09-25: steps seen [] without
@@ -508,6 +515,10 @@ def download(
         elif line.startswith(_LIVE_TAG):
             if on_live and line.split("\t", 1)[-1].strip() == "True":
                 on_live()
+        elif line.startswith(_TITLE_TAG):
+            title = line.split("\t", 1)[-1].strip()
+            if on_title and title and title != "NA":
+                on_title(title)
         elif line.startswith(_FILE_TAG):
             files.append(Path(line.split("\t", 1)[1].strip()))
         elif line.strip():
