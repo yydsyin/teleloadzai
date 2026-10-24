@@ -35,7 +35,8 @@ The main moment (confirmed 2026-10-21): **paste one link, get it.** The download
 - **Built 2026-10-24:** several links at once — one paste, one card, one folder window; status filters with counts, "Retry all failed", a total ("5 of 8 finished").
 - **Built 2026-10-24:** a list that survives closing — the last 200 rows come back; downloads cut off by closing come back interrupted and wait for "Continue"; closing during a download asks first.
 - **Built 2026-10-24:** the link from the clipboard + a Paste button — only links are taken from what was copied, and nothing is kept; a switch in Settings, on by default.
-- **Chosen to come after the redesign (2026-10-21), still to build:** keyboard shortcuts written on buttons; MP3 tags + cover art; a Windows notification; subtitles. The design must give them their place from the start.
+- **Built 2026-10-24:** Ctrl+Enter = Download, written on the button — the only shortcut (the user's rule: no useless keys).
+- **Chosen to come after the redesign (2026-10-21), still to build:** MP3 tags + cover art; a Windows notification; subtitles. The design must give them their place from the start.
 - No DRM sites, ever. No browser extension (the stores refuse YouTube downloaders).
 
 ## Brand Commitments
