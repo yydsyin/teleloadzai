@@ -25,7 +25,7 @@ One window that groups the best download programs behind a single box. The user 
 
 ## Operating Context
 
-The main moment (confirmed 2026-10-21): **paste one link, get it.** The downloads list comes second. A session: paste a link → a card shows the title, the picture, MP4 / MP3, the quality the video really has, the tool (a switch with program names, decided — decision 13) → Download → a row with real progress (size, speed, time left), Stop, then Open / Show in folder. Settings: download folder, "Save as" window on/off, downloads at once, live recording limit, tool per site, Installed programs (update mode, yt-dlp version), Accounts (log in per site, import a cookie file, forget).
+The main moment (confirmed 2026-10-21): **paste one link, get it.** The downloads list comes second. A session: paste a link → a card shows the title, the picture, MP4 / MP3, the quality the video really has, the tool (a switch with program names, decided — decision 13) → Download → a row with real progress (size, speed, time left), Stop, then Open / Show in folder. Settings has three pages: **Downloads** (folder, "Ask where to save" on/off, "Use a link I copied", downloads at once, live recording limit), **Sites** (one row per site: its program and its log-in; log in on the site or import a cookie file; forget), **Programs** (installed programs, update mode, yt-dlp version). Pasting several links gives one card; the list keeps its history and brings back downloads cut off by closing.
 
 ## Capabilities and Constraints
 
