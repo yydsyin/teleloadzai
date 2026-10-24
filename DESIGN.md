@@ -264,7 +264,7 @@ Each row has the name, then numbers on the right joined with " · " (12.3 MB / 4
 - **A live recording** says "Recording" on its stop and "Recording live · 1 min 15 s of 60 min" on the right; its bar follows the time limit, the one real measure it has.
 - Started → Downloading is a short fixed step (24 px). The segment after Downloading **is** the progress bar and takes the rest of the row, so the green never shows more than was measured. It moves with `scaleX` over 0.7 s, the refresh rhythm.
 - **The parcel arrives:** a finished row keeps its line, all green, ending on "In your folder"; its title stays in ink. An "already there" row drops the line and goes grey: nothing came down.
-- **When the list is empty:** no box, just a parcel drawing and "Your downloads will appear here."
+- **When the list is empty:** no box, just a parcel drawing and "Your downloads will appear here." While a card is open (one link or several), neither shows: the card is enough.
 
 ### Paste / Read
 The button beside the link box says **Paste** while the box is empty and **Read** once it holds text: one place, never two buttons. It is ink-filled until a card shows, then an outline (the One Filled Button rule), beside both kinds of card. The box's placeholder says it beforehand: "https://…   One link, or several: one per line".

@@ -88,11 +88,10 @@
   }
   #jobs-empty svg { width: 64px; height: 64px; margin-bottom: 14px; color: var(--line-strong); }
   #jobs-empty .empty-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
-  /* Under an open card the room is short: the sentence's second line was
-     cut in half at the window's foot in full screen (first review of the
-     redesign, 2026-10-23). The drawing and one line are enough there. */
-  .wrap:has(#result:not(.hidden)) #jobs-empty { padding-top: 12px; }
-  .wrap:has(#result:not(.hidden)) #sites-hint { display: none; }
+  /* Under an open card, nothing: "Your downloads will appear here" under
+     a link waiting for Download read as if the app ignored it (the user,
+     2026-10-24). Until then a smaller drawing stayed there. */
+  .wrap:has(#result:not(.hidden)) #jobs-empty { display: none; }
   /* Nothing to list: no box. A 765 px empty box with two lines in its
      middle read as a blank document (review of 2026-10-22). */
   #jobs-card:has(#jobs:empty) { background: transparent; border-color: transparent; }
