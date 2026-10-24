@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import socket
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -72,7 +74,56 @@ def load_settings() -> dict:
                        in ("ask", "auto", "manual") else "ask",
         # yt-dlp's release channel: "stable", or "preview" (nightly builds).
         "ytdlp_channel": "preview" if stored.get("ytdlp_channel") == "preview" else "stable",
+        # Take a link the user copied when the window comes to the front
+        # (Phase 2 item 3, 2026-10-24). On by default, as in Open Video
+        # Downloader; only the links ever leave `clipboard_links`.
+        "use_clipboard": bool(stored.get("use_clipboard", True)),
     }
+
+
+# The same link shape as the page's `linksIn`.
+_LINK = re.compile(r"https?://[^\s\"'<>，。！？、]+", re.IGNORECASE)
+
+
+def clipboard_links() -> list[str]:
+    """The links in the Windows clipboard -- and NOTHING else of it.
+
+    A clipboard can hold a password or a private message: its text never
+    leaves this function, is never stored and never printed. Read with
+    Windows' own functions (ctypes, standard library: decision 20), only
+    when the page asks -- the window came to the front, or Paste was pressed.
+    Raises OSError when another program holds the clipboard.
+    """
+    if sys.platform != "win32":
+        return []
+    import ctypes
+    from ctypes import wintypes
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    user32.GetClipboardData.restype = wintypes.HANDLE
+    user32.GetClipboardData.argtypes = [wintypes.UINT]
+    kernel32.GlobalLock.restype = wintypes.LPVOID
+    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    for _ in range(10):                 # another program may hold it a moment
+        if user32.OpenClipboard(None):
+            break
+        time.sleep(0.05)
+    else:
+        raise OSError("another program is using the clipboard")
+    try:
+        handle = user32.GetClipboardData(13)        # CF_UNICODETEXT
+        if not handle:
+            return []                               # a picture, a file, nothing
+        pointer = kernel32.GlobalLock(handle)
+        if not pointer:
+            return []
+        try:
+            text = ctypes.wstring_at(pointer)
+        finally:
+            kernel32.GlobalUnlock(handle)
+    finally:
+        user32.CloseClipboard()
+    return list(dict.fromkeys(_LINK.findall(text)))
 
 
 def usable_tools(platform) -> list:
@@ -686,6 +737,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json(answer, status)
             return
 
+        if path == "/api/clipboard":
+            # Only links come back (clipboard_links). "asked" = the Paste
+            # button: it works even with the switch off; the window coming to
+            # the front only when the user left the switch on.
+            if not body.get("asked") and not load_settings()["use_clipboard"]:
+                self._json({"links": []})
+                return
+            try:
+                self._json({"links": clipboard_links()})
+            except OSError as problem:
+                self._json({"links": [], "error": f"The clipboard could not be read: {problem}."})
+            return
+
         if path == "/api/pick-folder":
             # One folder for several links: the Windows window, and the answer
             # -- the Settings folder is NOT changed (Browse… does that).
@@ -883,6 +947,8 @@ class Handler(BaseHTTPRequestHandler):
                 tools.set_preview("yt-dlp", body["ytdlp_channel"] == "preview")
             if body.get("cookies_keep") in ("keep", "once"):
                 settings["cookies_keep"] = body["cookies_keep"]
+            if "use_clipboard" in body:      # False is a real value, not "missing"
+                settings["use_clipboard"] = bool(body["use_clipboard"])
             if isinstance(body.get("tool_choice"), dict):
                 # One site at a time from the page. Only a tool that site
                 # really lists; choosing the default removes the entry, so
