@@ -258,7 +258,7 @@ A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the ti
 - **On/off switch:** 42×22, pill shape, ink fill when on, a white knob that slides 20 px.
 
 ### The downloads list (tracking)
-Each row has the name, then numbers on the right joined with " · " (12.3 MB / 45.6 MB · 2.1 MB/s · 16 s left). Under that is the **tracking line**: Started → Downloading → [Joining / Making the MP3, only once announced] → In your folder.
+Each row on its way (waiting, running, failed, stopped) has the name, then numbers on the right joined with " · " (12.3 MB / 45.6 MB · 2.1 MB/s · 16 s left). Under that is the **tracking line** — a finished row has none, see "The parcel arrives" below: Started → Downloading → [Joining / Making the MP3, only once announced] → In your folder.
 - Stops are 9 px dots: green when passed; yellow with an ink ring for **now**; red for failed; grey for stopped.
 - **Only the stop where the parcel is now keeps its name**, and it says what happened there: "Waiting", "Failed", "Stopped". The other stops are dots only. The state is also written for screen readers (the line itself is drawn only).
 - **A live recording** says "Recording" on its stop and "Recording live · 1 min 15 s of 60 min" on the right; its bar follows the time limit, the one real measure it has.
