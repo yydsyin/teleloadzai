@@ -264,6 +264,7 @@ Each row has the name, then numbers on the right joined with " · " (12.3 MB / 4
 - **A live recording** says "Recording" on its stop and "Recording live · 1 min 15 s of 60 min" on the right; its bar follows the time limit, the one real measure it has.
 - Started → Downloading is a short fixed step (24 px). The segment after Downloading **is** the progress bar and takes the rest of the row, so the green never shows more than was measured. It moves with `scaleX` over 0.7 s, the refresh rhythm.
 - **The parcel arrives:** a finished row keeps its line, all green, ending on "In your folder"; its title stays in ink. An "already there" row drops the line and goes grey: nothing came down.
+- **What the parcel came without:** one help line under a finished row, in the help-line grey, above Open / Show in folder — today only "Saved without a cover picture." for an MP3 whose file holds no cover. A row that got everything says nothing; an "already there" row never shows it.
 - **When the list is empty:** no box, just a parcel drawing and "Your downloads will appear here." While a card is open (one link or several), neither shows: the card is enough.
 
 ### Paste / Read

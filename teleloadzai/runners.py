@@ -510,6 +510,9 @@ def _to_mp3_or_clean(video: Path, target: Path, request: Request,
     Stop it goes, instead of staying as `name.teleloadzai-audio.mp4`.
     The cover is fetched here, beside that step video, so it goes with it."""
     try:
+        # Said before the cover is fetched (up to 20 s on a slow site): a
+        # row at 100% with nothing beside it looks frozen (decision 33).
+        _say(on_step, "making the MP3")
         cover = _cover(cover_address, video, site)
         if _stopped(request) and cover:
             cover.unlink(missing_ok=True)
