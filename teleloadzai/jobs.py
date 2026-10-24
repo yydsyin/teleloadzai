@@ -31,7 +31,7 @@ ACTIVE_STATES = (WAITING, RUNNING)
 # path, not its note -- the error words are already washed (decision 37).
 _KEPT = ("id", "url", "mode", "quality", "title", "folder", "target", "tool",
          "platform", "skipped", "skip_reason", "state", "files", "error",
-         "error_from_tool", "limit_minutes", "live", "interrupted")
+         "error_from_tool", "limit_minutes", "live", "interrupted", "note")
 HISTORY_LIMIT = 200         # rows kept; the oldest finished ones go first
 
 
@@ -155,6 +155,9 @@ class Job:
     files: list[str] = field(default_factory=list)
     error: str = ""
     error_from_tool: bool = False   # is `error` the tool's own words? (decision 38)
+    # A finished job's one plain sentence about what it did not get: "Saved
+    # without a cover picture." (Phase 2 item 5, decision 34).
+    note: str = ""
     # When the job started running. Until a tool prints a percentage there is
     # nothing else true to show, and a silent 0% bar looks frozen (decision
     # 33). Seen 2026-09-25: 12 to 18 s of nothing at the start of every
@@ -186,6 +189,7 @@ class Job:
             "state": self.state, "percent": self.percent, "speed": self.speed,
             "eta": self.eta, "done_bytes": self.done_bytes, "total_bytes": self.total_bytes,
             "estimated": self.estimated, "files": self.files, "error": self.error,
+            "note": self.note,
             # The PATH never leaves this module -- only whether cookies were
             # used, and the reason when they were not.
             # Either road counts. Saying "no cookies" after a job that used
@@ -576,6 +580,14 @@ class Queue:
             with cookies.for_one_run(cookie_file) as run_cookies:
                 result = run_tool(run_cookies)
 
+            # Every program's MP3 is asked, in the file itself, whether it got
+            # its cover (Phase 2 item 5) -- not the log. Outside the lock:
+            # ffprobe takes a moment per file.
+            note = ""
+            if job.mode == "mp3":
+                note = ytdlp.cover_note(
+                    [f for f in result.files if f not in getattr(result, "skipped", [])])
+
             with self._lock:
                 # A stopped row keeps files only for a live recording, which
                 # Stop ends without throwing away. A stopped yt-dlp job's
@@ -587,6 +599,7 @@ class Queue:
                     # was written. "Done" would be a lie the user cannot see.
                     job.skipped = result.nothing_downloaded
                     job.skip_reason = getattr(result, "skip_reason", "")
+                    job.note = note
                     job.state = DONE
                     job.percent = "100%"
         except Exception as exc:

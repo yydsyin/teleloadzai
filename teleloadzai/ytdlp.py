@@ -79,6 +79,14 @@ _MERGING = re.compile(r'^\[Merger\] Merging formats into "(.+)"$')
 # yt-dlp's repairs after a download ("[FixupM3u8] Fixing MPEG-TS in MP4
 # container of "<path>"") write `<name>.temp.<ext>` the same way.
 _FIXING = re.compile(r'^\[Fixup\w*\] .* of "(.+)"$')
+# An MP3's tags and cover are written the same way, after the MP3 exists:
+# `[Metadata] Adding metadata to "<path>"`, `[EmbedThumbnail] ffmpeg: Adding
+# thumbnail to "<path>"` (seen 2026-10-24).
+_TAGGING = re.compile(r'^\[(?:Metadata|EmbedThumbnail)\] .*Adding \w+ to "(.+)"$')
+# The cover is fetched BEFORE the download, as its own file beside it, then
+# turned into a .jpg: `[info] Writing video thumbnail 38 to: <name>.webp`.
+# A Stop before the end left it in the user's folder.
+_THUMBNAIL = re.compile(r"^\[info\] Writing video thumbnail .* to: (.+)$")
 
 
 class ToolMissing(RuntimeError):
@@ -185,6 +193,40 @@ def require_ytdlp() -> Path:
     if tool is None:
         raise ToolMissing("yt-dlp is not installed")
     return tool
+
+
+def has_cover(path: Path) -> bool | None:
+    """Does this MP3 hold a cover picture? Asked to the file itself, with
+    ffprobe: yt-dlp runs with --no-warnings, so its log cannot be trusted to
+    say a cover failed. None when ffprobe cannot answer -- then nothing is
+    said, rather than a guess. On a picture file it says whether ffprobe can
+    read it as one (`runners._cover`)."""
+    ffmpeg = find_tool("ffmpeg")
+    probe = ffmpeg.with_name("ffprobe.exe") if ffmpeg else None
+    if probe is None or not probe.is_file() or not path.is_file():
+        return None
+    try:
+        found = subprocess.run(
+            [str(probe), "-v", "error", "-select_streams", "v",
+             "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, stdin=subprocess.DEVNULL,
+            timeout=60, creationflags=_NO_WINDOW)
+    except Exception:
+        return None
+    if found.returncode != 0:
+        return None
+    return bool(found.stdout.strip())
+
+
+def cover_note(files: list[Path]) -> str:
+    """The row's sentence when an MP3 came without its cover (decision 34)."""
+    mp3s = [f for f in files if f.suffix.lower() == ".mp3"]
+    bare = [f for f in mp3s if has_cover(f) is False]
+    if not bare:
+        return ""
+    if len(mp3s) == 1:
+        return "Saved without a cover picture."
+    return f"{len(bare)} of {len(mp3s)} MP3s were saved without a cover picture."
 
 
 def _ffmpeg_arguments() -> list[str]:
@@ -366,6 +408,15 @@ def _output_arguments(
             "-x",
             "--audio-format", "mp3",
             "--audio-quality", audio_quality,
+            # The title, artist and date, and the video's picture as the
+            # cover (Phase 2 item 5). Probed 2026-10-24, yt-dlp 2026.10.21,
+            # "Me at the zoo": title / artist "jawed" / date 2005 and a
+            # 480x360 cover, written as ID3v2.3, the version Windows reads;
+            # without these, no tag at all. JPG, not yt-dlp's PNG: the
+            # cover cost 25 KB instead of 205 KB. A link with no picture
+            # still ends well, with its tags and no cover.
+            "--embed-metadata",
+            "--embed-thumbnail", "--convert-thumbnails", "jpg",
             "-o", target,
         ]
 
@@ -532,12 +583,19 @@ def download(
                 if tag and on_writing:
                     on_writing(Path(line[len(_DESTINATION):].strip()))
             if on_writing:
-                merging = _MERGING.match(line.strip()) or _FIXING.match(line.strip())
+                merging = (_MERGING.match(line.strip()) or _FIXING.match(line.strip())
+                           or _TAGGING.match(line.strip()))
+                cover = _THUMBNAIL.match(line.strip())
                 if merging:
                     whole = Path(merging.group(1))
                     on_writing(whole.with_name(f"{whole.stem}.temp{whole.suffix}"))
                 elif line.startswith(_CONVERTING):
                     on_writing(Path(line[len(_CONVERTING):].strip()))
+                elif cover and tag:
+                    # Only an MP3 run's cover: its name carries our tag.
+                    picture = Path(cover.group(1))
+                    on_writing(picture)
+                    on_writing(picture.with_suffix(".jpg"))
             if on_step:
                 for prefix, step in _STEPS:
                     if line.startswith(prefix):

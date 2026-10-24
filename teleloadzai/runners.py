@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterator
 
-from . import children, cookies, explain, toolservers, tools
+from . import children, cookies, explain, toolservers, tools, ytdlp
 from .dialogs import UNKNOWN, free_name, without_media_ending
 from .paths import BIN_DIR, DATA_DIR, make_folder
 
@@ -431,8 +431,12 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
         # same post is never overwritten, then deleted (the Kuaishou bug).
         video = request.out_dir / (name + ".teleloadzai-audio.mp4")
         _fetch(address, video, site, on_progress, cookie, on_bytes, request.stop)
+        # Its own data names the post, its author and its still cover
+        # (fields read 2026-10-24; `dynamic_cover` moves, so not that one).
         target = _to_mp3_or_clean(video, request.out_dir / (name + ".mp3"), request,
-                                  on_start, on_step)
+                                  on_start, on_step,
+                                  _tags(data.get("desc") or request.title, data.get("nickname")),
+                                  data.get("static_cover"), site)
     else:
         target = request.out_dir / (name + ".mp4")
         _fetch(address, target, site, on_progress, cookie, on_bytes, request.stop)
@@ -487,7 +491,9 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
         _fetch(address, video, "kuaishou.com", on_progress, on_bytes=on_bytes,
                stop=request.stop)
         target = _to_mp3_or_clean(video, request.out_dir / (name + ".mp3"), request,
-                                  on_start, on_step)
+                                  on_start, on_step,
+                                  _tags(data.get("caption") or request.title, data.get("name")),
+                                  data.get("coverUrl"), "kuaishou.com")
     else:
         target = request.out_dir / (name + ".mp4")
         _fetch(address, target, "kuaishou.com", on_progress, on_bytes=on_bytes,
@@ -497,11 +503,19 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
 
 def _to_mp3_or_clean(video: Path, target: Path, request: Request,
                      on_start: Callable[[subprocess.Popen], None] | None,
-                     on_step: Callable[[str], None] | None) -> Path:
+                     on_step: Callable[[str], None] | None,
+                     tags: dict[str, str] | None = None,
+                     cover_address: object = None, site: str = "") -> Path:
     """`_to_mp3` for the server tools' step video, which is ours: after a
-    Stop it goes, instead of staying as `name.teleloadzai-audio.mp4`."""
+    Stop it goes, instead of staying as `name.teleloadzai-audio.mp4`.
+    The cover is fetched here, beside that step video, so it goes with it."""
     try:
-        return _to_mp3(video, target, request.quality, on_start=on_start, on_step=on_step)
+        cover = _cover(cover_address, video, site)
+        if _stopped(request) and cover:
+            cover.unlink(missing_ok=True)
+        _check_stop(request)
+        return _to_mp3(video, target, request.quality, on_start=on_start, on_step=on_step,
+                       tags=tags, cover=cover)
     except Exception:
         # The target is NOT deleted: FFmpeg writes `.tmp` (removed in
         # `_to_mp3`), so the name may still be the user's own older MP3 --
@@ -531,9 +545,47 @@ def _already_there(target: Path, request: Request) -> str:
             "never replaces a file without asking.")
 
 
+def _cover(address: object, beside: Path, site: str) -> Path | None:
+    """Fetch a post's cover picture for its MP3, or None.
+
+    The address comes from the tool's own data (TikTokDownloader's
+    `static_cover`, KS-Downloader's `coverUrl`, read 2026-10-24). A cover is
+    a bonus: when it cannot be had, the MP3 is made without it and the row
+    says so (`ytdlp.cover_note`), never a failed download.
+    """
+    if not isinstance(address, str) or not address.startswith("http"):
+        return None
+    picture = beside.with_name(beside.name + ".cover")
+    request = urllib.request.Request(address, headers={
+        "User-Agent": _BROWSER, "Referer": f"https://www.{site}/"})
+    try:
+        with urllib.request.urlopen(request, timeout=20) as answer:
+            data = answer.read(10 * 1024 * 1024 + 1)
+        if not data or len(data) > 10 * 1024 * 1024:
+            return None
+        picture.write_bytes(data)
+    except Exception:
+        picture.unlink(missing_ok=True)
+        return None
+    # A page of text instead of a picture would make FFmpeg fail, and the
+    # MP3 with it. Checked BEFORE, not retried after: a Stop also makes
+    # FFmpeg fail, and a retry would start it again.
+    if ytdlp.has_cover(picture) is not True:
+        picture.unlink(missing_ok=True)
+        return None
+    return picture
+
+
+def _tags(title: object = "", artist: object = "") -> dict[str, str]:
+    """The MP3's title and artist, on one line each ("" left out)."""
+    found = {"title": title, "artist": artist}
+    return {k: " ".join(str(v).split()) for k, v in found.items() if v and str(v).strip()}
+
+
 def _to_mp3(video: Path, target: Path, quality: str = "best", remove: bool = True,
             on_start: Callable[[subprocess.Popen], None] | None = None,
-            on_step: Callable[[str], None] | None = None) -> Path:
+            on_step: Callable[[str], None] | None = None,
+            tags: dict[str, str] | None = None, cover: Path | None = None) -> Path:
     """Keep only the sound of a downloaded video, as an MP3.
 
     Kuaishou has no separate music link to ask for, so MP3 means "the sound
@@ -543,26 +595,41 @@ def _to_mp3(video: Path, target: Path, quality: str = "best", remove: bool = Tru
     ours; if FFmpeg is missing or fails, the user is told and keeps the video.
     FFmpeg is handed to ``on_start`` so Stop reaches it too: a 60-minute
     recording takes a while to convert.
+    ``tags`` (title, artist) and ``cover`` (a picture file, removed here) go
+    into the MP3 as ID3v2.3, the version yt-dlp writes and Windows reads
+    (Phase 2 item 5).
     """
     ffmpeg = tools.installed_path("ffmpeg")
     if ffmpeg is None:
+        if cover:
+            cover.unlink(missing_ok=True)
         raise RunnerError(
             f"The video was downloaded ({video.name}), but FFmpeg is not "
             "installed, so it could not be turned into an MP3.")
     if on_step:
         on_step("making the MP3")       # the row says it, never a frozen 100%
     rate = ["-q:a", "0"] if quality == "best" else ["-b:a", f"{int(quality)}k"]
+    # The cover as a JPEG marked "front cover", whatever the site sent
+    # (TikTok's may be WebP); without one, the sound only, as before.
+    picture = (["-i", str(cover), "-map", "0:a:0", "-map", "1:v:0", "-c:v", "mjpeg",
+                "-q:v", "2", "-disposition:v", "attached_pic"]
+               if cover else ["-map", "0:a:0", "-vn"])
+    labels = [arg for key, value in (tags or {}).items() for arg in ("-metadata", f"{key}={value}")]
     # Written as `.tmp`, renamed once whole (as `_repackage_to_mp4`).
     partial = target.with_name(target.name + ".tmp")
     process = subprocess.Popen(
-        [str(ffmpeg), "-y", "-i", str(video), "-vn", "-c:a", "libmp3lame",
-         *rate, "-f", "mp3", str(partial)],
+        [str(ffmpeg), "-y", "-i", str(video), *picture, "-c:a", "libmp3lame",
+         *rate, *labels, "-id3v2_version", "3", "-f", "mp3", str(partial)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
     )
     if on_start:
         on_start(process)
-    code = process.wait()
+    try:
+        code = process.wait()
+    finally:
+        if cover:
+            cover.unlink(missing_ok=True)
     if code != 0 or not partial.is_file() or partial.stat().st_size == 0:
         partial.unlink(missing_ok=True)
         raise RunnerError(
@@ -626,8 +693,11 @@ def _sound_of(written: list[Path], request: Request,
     chosen = request.out_name if len(sources) == 1 else ""
     final = [(p, p.name) for p in written if p not in candidates]
     for source in sources:
+        # These tools hand back a file and no data: the title only, the
+        # card's, else the name -- no artist, no cover (none is known).
         made = _to_mp3(source, source.with_name(free_name(source.parent, source.stem, "mp3") + ".mp3"),
-                       request.quality, on_start=on_start, on_step=on_step)
+                       request.quality, on_start=on_start, on_step=on_step,
+                       tags=_tags(request.title or chosen or source.stem))
         final.append((made, (chosen or source.stem) + ".mp3"))
     return final
 

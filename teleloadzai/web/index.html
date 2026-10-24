@@ -2262,7 +2262,7 @@ function sayState(row, job) {
 
 /** Everything that changes the SHAPE of a row. Same shape -> update in place. */
 function jobShape(job) {
-  return JSON.stringify([job.state, job.interrupted, job.skipped, job.skip_reason, job.error,
+  return JSON.stringify([job.state, job.interrupted, job.skipped, job.skip_reason, job.error, job.note,
     job.cookie_note, job.other_tool && job.other_tool.id, loginOffer(job),
     job.tool, job.target, job.title, job.mode, job.quality]);
 }
@@ -2296,6 +2296,7 @@ function jobRow(job) {
     ${job.cookie_note && job.state !== "done" ? `<div class="hint warn-text" style="margin-top:6px">
         ⚠️ Running without your cookies: ${job.cookie_note}.
       </div>` : ""}
+    ${job.state === "done" && job.note && !job.skipped ? '<div class="hint job-note" style="margin-top:6px"></div>' : ""}
     ${job.state === "done" && (job.files || []).length ? `<div class="row" style="margin-top:6px">
         <button class="ghost tiny" data-open="${job.id}">Open</button>
         <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
@@ -2368,6 +2369,10 @@ function jobRow(job) {
   sayState(row, job);
   const errorText = row.querySelector(".err");
   if (errorText) errorText.textContent = job.error || "";
+  // What a finished job did not get ("Saved without a cover picture."):
+  // the server's sentence, set as text (Phase 2 item 5).
+  const note = row.querySelector(".job-note");
+  if (note) note.textContent = job.note;
   // A tool that failed half-way (3 pictures of 8) is a failure, and what it
   // did save is said -- never shown as "done" (silent-failure hunt, 2026-10-18).
   const savedBefore = row.querySelector(".saved-before");
