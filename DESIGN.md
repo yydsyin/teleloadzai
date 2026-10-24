@@ -266,6 +266,9 @@ Each row has the name, then numbers on the right joined with " · " (12.3 MB / 4
 - **The parcel arrives:** a finished row keeps its line, all green, ending on "In your folder"; its title stays in ink. An "already there" row drops the line and goes grey: nothing came down.
 - **When the list is empty:** no box, just a parcel drawing and "Your downloads will appear here."
 
+### Paste / Read
+The button beside the link box says **Paste** while the box is empty and **Read** once it holds text: one place, never two buttons. It is ink-filled until a card shows, then an outline (the One Filled Button rule), beside both kinds of card. The box's placeholder says it beforehand: "https://…   One link, or several: one per line".
+
 ### Several links (one card)
 One paste of several links gives **one card**, never a second list of "found links". It shows:
 - the title "3 links", and a meta line "YouTube 2 · TikTok 1";
