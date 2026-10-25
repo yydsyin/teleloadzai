@@ -748,9 +748,18 @@ def _short_error(text: str) -> str:
     happens *because of* a cookie is exactly the one that may quote it. Hard
     rule 1 and decision 34 only hold together if the words are washed first.
     """
-    for line in reversed((text or "").splitlines()):
-        clean = line.strip()
+    lines = (text or "").splitlines()
+    for at in range(len(lines) - 1, -1, -1):
+        clean = lines[at].strip()
         if clean.startswith("ERROR:"):
+            # yt-dlp can print "ERROR:" alone, its reason on the next lines:
+            # the row kept "ERROR:" and nothing else (a Bilibili download
+            # with the user's log-in, 2026-10-24). Then the lines after it --
+            # not the next file's "Destination:", printed in the same breath.
+            if clean == "ERROR:":
+                after = [l.strip() for l in lines[at + 1:]
+                         if l.strip() and not l.startswith(_DESTINATION)][:3]
+                clean = " ".join(["ERROR:", *after])[:400]
             return cookies.redact(clean)
     body = (text or "").strip()
     return cookies.redact(body.splitlines()[-1]) if body else "unknown error"
