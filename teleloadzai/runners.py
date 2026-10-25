@@ -46,6 +46,11 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # Most tools print a percentage somewhere. Those that do not simply show
 # "working" -- we do not invent a number we cannot measure.
 _PERCENT = re.compile(r"(\d{1,3}(?:[.,]\d+)?)\s?%")
+# What the Console leaves out: a progress line -- a percentage standing on
+# its own ("45.20% 3.1MB/s"), never one inside a name ("file1%20copy.mp4"),
+# and never an error line ("ERROR: HTTP 403 at 50%"): the plain _PERCENT
+# swallowed both (grids of 2026-10-25).
+_PROGRESS_LINE = re.compile(r"^(?!.*\b(?:ERROR|WARN)\b)(?=.*(?<![\w%])\d{1,3}(?:[.,]\d+)?\s?%(?![\w%]))")
 
 # What we say we are to a site's own servers: file servers refuse a request
 # that does not look like a browser's.
@@ -1285,7 +1290,7 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         # The Console page (2026-10-25): the tool's words, but not its
         # percentage lines -- N_m3u8DL-RE repaints them many times a second,
         # and the row already shows the progress.
-        if on_line and not _PERCENT.search(line):
+        if on_line and not _PROGRESS_LINE.search(line):
             on_line(line)
         if on_progress:
             found_percent = _PERCENT.search(line)
