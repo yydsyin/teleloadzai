@@ -240,26 +240,9 @@
   }
   h2.section:first-of-type { margin-top: 12px; padding-top: 0; border-top: 0; }
   /* Settings, model S2 (the user's choice, 2026-10-23): every setting a
-     row, as on the download card. Its side menu became two tabs across the
-     top on 2026-10-25: the app's own menu is on the left now, and a second
-     left menu inside Settings would be one menu too many. Programs left
-     Settings for a page of its own. */
-  .settings-tabs {
-    display: flex; gap: 4px; width: fit-content; margin: 0 0 16px; padding: 3px; border-radius: 10px;
-    background: color-mix(in srgb, var(--ink) 6%, var(--card));
-  }
-  .settings-tabs button {
-    display: flex; align-items: center; gap: 8px; min-height: 34px;
-    padding: 0 14px; border-radius: 8px;
-    background: transparent; color: var(--soft); font-size: 14px; font-weight: 500;
-  }
-  /* The tab already names the section: its title stays for screen readers. */
-  #settings .pane > .pane-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  .settings-tabs button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
-  .settings-tabs button[aria-selected="true"] {
-    background: var(--card); color: var(--ink); font-weight: 600;
-    box-shadow: 0 1px 3px rgba(40, 30, 10, .14);
-  }
+     row, as on the download card. On 2026-10-25 its sections became pages
+     of the app's left menu: Programs, then Sites; Settings keeps the
+     download settings, no tabs left. */
   .pane-title { font-size: 22px; font-weight: 600; letter-spacing: -.01em; margin: 2px 0 14px; }
   .set-group {
     background: var(--card); border: 1px solid var(--line); border-radius: 12px;
@@ -412,6 +395,7 @@
   .wrap:not([data-showing="main"])     [data-view="main"],
   .wrap:not([data-showing="programs"]) [data-view="programs"],
   .wrap:not([data-showing="console"])  [data-view="console"],
+  .wrap:not([data-showing="sites"])    [data-view="sites"],
   .wrap:not([data-showing="settings"]) [data-view="settings"] { display: none !important; }
 
   /* A maximised window (asked by the user 2026-09-26: "if I turn into full
@@ -804,6 +788,7 @@
   <button type="button" data-go="main" aria-current="page"><span class="nav-icon icon-download" aria-hidden="true"></span>Download</button>
   <button type="button" data-go="console"><span class="nav-icon icon-terminal" aria-hidden="true"></span>Console</button>
   <button type="button" data-go="programs"><span class="nav-icon icon-tool" aria-hidden="true"></span>Programs</button>
+  <button type="button" data-go="sites"><span class="nav-icon icon-globe" aria-hidden="true"></span>Sites</button>
   <button type="button" data-go="settings" class="side-bottom"><span class="nav-icon icon-gear" aria-hidden="true"></span>Settings</button>
 </nav>
 <div class="wrap" data-showing="main">
@@ -1069,26 +1054,16 @@
     </div>
   </div>
 
-  <div data-view="settings" id="settings">
-    <!-- Model S2, chosen by the user 2026-10-23: a side menu with icons and
-         the page beside it, like the Windows 11 Settings app; every setting a
-         row (icon, name, control), as on the download card. The help lines
-         went ("plenty of sentences which are useless", the user): only the
-         cookie explanation stays, short (decision 35). Before: three tabs
-         over pages of paragraphs (model S3, 2026-10-22). -->
-    <h2 class="pane-title page-title">Settings</h2>
-    <nav class="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="horizontal">
-      <button type="button" role="tab" id="tab-downloads" data-pane="downloads"
-              aria-controls="pane-downloads" aria-selected="true">
-        <span class="nav-icon icon-download" aria-hidden="true"></span><span class="nav-text">Downloads</span></button>
-      <button type="button" role="tab" id="tab-sites" data-pane="sites"
-              aria-controls="pane-sites" aria-selected="false" tabindex="-1">
-        <span class="nav-icon icon-globe" aria-hidden="true"></span><span class="nav-text">Sites</span></button>
-    </nav>
-
+  <!-- Two pages of the left menu (2026-10-25): Settings (the download
+       settings) and Sites (log-ins and each site's program), each with its
+       own data-view. Every setting a row (icon, name, control), as on the
+       download card (model S2, 2026-10-23); the help lines went ("plenty of
+       sentences which are useless", the user), only the cookie explanation
+       stays, short (decision 35). -->
+  <div id="settings">
     <div class="settings-page">
-    <section class="pane" id="pane-downloads" role="tabpanel" aria-labelledby="tab-downloads">
-      <h2 class="pane-title" id="set-downloads" tabindex="-1">Downloads</h2>
+    <section class="pane" id="pane-downloads" data-view="settings">
+      <h2 class="pane-title page-title" id="set-downloads" tabindex="-1">Settings</h2>
       <div class="set-group">
         <div class="set-row set-row-wide">
           <span class="opt-icon icon-folder" aria-hidden="true"></span>
@@ -1156,8 +1131,8 @@
          itself FIRST: what it is, why, what we do not do with it, the risk --
          before any switch. Said now in one line under the switch and the
          warning box; the longer explanation and the file road are folded. -->
-    <section class="pane hidden" id="pane-sites" role="tabpanel" aria-labelledby="tab-sites">
-      <h2 class="pane-title" id="set-accounts" tabindex="-1">Sites</h2>
+    <section class="pane" id="pane-sites" data-view="sites">
+      <h2 class="pane-title page-title" id="set-accounts" tabindex="-1">Sites</h2>
       <div class="set-group" id="logins-group">
         <div class="set-row" id="logins-switch-row">
           <span class="opt-icon icon-key" aria-hidden="true"></span>
@@ -1739,7 +1714,7 @@ function needText(tool) {
   const orFree = free ? ` Or choose ${free.name} above: it works without a log-in.` : "";
   if (!n.cookies_on) {
     return `${tool.name} needs your ${site} cookies, and cookies are switched off. `
-      + `Turn them on in Settings → Accounts${n.logged_in ? "" : ", then log in to " + site}.` + orFree;
+      + `Turn them on in the Sites page${n.logged_in ? "" : ", then log in to " + site}.` + orFree;
   }
   if (n.kind === "visit") {
     // A reminder, not a refusal: TikTokDownloader often works without it.
@@ -1781,7 +1756,7 @@ function steppedText(chosen, usual) {
   const site = currentPlatform;
   if (!usual.need.logged_in && STEPPED_GETS[currentPlatformId]) return STEPPED_GETS[currentPlatformId];
   const why = usual.need.logged_in
-    ? `needs your ${site} cookies, and cookies are switched off in Settings → Accounts.`
+    ? `needs your ${site} cookies, and log-ins are switched off in the Sites page.`
     : `needs you to be logged in to ${site}.`;
   return `Using ${chosen.name}: ${usual.name}, the usual program for ${site}, ${why}`;
 }
@@ -3471,15 +3446,15 @@ function showView(name) {
   // The Console reads the server's lines once a second, only while shown.
   clearInterval(consoleTimer);
   if (name === "console") { pollConsole(); consoleTimer = setInterval(pollConsole, 1000); }
-  if (name === "settings") {
-    loadTools();      // the Sites table names each site's programs
+  if (name === "sites") {
+    loadTools();      // the table names each site's programs
     loadCookies();
     loadToolChoices();
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
   // The keyboard moves with the page -- a screen reader stayed on the old
   // button and heard nothing of the new screen (round 1, 2026-09-26).
-  (name === "settings" ? document.querySelector(".settings-tabs [aria-selected=true]")
+  (name === "settings" ? $("set-downloads") : name === "sites" ? $("set-accounts")
     : name === "programs" ? $("set-tools") : name === "console" ? $("con-title")
     : $("url")).focus({ preventScroll: true });
 }
@@ -3572,30 +3547,6 @@ async function loadToolChoices() {
   const data = await api("/api/tool-choices");
   siteTools = data.sites || [];
   renderSites();
-}
-
-// The three tabs of Settings (model S3). One section at a time; the arrow
-// keys move between tabs, as Windows' own tabs do.
-function openPane(name, focusTab = false) {
-  for (const tab of document.querySelectorAll(".settings-tabs [role=tab]")) {
-    const on = tab.dataset.pane === name;
-    tab.setAttribute("aria-selected", String(on));
-    tab.tabIndex = on ? 0 : -1;
-    if (on && focusTab) tab.focus();
-    $("pane-" + tab.dataset.pane).classList.toggle("hidden", !on);
-  }
-  window.scrollTo({ top: 0 });
-}
-for (const tab of document.querySelectorAll(".settings-tabs [role=tab]")) {
-  tab.addEventListener("click", () => openPane(tab.dataset.pane));
-  tab.addEventListener("keydown", (event) => {
-    const tabs = [...document.querySelectorAll(".settings-tabs [role=tab]")];
-    const step = { ArrowDown: 1, ArrowUp: -1, ArrowRight: 1, ArrowLeft: -1 }[event.key];
-    if (!step) return;
-    event.preventDefault();
-    const next = tabs[(tabs.indexOf(tab) + step + tabs.length) % tabs.length];
-    openPane(next.dataset.pane, true);
-  });
 }
 
 // Esc leaves Settings, as a window's Back would (round 1 of the loop).
