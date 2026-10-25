@@ -157,7 +157,6 @@
   }
   .resume-bar span { flex: 1; min-width: 200px; }
   .list-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-  .list-actions { margin-left: auto; display: flex; gap: 6px; }
   #list-filters:not(:has(button:not(.hidden))) { display: none; }
   .job.filtered-out, .fail-group.filtered-out { display: none; }
   #list-filters button { min-height: 30px; padding: 0 10px; font-size: 13px; }
@@ -620,7 +619,6 @@
   }
   .done-at { font-size: 13px; font-weight: 600; color: var(--ok-text); }
   .done-at.gone { color: var(--soft); font-weight: 500; }
-  .done-links { display: inline-flex; gap: 14px; margin-left: 16px; }
   .link-btn {
     min-height: 28px; padding: 0 2px; border: 0; background: none; cursor: pointer;
     color: var(--ink); font-size: 13px; text-decoration: underline; text-underline-offset: 3px;
@@ -892,7 +890,6 @@
           </span>
           <label class="sr-only" for="sub-lang">Subtitle language</label>
           <select id="sub-lang" class="hidden"></select>
-          <span class="hint hidden" id="subs-why"></span>
         </span>
       </div>
       <div class="opt-row" id="row-tool">
