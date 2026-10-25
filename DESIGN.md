@@ -307,6 +307,7 @@ Over the Downloads list:
 
 ### Settings (the Windows Settings model)
 - **Groups:** cards of rows with a name (600), an optional help line (13 px soft), and the control on the right.
+- **Sites, the log-in state** beside each site's button, a dot and a word: **Logged in** (ok green) · **Visited** (blue `--visit`, #2f5f9e / dark #8fb3e8 — the site's visitor cookies, no account; 2026-10-25) · **Expired** (bad red) · nothing.
 - **Paused:** while log-ins are paused, the whole Sites page except its switch is at 45 % opacity, greyscale, and out of reach (`inert`).
 - **Downloads page, its switches in order:** Ask where to save each file · Use a link I copied · **Tell me when a download ends** (a bell icon; "A Windows message, only while you are in another window. Click it while it is on screen to come back.").
 

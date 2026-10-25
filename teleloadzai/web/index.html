@@ -19,6 +19,9 @@
        (measured 2026-10-23). */
     --accent: #7d5d00;
     --ok-text: #2f7a4f;
+    /* "Visited" on Sites (2026-10-25): a blue, 6.36:1 on a card (7.31:1
+       for the dark one), measured. */
+    --visit: #2f5f9e;
     --radius: 12px;
     /* Windows' own parts (scrollbar, list pop-up, checkbox) follow the theme:
        in dark mode they were drawn light (round 1, 2026-09-26). */
@@ -33,6 +36,7 @@
       --bg: #161513; --card: #25231f; --ink: #ede8dd; --soft: #aaa293;
       --line: #3a3630; --line-strong: #4e483f; --accent: #e3bb4f; --ok: #5cc28a; --bad: #f07a6a;
       --ok-text: #5cc28a;
+      --visit: #8fb3e8;
       --accent-fill: #ede8dd; --on-fill: #1b1a17;
     }
   }
@@ -463,16 +467,20 @@
   #result.is-error .title { color: var(--bad); }
   /* The sign on each log-in button, and its key: a dot drawn here, never an
      emoji. Colour is backed by words in the tooltip and accessible name. */
-  .login-logged_in::before, .login-expired::before {
+  .login-logged_in::before, .login-expired::before, .login-visited::before {
     content: ""; display: inline-block; width: 8px; height: 8px;
     border-radius: 50%; margin-right: 6px; vertical-align: 1px;
   }
   .login-logged_in::before { background: var(--ok); }
   .login-expired::before { background: var(--bad); }
+  /* Visited (2026-10-25): the site's visitor cookies, no account -- its own
+     colour and its own word, never a grey "maybe" (decision 36). */
+  .login-visited::before { background: var(--visit); }
   /* The log-in state on Sites: words with their dot, beside the button. */
   .login-sign { font-size: 13px; font-weight: 600; white-space: nowrap; margin-right: 10px; }
   .login-sign.login-logged_in { color: var(--ok-text); }
   .login-sign.login-expired { color: var(--bad); }
+  .login-sign.login-visited { color: var(--visit); }
   /* The second click of a destructive button (see `twoClicks`). */
   button.danger { color: var(--bad); border-color: var(--bad); }
 
@@ -4509,9 +4517,10 @@ function renderSites() {
         : `Logged in${p.since ? " " + agoText(p.since) : ""}: the log-in window saw it finish.`)
       + (p.ends ? ` It lasts until ${new Date(p.ends * 1000).toLocaleDateString()}.` : ""),
     expired: (p) => `The log-in has expired (${new Date(p.ends * 1000).toLocaleDateString()}). Log in again.`,
+    visited: () => "Visited: this site's visitor cookies are here, without an account.",
     none: () => "Not logged in.",
   };
-  const label = { logged_in: "Log in again", expired: "Log in again", none: "Log in" };
+  const label = { logged_in: "Log in again", expired: "Log in again", visited: "Log in", none: "Log in" };
   // The log-in sites in their order, then the sites with a program and no
   // log-in in Teleloadzai.
   const toolsOf = new Map(siteTools.map((s) => [s.id, s]));
@@ -4578,7 +4587,7 @@ function renderSites() {
       if (state !== "none") {
         const sign = document.createElement("span");
         sign.className = "login-sign login-" + state;
-        sign.textContent = state === "logged_in" ? "Logged in" : "Expired";
+        sign.textContent = { logged_in: "Logged in", expired: "Expired", visited: "Visited" }[state];
         sign.title = said;
         login.appendChild(sign);
       }

@@ -248,7 +248,10 @@ def choices() -> list[dict]:
                      itself, or the user pressed "I have logged in"
       "expired"   -- the badge is there but past its end date (for a site
                      with no badge: every dated cookie is)
-      "none"      -- anything else. Cookies of a mere visit prove nothing.
+      "visited"   -- the site's cookies are here but no log-in: a visit
+                     (2026-10-25; until then "none" -- a visit is no log-in,
+                     but it is what TikTok and Douyin need)
+      "none"      -- no cookie of the site at all.
     `badge` says which of the two ways decided it, for the words.
     ⚠️ A site can end a session before its date (log out elsewhere), and a
     badge with no date (Kuaishou's) never turns red: that cannot be seen
@@ -275,23 +278,28 @@ def choices() -> list[dict]:
 
 
 def _sign(platform, dates: dict, seen: dict, now: float) -> tuple[str, float]:
-    """One site's log-in state -- "logged_in", "expired" or "none" -- and the
+    """One site's log-in state -- "logged_in", "expired", "visited" or "none" -- and the
     latest end date it rests on. ONE rule for the Settings sign and the
     download card: the card read the badge only, so Vimeo (no known badge,
     the window saw the log-in finish) was green in Settings while its card
     said "log in" -- a loop (review of 2026-09-28)."""
+    # "visited" (the user's idea, 2026-10-25): the site's cookies are here,
+    # but no log-in -- a visit, which is all TikTok and Douyin need (§4).
+    # A fact said in words, not a "maybe": the cookies are in our file.
+    mine = [dates[d] for d in platform.domains if d in dates]
     if platform.id in _BADGES:
         ends = cookies.badge_dates(platform.domains, _BADGES[platform.id])
         latest = max(ends or [0.0])
         if ends is None:
-            return "none", latest
+            return ("visited" if mine else "none"), latest
         if all(0 < when < now for when in ends):
             return "expired", latest
         return "logged_in", latest
-    mine = [dates[d] for d in platform.domains if d in dates]
     latest = max((m["latest"] for m in mine), default=0.0)
-    if not mine or seen.get("how") not in ("auto", "button"):
+    if not mine:
         return "none", latest
+    if seen.get("how") not in ("auto", "button"):
+        return "visited", latest
     if latest and latest < now:
         return "expired", latest
     return "logged_in", latest
