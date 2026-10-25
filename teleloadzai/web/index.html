@@ -2479,12 +2479,14 @@ function jobRow(job) {
   const menu = failed ? moreMenu([
       hasDetails && `<button type="button" role="menuitem" data-details="${job.id}">Details</button>`,
       ...fails.rest,
-      `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove</button>`])
+      `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`])
+    // A finished row had no Remove of its own -- only "Clear finished", all
+    // at once (the user, 2026-10-25). "from list": the file stays.
     : compact ? moreMenu([job.on_disk
-      ? `<button type="button" role="menuitem" data-reveal="${job.id}">Show in folder</button>`
+      && `<button type="button" role="menuitem" data-reveal="${job.id}">Show in folder</button>`,
       // Its file moved or deleted: Open and Show in folder could only
-      // answer an error (decision 40) -- the row can go instead.
-      : `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove</button>`]) : "";
+      // answer an error (decision 40) -- the row can go.
+      `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`]) : "";
 
   row.innerHTML = `
     <div class="job-top">
