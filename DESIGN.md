@@ -249,7 +249,7 @@ Icons are simple line drawings (24-unit grid, 2 px stroke, round ends). They are
 - **Errors:** a red line of text under the field.
 
 ### The card (a parcel's label)
-A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the title, and a grey meta line ("YouTube · yt-dlp"). The × closes it. Under it come **choice rows**: a 32 px icon tile tinted yellow, the name (Format, Quality, Program) and the control on the right. **A row with nothing to choose is not drawn** (decision 40). What the chosen program gives ("TikTokDownloader: higher quality.") is a help line **under its switch**, lined up with the row's name. The foot holds Download on the right.
+A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the title, and a grey meta line ("YouTube · yt-dlp"). The × closes it. Under it come **choice rows**: a 32 px icon tile tinted yellow, the name (Format, Quality, Subtitles, Program) and the control on the right. **A row with nothing to choose is not drawn** (decision 40). **Subtitles** (chosen from a drawing, 2026-10-25): a switch Off · In the video · Separate file, and a language list beside it only when not Off — the video's real languages, an automatic one marked "(automatic)". The row exists only in MP4 and only when the video has subtitles: otherwise not a word. What the chosen program gives ("TikTokDownloader: higher quality.") is a help line **under its switch**, lined up with the row's name. The foot holds Download on the right.
 
 **One word:** the thing that downloads is a **program** everywhere on screen (the card, Settings → Programs, the messages), never a "tool".
 

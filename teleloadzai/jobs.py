@@ -31,7 +31,8 @@ ACTIVE_STATES = (WAITING, RUNNING)
 # path, not its note -- the error words are already washed (decision 37).
 _KEPT = ("id", "url", "mode", "quality", "title", "folder", "target", "tool",
          "platform", "skipped", "skip_reason", "state", "files", "error",
-         "error_from_tool", "limit_minutes", "live", "interrupted", "note", "pieces")
+         "error_from_tool", "limit_minutes", "live", "interrupted", "note", "pieces",
+         "subs", "sub_lang")
 HISTORY_LIMIT = 200         # rows kept; the oldest finished ones go first
 
 
@@ -140,6 +141,10 @@ class Job:
     cookie_note: str = ""
     cookie_header: bool = False   # may this job use cookies as a header?
     platform: str = ""          # which site, so a failure can offer its log-in
+    # Subtitles (Phase 2 item 7): "" off, "embed" inside the MP4, "file" a
+    # .srt beside it; `sub_lang` the track's code ("en", "fr", "en-orig").
+    subs: str = ""
+    sub_lang: str = ""
     state: str = WAITING
     percent: str = ""
     speed: float = 0.0          # bytes per second, 0 when unknown
@@ -242,6 +247,7 @@ class Job:
             "live": self.live or self.tool == "streamlink",
             "limit_minutes": self.limit_minutes,
             "interrupted": self.interrupted,
+            "subs": self.subs, "sub_lang": self.sub_lang,
         }
 
 
@@ -331,7 +337,7 @@ class Queue:
             tool: str = "yt-dlp", limit_minutes: int = 60,
             cookie_file: Path | None = None, cookie_note: str = "",
             platform: str = "", cookie_header: bool = False,
-            replace: str = "") -> Job | None:
+            replace: str = "", subs: str = "", sub_lang: str = "") -> Job | None:
         """Queue a download. With ``replace``, it takes the place of that
         finished job -- same id, same spot in the list -- instead of adding a
         row: a Retry used to leave the failed row behind, one more each time.
@@ -343,7 +349,7 @@ class Queue:
             limit_minutes=limit_minutes,
             cookie_file=str(cookie_file) if cookie_file else "",
             cookie_note=cookie_note, platform=platform,
-            cookie_header=cookie_header,
+            cookie_header=cookie_header, subs=subs, sub_lang=sub_lang,
         )
         with self._lock:
             if replace:
@@ -573,6 +579,7 @@ class Queue:
                     force=job.force, cookie_file=cookie_file, on_step=on_step,
                     on_destination=on_destination, on_writing=on_writing,
                     on_live=on_live, on_title=on_title,
+                    subs=job.subs, sub_lang=job.sub_lang,
                 )
             else:
                 # A specialist tool cannot be told an exact file name, so it
@@ -594,6 +601,7 @@ class Queue:
                         # ask for one.
                         cookie_header=job.cookie_header,
                         stop=job.stop,
+                        subs=job.subs, sub_lang=job.sub_lang,
                     ),
                     on_progress=on_percent, on_start=on_start, on_step=on_step,
                     on_bytes=on_bytes,
@@ -618,6 +626,10 @@ class Queue:
                 note = " ".join(filter(None, [
                     ytdlp.kbps_note(made, job.quality) if job.tool == "yt-dlp" else "",
                     ytdlp.cover_note(made)]))
+            elif job.subs:
+                # Subtitles asked: are they in the file / beside it (item 7)?
+                made = [f for f in result.files if f not in getattr(result, "skipped", [])]
+                note = ytdlp.subs_note(made, job.subs)
 
             with self._lock:
                 # A stopped row keeps files only for a live recording, which

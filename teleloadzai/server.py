@@ -82,6 +82,8 @@ def load_settings() -> dict:
         # "each" (a row of choices per video). The user's own pick, kept
         # (asked 2026-10-24: "its users to choose what mode").
         "several_mode": "each" if stored.get("several_mode") == "each" else "same",
+        # The Subtitles row's last choice (Phase 2 item 7): "" off by default.
+        "subs_mode": stored.get("subs_mode") if stored.get("subs_mode") in ("embed", "file") else "",
         # A Windows message when a download ends and the window is not in
         # front (Phase 2 item 6). On by default; some people dislike them.
         "notify_done": bool(stored.get("notify_done", True)),
@@ -240,7 +242,8 @@ def _retry_target(old) -> str:
 
 def queue_download(url: str, mode: str, quality: str, title: str, target: str,
                    tool: str, platform: str, force: bool = False,
-                   replace: str = "", folder: str = "") -> tuple[dict, int]:
+                   replace: str = "", folder: str = "",
+                   subs: str = "", sub_lang: str = "") -> tuple[dict, int]:
     """Check a download request and put it in the queue. Returns (json, status).
 
     ``replace`` is the id of a finished job this one takes the place of --
@@ -264,6 +267,12 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
         quality = "best"
     if tools.installed_path(tool) is None:
         return {"error": f"{tool} is not installed"}, 400
+    # Subtitles (Phase 2 item 7): only in MP4, only for a program that makes
+    # them (runners.CHOICES "subs"), only a code shaped like one. Anything
+    # else is dropped, never passed on as if it would happen.
+    if subs not in ("embed", "file") or mode != "mp4" or not can.get("subs") \
+            or not ytdlp.SUB_LANG.fullmatch(sub_lang or ""):
+        subs, sub_lang = "", ""
     # Several links go to ONE folder chosen in the Windows window (the user's
     # choice, 2026-10-24), and a Retry goes back to where its first try
     # went. Only a folder that exists: never one made up by a page.
@@ -282,7 +291,7 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
                     cookie_note=cookies.unusable_reason(tool, on) or "",
                     platform=platform,
                     cookie_header=on and tool in cookies.HEADER_CAPABLE,
-                    replace=replace)
+                    replace=replace, subs=subs, sub_lang=sub_lang)
     if job is None:
         return {"error": "that download is still running, or no longer exists"}, 409
     return job.as_dict(), 200
@@ -684,6 +693,8 @@ class Handler(BaseHTTPRequestHandler):
                 "entries": info.entries, "max_height": info.max_height,
                 "heights": list(info.heights),
                 "items": [{"url": u, "title": t, "duration": d} for u, t, d in info.items],
+                "subtitles": [{"code": c, "name": n, "auto": a} for c, n, a in info.subtitles],
+                "language": info.language,
             })
             return
 
@@ -748,6 +759,8 @@ class Handler(BaseHTTPRequestHandler):
                 tool=(body.get("tool") or "yt-dlp").strip(),
                 platform=(body.get("platform") or "").strip(),
                 folder=(body.get("folder") or "").strip(),
+                subs=str(body.get("subs") or ""),
+                sub_lang=str(body.get("sub_lang") or ""),
             )
             self._json(answer, status)
             return
@@ -790,6 +803,7 @@ class Handler(BaseHTTPRequestHandler):
                 url=old.url, mode=old.mode, quality=old.quality, title=old.title,
                 target=_retry_target(old), tool=(body.get("tool") or "").strip(),
                 platform=old.platform, replace=old.id, folder=_retry_folder(old),
+                subs=old.subs, sub_lang=old.sub_lang,
             )
             self._json(answer, status)
             return
@@ -844,6 +858,7 @@ class Handler(BaseHTTPRequestHandler):
                 url=old.url, mode=old.mode, quality=old.quality, title=old.title,
                 target=_retry_target(old), tool=old.tool, platform=old.platform,
                 force=bool(body.get("force")), replace=old.id, folder=_retry_folder(old),
+                subs=old.subs, sub_lang=old.sub_lang,
             )
             self._json(answer, status)
             return
@@ -970,6 +985,8 @@ class Handler(BaseHTTPRequestHandler):
                 settings["use_clipboard"] = bool(body["use_clipboard"])
             if body.get("several_mode") in ("same", "each"):
                 settings["several_mode"] = body["several_mode"]
+            if body.get("subs_mode") in ("", "embed", "file"):
+                settings["subs_mode"] = body["subs_mode"]
             if "notify_done" in body:        # False is a real value, not "missing"
                 settings["notify_done"] = bool(body["notify_done"])
             if isinstance(body.get("tool_choice"), dict):

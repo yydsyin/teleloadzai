@@ -534,6 +534,8 @@
   .choice[data-mode="mp3"], .bchoice[data-bmode="mp3"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E"); }
   .icon-sliders { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6'/%3E%3C/svg%3E"); }
   .icon-tool { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z'/%3E%3C/svg%3E"); }
+  .icon-cc { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Cpath d='M10 10.5a2 2 0 1 0 0 3M16 10.5a2 2 0 1 0 0 3'/%3E%3C/svg%3E"); }
+  #result.dead-end #row-subs { display: none; }
   .icon-download { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E"); }
   .icon-globe { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/%3E%3C/svg%3E"); }
   .icon-folder { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E"); }
@@ -874,6 +876,23 @@
           <!-- Where the list is missing, why (the user, 2026-10-05: a YouTube
                MP4 with no Quality list looked like a bug). -->
           <span class="hint hidden" id="quality-why"></span>
+        </span>
+      </div>
+      <!-- Subtitles (Phase 2 item 7, drawn and chosen 2026-10-25): only in
+           MP4, only when the video HAS subtitles -- otherwise not a word
+           (the user: "if there isn't subtitle, it shouldn't be mentioned"). -->
+      <div class="opt-row" id="row-subs">
+        <span class="opt-icon icon-cc" aria-hidden="true"></span>
+        <span class="opt-name" aria-hidden="true">Subtitles</span>
+        <span class="opt-control">
+          <span class="seg-track hidden" id="subs-pick" role="group" aria-label="Subtitles">
+            <button type="button" data-subs="" aria-pressed="true">Off</button>
+            <button type="button" data-subs="embed" aria-pressed="false">In the video</button>
+            <button type="button" data-subs="file" aria-pressed="false">Separate file</button>
+          </span>
+          <label class="sr-only" for="sub-lang">Subtitle language</label>
+          <select id="sub-lang" class="hidden"></select>
+          <span class="hint hidden" id="subs-why"></span>
         </span>
       </div>
       <div class="opt-row" id="row-tool">
@@ -1532,6 +1551,91 @@ function applyChoices(tool) {
   // The row already says "Quality" (style H, 2026-10-23): not twice.
   $("quality-why").textContent = why.replace(/^Quality: /, "");
   $("quality-why").classList.toggle("hidden", !why);
+  paintSubs(tool);
+}
+
+// ---- Subtitles (Phase 2 item 7, drawn and chosen 2026-10-25) --------------
+// The video's tracks from the title read: [{code, name, auto}] -- its real
+// ones and at most one automatic (ytdlp._subtitle_tracks).
+let videoSubs = [];
+let videoLang = "";
+// The row's choice: "" Off, "embed" In the video, "file" Separate file. It
+// starts from the last one chosen (settings.subs_mode), like MP3 / MP4.
+let subsMode = "";
+let subsChoice = "";
+// Subtitles pressed on a program that makes none: the card moved to one
+// that does, as MP3 does -- said, and Off gives the program back.
+let subsFrom = "";
+
+const makesSubs = (tool) => Boolean(tool && (tool.choices || {}).subs);
+function subsMaker() { return currentTools.find((t) => makesSubs(t) && !deadEnd(t)); }
+
+/** The language to start on: the user's own (Windows' language, as the
+ *  page sees it), else the video's own, else none -- then Off. A real
+ *  track before an automatic one. */
+function startSubLang() {
+  const base = (code) => String(code || "").toLowerCase().split(/[-_]/)[0];
+  const pick = (lang) => lang && (videoSubs.find((s) => !s.auto && base(s.code) === lang)
+    || videoSubs.find((s) => base(s.code) === lang));
+  const found = pick(base(navigator.language)) || pick(base(videoLang));
+  return found ? found.code : "";
+}
+
+function fillSubLangs() {
+  const list = $("sub-lang");
+  list.textContent = "";
+  for (const s of videoSubs) {
+    const option = document.createElement("option");
+    option.value = s.code;
+    option.textContent = s.auto ? `${s.name} (automatic)` : s.name;
+    list.appendChild(option);
+  }
+  const start = startSubLang();
+  if (start) list.value = start;
+  // Remembered "In the video", and the video has neither your language nor
+  // its own listed: Off -- never a language nobody chose.
+  subsChoice = start ? subsMode : "";
+}
+
+/** The row: only in MP4, only when the video has subtitles, only where a
+ *  program of this site makes them. Nothing at all otherwise. */
+function paintSubs(tool) {
+  const shown = mode === "mp4" && videoSubs.length > 0 && !titleReading && !probeProblem
+    && (makesSubs(tool) || Boolean(subsMaker()));
+  const now = shown && makesSubs(tool) ? subsChoice : "";
+  $("subs-pick").classList.toggle("hidden", !shown);
+  for (const button of $("subs-pick").children) {
+    button.setAttribute("aria-pressed", String(button.dataset.subs === now));
+  }
+  $("sub-lang").classList.toggle("hidden", !shown || !now);
+}
+
+/** What Download sends: nothing unless the row is shown and on. */
+function subsRequest() {
+  const tool = chosenTool();
+  const on = !$("subs-pick").classList.contains("hidden") && makesSubs(tool) && subsChoice;
+  return on ? { subs: subsChoice, sub_lang: $("sub-lang").value } : { subs: "", sub_lang: "" };
+}
+
+for (const button of $("subs-pick").children) {
+  button.addEventListener("click", () => {
+    subsChoice = button.dataset.subs;
+    subsMode = subsChoice;
+    api("/api/settings", { subs_mode: subsMode });
+    // A track to use: the one shown, else the first the video has.
+    if (subsChoice && !$("sub-lang").value && videoSubs.length) $("sub-lang").value = videoSubs[0].code;
+    const chosen = chosenTool();
+    if (subsChoice && !makesSubs(chosen) && subsMaker()) {
+      subsFrom = chosen.id;               // e.g. TikTokDownloader: yt-dlp makes them
+      pickedTool = subsMaker().id;
+      userPicked = true;
+      autoPicked = null;
+    } else if (!subsChoice && subsFrom) {
+      pickedTool = subsFrom;              // back to the program the user had
+      subsFrom = "";
+    }
+    showChosenTool();
+  });
 }
 
 // The title read is running (its answer brings the sizes).
@@ -1676,7 +1780,9 @@ function showChosenTool() {
   // Said when the MP3 button changed the tool, so the switch never moves
   // silently; MP4 gives the user's tool back.
   const from = formatFrom && currentTools.find((t) => t.id === formatFrom);
+  const subsOf = subsFrom && currentTools.find((t) => t.id === subsFrom);
   const whyText = (why + (from ? ` Chosen for the MP3 — ${from.name} makes none.` : "")
+    + (subsOf ? ` Chosen for the subtitles — ${subsOf.name} makes none.` : "")
     + (mp3Waiting && chosen ? ` ${chosen.name} makes no MP3.` : "")).trim();
   // MP3 drops the picture claim: its line keeps its room, or Download jumped
   // 26 px up as the hand went to it (review of 2026-10-05).
@@ -1972,6 +2078,7 @@ async function readLink(url, mine) {
   // only, and Settings changes the default (the user, 2026-09-25).
   userPicked = false;
   formatFrom = "";
+  subsFrom = "";
   mp3Waiting = false;
   $("tool-pick").innerHTML = "";
   for (const tool of currentTools) {
@@ -1998,6 +2105,7 @@ async function readLink(url, mine) {
       userPicked = true;
       autoPicked = null;
       formatFrom = "";        // a tool chosen by hand stands
+      subsFrom = "";
       showChosenTool();
     });
     $("tool-pick").appendChild(button);
@@ -2037,6 +2145,8 @@ async function readLink(url, mine) {
   titleReading = true;        // until the read below answers (qualityWhy)
   maxHeight = 0;              // not known for this link yet: no list
   videoHeights = [];
+  videoSubs = [];             // no subtitles said before the read says so
+  videoLang = "";
   fillQualities();
   $("probe-words").classList.add("hidden");
   currentTitle = "";
@@ -2126,6 +2236,9 @@ async function readLink(url, mine) {
     currentTitle = info.title || "";
     maxHeight = info.max_height || 0;
     videoHeights = info.heights || [];
+    videoSubs = info.subtitles || [];
+    videoLang = info.language || "";
+    fillSubLangs();
     fillQualities();
     applyChoices(chosenTool());
     const bits = [];
@@ -3603,6 +3716,7 @@ $("go").addEventListener("click", async () => {
     quality: $("quality").classList.contains("hidden") ? "best" : $("quality").value,
     tool: (chosenTool() || {}).id || "yt-dlp",
     platform: currentPlatformId,
+    ...subsRequest(),
   });
   if (job.error) { setStatus("Error: " + job.error); return; }
   // The card goes: it stayed with a bright Download for the SAME video,
@@ -4600,6 +4714,7 @@ async function forgetCookies() {
   $("use-clipboard").checked = settings.use_clipboard !== false;
   $("notify-done").checked = settings.notify_done !== false;
   severalMode = settings.several_mode === "each" ? "each" : "same";
+  subsMode = ["embed", "file"].includes(settings.subs_mode) ? settings.subs_mode : "";
   updateGoLabel();
 
   if (!settings.setup_done) {      // first launch: one line (decision 17)

@@ -84,6 +84,9 @@ class Request:
     # True when this job may use cookies at all. TikTokDownloader wants them
     # as a header string, not a file, so it cannot use `cookie_file`.
     cookie_header: bool = False
+    # Subtitles (Phase 2 item 7): "" off, "embed", "file"; the track's code.
+    subs: str = ""
+    sub_lang: str = ""
     # Set by Stop. A tool driven by its server holds no process for Stop to
     # end while it reads the post or while we fetch its file: Stop said
     # "stopped" and the whole video still arrived (silent-failure hunt,
@@ -250,6 +253,24 @@ def _n_m3u8dl_re(exe: Path, r: Request) -> list[str]:
         # HH:mm:ss has no 24th hour: the setting's top (24 h) becomes 23:59.
         minutes = min(r.limit_minutes, 23 * 60 + 59)
         command += ["--live-record-limit", f"{minutes // 60:02d}:{minutes % 60:02d}:00"]
+    # Picture and sound joined into ONE .mp4 (its own "-M", read in
+    # `--morehelp mux-after-done`). Without it, a stream that keeps its sound
+    # apart left a SILENT video and the sound beside it, and the row said
+    # done: Apple's test stream gave bip.mp4 (no sound) + bip.en.m4a +
+    # bip.en.srt; a Sky News live gave live.copy.ts (picture) + live.ts
+    # (sound); with -M, one .mp4 with both (ffprobe, 2026-10-25). An MP3 is
+    # taken from that video's sound, so it needed this too. FFmpeg is found
+    # beside the program by itself (`bin_path` auto, seen).
+    # Subtitles (Phase 2 item 7), all three seen on the disk the same day:
+    # off -> none downloaded, none kept; "embed" -> a mov_text track and no
+    # file left; "file" -> `<name>.<lang>.srt` beside the .mp4.
+    wanted = r.mode == "mp4" and r.subs in ("embed", "file") and bool(
+        ytdlp.SUB_LANG.fullmatch(r.sub_lang or ""))
+    command += ["-M", "format=mp4" + ("" if wanted and r.subs == "embed" else ":skip_sub=true")]
+    if wanted:
+        command += ["--select-subtitle", f'lang="{r.sub_lang}":for=best']
+    else:
+        command += ["--drop-subtitle", "lang=.*"]
     return command
 
 
@@ -1031,11 +1052,13 @@ def _fetch(address: str, target: Path, site: str,
 #   takes ("kbps", "height"), or "" for none -- then "best" is sent.
 #   "label": the MP4 button's words, where the tool hands back the post's own
 #   files (pictures, videos) as they are, not an MP4 we chose.
+#   "subs": the Subtitles row's choices reach it (Phase 2 item 7).
 # Read in each recipe on 2026-09-26; measured where a choice is passed on.
 CHOICES: dict[str, dict] = {
     # Measured 2026-09-25/26 on real files: 2160/1080/720/480/360p and
-    # 320/192/128 kbps each came out as asked.
-    "yt-dlp": {"mp3": "kbps", "mp4": "height"},
+    # 320/192/128 kbps each came out as asked. Subtitles probed 2026-10-25:
+    # "In the video" = a mov_text track, nothing left beside it.
+    "yt-dlp": {"mp3": "kbps", "mp4": "height", "subs": True},
     # Heights passed as its own stream names (_STREAMLINK_QUALITY); not
     # measured on a live stream.
     # MP3, for the five below: the tool's video, then our FFmpeg keeps the
@@ -1048,7 +1071,9 @@ CHOICES: dict[str, dict] = {
     # files, as they are. gallery-dl makes no MP3.
     "gallery-dl": {"mp4": "", "label": "Original files"},
     "xhs-downloader": {"mp3": "kbps", "mp4": "", "label": "Original files"},
-    "n-m3u8dl-re": {"mp3": "kbps", "mp4": "", "label": "Original file"},
+    # Subtitles: its -M / --select-subtitle, the three choices seen on the
+    # disk 2026-10-25 (_n_m3u8dl_re).
+    "n-m3u8dl-re": {"mp3": "kbps", "mp4": "", "label": "Original file", "subs": True},
 }
 
 

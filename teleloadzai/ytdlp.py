@@ -168,6 +168,28 @@ class MediaInfo:
     # 29 items are `_type: url` with "watch?v=…" links; an Instagram post's
     # 3 items have no page, only a passing file address, and stay one post.
     items: tuple[tuple[str, str, int | None], ...] = ()
+    # The video's subtitles (Phase 2 item 7), each (code, name, automatic):
+    # the site's real ones, then at most ONE automatic track -- the one in
+    # the video's own language (YouTube's "-orig"), never the hundred
+    # machine translations listed beside it (read 2026-10-24, the app's own
+    # read command). Empty: the card says nothing about subtitles at all.
+    subtitles: tuple[tuple[str, str, bool], ...] = ()
+    language: str = ""          # the video's own language, when the site says
+
+
+# Not subtitles: YouTube lists a live's chat replay among them (json only).
+_NOT_SUBTITLES = ("live_chat",)
+
+
+def _subtitle_tracks(data: dict) -> tuple[tuple[str, str, bool], ...]:
+    def name(code: str, formats: list) -> str:
+        named = next((f.get("name") for f in formats or [] if isinstance(f, dict) and f.get("name")), "")
+        return named or code
+    real = [(code, name(code, formats), False) for code, formats in (data.get("subtitles") or {}).items()
+            if code not in _NOT_SUBTITLES and formats]
+    auto = [(code, name(code, formats), True) for code, formats in (data.get("automatic_captions") or {}).items()
+            if code.endswith("-orig") and formats][:1]
+    return tuple(real + auto)
 
 
 @dataclass(frozen=True)
@@ -200,19 +222,20 @@ def require_ytdlp() -> Path:
     return tool
 
 
-def has_cover(path: Path) -> bool | None:
+def has_cover(path: Path, kind: str = "v") -> bool | None:
     """Does this MP3 hold a cover picture? Asked to the file itself, with
     ffprobe: yt-dlp runs with --no-warnings, so its log cannot be trusted to
     say a cover failed. None when ffprobe cannot answer -- then nothing is
     said, rather than a guess. On a picture file it says whether ffprobe can
-    read it as one (`runners._cover`)."""
+    read it as one (`runners._cover`). ``kind`` "s" asks for a subtitle
+    track instead (`subs_note`)."""
     ffmpeg = find_tool("ffmpeg")
     probe = ffmpeg.with_name("ffprobe.exe") if ffmpeg else None
     if probe is None or not probe.is_file() or not path.is_file():
         return None
     try:
         found = subprocess.run(
-            [str(probe), "-v", "error", "-select_streams", "v",
+            [str(probe), "-v", "error", "-select_streams", kind,
              "-show_entries", "stream=index", "-of", "csv=p=0", str(path)],
             capture_output=True, text=True, stdin=subprocess.DEVNULL,
             timeout=60, creationflags=_NO_WINDOW)
@@ -232,6 +255,20 @@ def cover_note(files: list[Path]) -> str:
     if len(mp3s) == 1:
         return "Saved without a cover picture."
     return f"{len(bare)} of {len(mp3s)} MP3s were saved without a cover picture."
+
+
+def subs_note(files: list[Path], subs: str) -> str:
+    """The row's sentence when subtitles were asked and did not come (Phase 2
+    item 7, decision 34) -- asked to the files, never to yt-dlp's quiet log.
+    No cause is given: none is known (decision 38)."""
+    videos = [f for f in files if f.suffix.lower() in (".mp4", ".mkv", ".webm")]
+    if subs == "embed":
+        bare = [f for f in videos if has_cover(f, "s") is False]
+        return "Saved without subtitles." if bare else ""
+    if subs == "file":
+        texts = [f for f in files if f.suffix.lower() == ".srt"]
+        return "Saved without the subtitle file." if videos and not texts else ""
+    return ""
 
 
 def _kbps(path: Path) -> int | None:
@@ -378,6 +415,8 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
         max_height=picked,
         heights=tuple(h for h in heights if picked is None or h <= picked),
         items=items,
+        subtitles=() if is_playlist else _subtitle_tracks(data),
+        language=data.get("language") or "",
     )
 
 
@@ -522,6 +561,33 @@ def _output_arguments(
     raise ValueError(f"unknown mode: {mode!r}")
 
 
+# A subtitle track's code as yt-dlp lists it ("en", "pt-BR", "zh-Hans",
+# "en-orig"): anything else is refused, never handed to yt-dlp.
+SUB_LANG = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}")
+
+
+def _subtitle_arguments(mode: str, subs: str, lang: str) -> list[str]:
+    """yt-dlp's options for the Subtitles row (Phase 2 item 7). Probed
+    2026-10-25 on "Me at the zoo", yt-dlp 2026.10.21: "--embed-subs" alone
+    writes `<name>.en.vtt`, puts it in the MP4 as a mov_text track (ffprobe:
+    "2,mov_text,subtitle,eng") and deletes the .vtt -- only the MP4 is left.
+    With --write-subs as well it would KEEP the file (seen 2026-10-24), so
+    "In the video" never gets it. "--sub-langs" is a pattern, matched whole:
+    the code goes in escaped. An automatic track ("-orig") needs
+    --write-auto-subs, or yt-dlp asks for it and writes nothing."""
+    if mode != "mp4" or subs not in ("embed", "file") or not SUB_LANG.fullmatch(lang or ""):
+        return []
+    auto = ["--write-auto-subs"] if lang.endswith("-orig") else []
+    if subs == "embed":
+        return ["--embed-subs", "--sub-langs", re.escape(lang), *auto]
+    return ["--write-subs", *auto, "--sub-langs", re.escape(lang), "--convert-subs", "srt"]
+
+
+# "[info] Writing video subtitles to: C:\...\name.en.vtt" -- written BEFORE
+# the video (probed 2026-10-25): a Stop then must know its name to remove it.
+_SUBTITLE_FILE = "[info] Writing video subtitles to: "
+
+
 def _only_chosen_name(out_path: Path | None) -> bool:
     """May this run replace files? Only the one Windows asked about.
 
@@ -558,6 +624,8 @@ def download(
     on_writing: Callable[[Path], None] | None = None,
     on_live: Callable[[], None] | None = None,
     on_title: Callable[[str], None] | None = None,
+    subs: str = "",
+    sub_lang: str = "",
 ) -> DownloadResult:
     """Download one link as MP3 or MP4, reporting progress line by line.
 
@@ -599,6 +667,7 @@ def download(
         *_cookie_arguments(cookie_file),
         *_ffmpeg_arguments(),
         *_output_arguments(mode, out_dir, quality, out_path, tag),
+        *_subtitle_arguments(mode, subs, sub_lang),
         url,
     ]
 
@@ -654,6 +723,9 @@ def download(
                     on_writing(whole.with_name(f"{whole.stem}.temp{whole.suffix}"))
                 elif line.startswith(_CONVERTING):
                     on_writing(Path(line[len(_CONVERTING):].strip()))
+                elif line.startswith(_SUBTITLE_FILE):
+                    # Written before the video: a Stop removes it with the rest.
+                    on_writing(Path(line[len(_SUBTITLE_FILE):].strip()))
                 elif cover and tag:
                     # Only an MP3 run's cover: its name carries our tag.
                     picture = Path(cover.group(1))
@@ -692,6 +764,14 @@ def download(
     # yt-dlp leaves an existing file alone and says nothing useful about it.
     # The only reliable proof is the file's own date.
     skipped = [f for f in files if f.exists() and f.stat().st_mtime < started_at]
+    # "Separate file": the .srt yt-dlp wrote beside each video is one of the
+    # job's files -- its row counts it, Show in folder can point at it. Only
+    # one written by THIS run (an old one of the user's is not claimed).
+    if subs == "file" and SUB_LANG.fullmatch(sub_lang or ""):
+        for video in list(files):
+            srt = video.with_name(f"{video.stem}.{sub_lang}.srt")
+            if srt.is_file() and srt.stat().st_mtime >= started_at:
+                files.append(srt)
     return DownloadResult(files, tail, skipped)
 
 
