@@ -1573,11 +1573,14 @@ function subsMaker() { return currentTools.find((t) => makesSubs(t) && !deadEnd(
 /** The language to start on: the user's own (Windows' language, as the
  *  page sees it), else the video's own, else none -- then Off. A real
  *  track before an automatic one. */
-function startSubLang() {
+function startSubLang() { return startSubLangOf(videoSubs, videoLang); }
+
+/** The same rule for any video's tracks ("Choose for each" rows too). */
+function startSubLangOf(tracks, ownLang) {
   const base = (code) => String(code || "").toLowerCase().split(/[-_]/)[0];
-  const pick = (lang) => lang && (videoSubs.find((s) => !s.auto && base(s.code) === lang)
-    || videoSubs.find((s) => base(s.code) === lang));
-  const found = pick(base(navigator.language)) || pick(base(videoLang));
+  const pick = (lang) => lang && (tracks.find((s) => !s.auto && base(s.code) === lang)
+    || tracks.find((s) => base(s.code) === lang));
+  const found = pick(base(navigator.language)) || pick(base(ownLang));
   return found ? found.code : "";
 }
 
@@ -3856,6 +3859,41 @@ function eachRow(item) {
     p.textContent = tool ? tool.name : "…";
     box.appendChild(p);
   }
+
+  // Subtitles (item 7, part 2): ONE list -- the choice and the language
+  // together, a row has no room for a switch and a list. Only in MP4, only
+  // once this video's read found subtitles, only where a program of its
+  // site makes them; otherwise not a word (drawn and chosen 2026-10-25).
+  const tracks = (item.info && item.info.subtitles) || [];
+  if (item.fmt === "mp4" && tracks.length && rowTools(item).some(makesSubs)) {
+    if (item.subs === undefined) {
+      // Its start: the last choice of the one-link card, in your language,
+      // else the video's own -- else Off.
+      item.subLang = startSubLangOf(tracks, item.info.language);
+      item.subs = item.subLang ? subsMode : "";
+    }
+    const s = document.createElement("select");
+    s.className = "each-subs";
+    s.setAttribute("aria-label", "Subtitles for " + label);
+    s.add(new Option("Subtitles: off", ""));
+    for (const [how, words] of [["embed", "In the video"], ["file", "Separate file"]]) {
+      for (const t of tracks) {
+        s.add(new Option(`${words} · ${t.name}${t.auto ? " (automatic)" : ""}`, `${how}|${t.code}`));
+      }
+    }
+    s.value = item.subs && makesSubs(tool) ? `${item.subs}|${item.subLang}` : "";
+    s.addEventListener("change", () => {
+      const [how, code] = s.value.split("|");
+      item.subs = how || "";
+      if (code) item.subLang = code;
+      // On a program that makes none, the row moves to one that does, as MP3.
+      if (item.subs && !makesSubs(rowTool(item))) {
+        item.toolId = rowTools(item).find(makesSubs).id;
+        redrawRow(item);
+      }
+    });
+    box.appendChild(s);
+  }
   li.append(name, box);
   li._item = item;
   return li;
@@ -4211,6 +4249,9 @@ async function downloadEach(ready) {
       url: item.url, mode: item.fmt, title: item.title || "", target,
       quality: item.quality || "best",
       tool: tool.id, platform: item.found.platform_id || "", folder,
+      // Only a choice its row really showed (item 7, "Choose for each").
+      ...(item.fmt === "mp4" && item.subs && makesSubs(tool)
+        ? { subs: item.subs, sub_lang: item.subLang } : {}),
     });
     if (answer.error) refused.push(`${label}: ${answer.error}`);
     else added++;

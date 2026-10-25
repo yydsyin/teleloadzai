@@ -39,7 +39,7 @@ The main moment (confirmed 2026-10-21): **paste one link, get it.** The download
 - **Built 2026-10-24:** Ctrl+Enter = Download, written on the button — the only shortcut (the user's rule: no useless keys).
 - **Built 2026-10-24:** MP3 tags + cover art — title, artist and the video's picture inside every MP3 (Windows Explorer shows them); where no picture is known, the row says "Saved without a cover picture."
 - **Built 2026-10-24:** a Windows message when a download ends, only while the user is in another window ("Me at the zoo.mp3 is in your folder."; several at once in one message); a click on it brings Teleloadzai back; a switch in Settings, on by default.
-- **Built 2026-10-25 for one link:** subtitles — a Subtitles row on the card, only in MP4 and only when the video has them: Off, In the video, Separate file (.srt), and the video's own languages; the last choice is remembered. Several links: still to build.
+- **Built 2026-10-25 for one link:** subtitles — a Subtitles row on the card, only in MP4 and only when the video has them: Off, In the video, Separate file (.srt), and the video's own languages; the last choice is remembered. Several links: in "Choose for each", one subtitles list per video that has them.
 - No DRM sites, ever. No browser extension (the stores refuse YouTube downloaders).
 
 ## Brand Commitments
