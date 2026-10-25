@@ -828,7 +828,9 @@
   <!-- A thin line now, not a whole box (layout A). -->
   <div class="hidden" data-view="main" id="update-bar" role="region" aria-label="Program updates">
     <span id="update-bar-text"></span>
-    <button class="tiny" id="update-bar-all">Update all</button>
+    <!-- Outlined: one filled button per screen, Paste or Download (review
+         of 2026-10-25: three filled buttons on the Download page). -->
+    <button class="ghost tiny" id="update-bar-all">Update all</button>
     <button class="ghost tiny" id="update-bar-later">Later</button>
   </div>
 
@@ -1027,7 +1029,7 @@
       <div class="fail-group" role="group" aria-label="Failed downloads">
         <div class="fg-head">
           <span class="fg-title"></span>
-          <button class="tiny hidden" id="retry-failed">Retry all</button>
+          <button class="ghost tiny hidden" id="retry-failed">Retry all</button>
         </div>
         <div class="fg-why"></div>
         <div class="fg-rows"></div>
@@ -1155,6 +1157,9 @@
             <span class="set-name">Use my log-ins for downloads</span>
             <!-- Decision 35: what it is for, what we do not do, kept short. -->
             <span class="set-sub">For videos that need a log-in. Kept on this PC. You never type a password here.</span>
+            <!-- Paused: the page below goes grey (decision 36); said in words,
+                 or it looked broken (review of 2026-10-25). -->
+            <span class="set-sub hidden" id="cookies-paused"><b>Paused:</b> Teleloadzai does not use your log-ins now. Turn this on to change them.</span>
           </div>
           <span class="set-control">
             <!-- A real switch, not a label. Until 2026-09-22 this said "on"
@@ -1263,7 +1268,6 @@
             </select>
           </span>
         </div>
-        <div class="hint hidden" id="cookies-keep-note"></div>
       </div>
       <div class="hint hidden" id="cookies-error" style="margin-top:8px"></div>
     </section>
@@ -1315,7 +1319,6 @@
           </select>
         </span>
       </div>
-      <div class="hint hidden" id="update-mode-hint"></div>
       <div class="set-row">
         <span class="opt-icon icon-branch" aria-hidden="true"></span>
         <div class="set-main">
@@ -1637,7 +1640,12 @@ function paintSubs(tool) {
   const shown = mode === "mp4" && videoSubs.length > 0 && !titleReading && !probeProblem
     && (makesSubs(tool) || Boolean(subsMaker()));
   const now = shown && makesSubs(tool) ? subsChoice : "";
-  $("subs-pick").classList.toggle("hidden", !shown);
+  // While the title is read, a program that makes subtitles keeps the row's
+  // room, unseen: the row arriving after the read pushed Download 57 px down
+  // as the hand went to it (review of 2026-10-25).
+  const holding = !shown && mode === "mp4" && titleReading && !probeProblem && makesSubs(tool);
+  $("subs-pick").classList.toggle("hidden", !shown && !holding);
+  $("row-subs").style.visibility = holding ? "hidden" : "";
   for (const button of $("subs-pick").children) {
     button.setAttribute("aria-pressed", String(button.dataset.subs === now));
   }
@@ -1647,7 +1655,8 @@ function paintSubs(tool) {
 /** What Download sends: nothing unless the row is shown and on. */
 function subsRequest() {
   const tool = chosenTool();
-  const on = !$("subs-pick").classList.contains("hidden") && makesSubs(tool) && subsChoice;
+  const on = !$("subs-pick").classList.contains("hidden") && $("row-subs").style.visibility !== "hidden"
+    && makesSubs(tool) && subsChoice;
   return on ? { subs: subsChoice, sub_lang: $("sub-lang").value } : { subs: "", sub_lang: "" };
 }
 
@@ -1769,7 +1778,12 @@ const STEPPED_GETS = {
 /** "Using yt-dlp: gallery-dl, the usual tool for Instagram, needs a log-in." */
 function steppedText(chosen, usual) {
   const site = currentPlatform;
-  if (!usual.need.logged_in && STEPPED_GETS[currentPlatformId]) return STEPPED_GETS[currentPlatformId];
+  // Not under a known refusal of this post: "Instagram gave nothing for this
+  // post without a log-in", then "Videos work without a log-in" (review of
+  // 2026-10-25).
+  if (!usual.need.logged_in && STEPPED_GETS[currentPlatformId] && !probeExplain.known) {
+    return STEPPED_GETS[currentPlatformId];
+  }
   const why = usual.need.logged_in
     ? `needs your ${site} cookies, and log-ins are switched off in the Sites page.`
     : `needs you to be logged in to ${site}.`;
@@ -2418,7 +2432,12 @@ function failButtons(job) {
   // calls for, else Retry: under "Details" it hid where the user looked for
   // it. Outlined: the group's "Retry all" is the list's filled button. The
   // others go in the row's "⋯" menu.
-  const first = all.find(([name]) => name === primary) || all.find(([name]) => name === "retry");
+  // When nothing is pushed (primary ""), the row does not push Retry either:
+  // its words say "try again in a few days". yt-dlp's preview version, when
+  // offered, is the one way out worth a button; else Retry waits in "⋯"
+  // (review of 2026-10-25).
+  const first = all.find(([name]) => name === primary)
+    || all.find(([name]) => name === (primary === "" ? "preview" : "retry"));
   return { primary: first ? `<button class="ghost tiny" ${first[1]}</button>` : "",
            rest: all.filter((b) => b !== first).map(([, inner]) => `<button type="button" role="menuitem" ${inner}</button>`) };
 }
@@ -3009,7 +3028,10 @@ for (const [key, name] of LIST_FILTERS) {
 
 /** Rows that will have a Retry of their own: not those whose link itself
  *  is the problem (failChoice's "hopeless"). */
-const retryable = (jobs) => jobs.filter((j) => j.state === "error" && !failChoice(j).hopeless);
+// Not the rows whose words say a retry will not help (an unknown error from
+// a program already the newest: "try again in a few days") -- "Retry all"
+// sat filled beside that sentence (review of 2026-10-25).
+const retryable = (jobs) => jobs.filter((j) => j.state === "error" && failChoice(j).primary !== "");
 
 function paintListTools(jobs) {
   lastJobs = jobs;
@@ -3122,10 +3144,14 @@ function toolRow(tool, progress) {
   if (running) buttons = '<span class="small">working…</span>';
   else if (!tool.installed) buttons = `<button class="tiny" data-install="${tool.id}">Install</button>`;
   else {
-    if (tool.update_available) buttons += `<button class="tiny" data-install="${tool.id}">${
+    // Outlined: "Update all" above is the page's filled button (review of
+    // 2026-10-25). Each button names its program for a screen reader: eight
+    // buttons all called "Remove".
+    if (tool.update_available) buttons += `<button class="ghost tiny" data-install="${tool.id}"
+      aria-label="${tool.channel_change ? "Switch" : "Update"} ${tool.name}">${
       tool.channel_change ? (tool.channel === "preview" ? "Switch to preview" : "Switch to stable")
         : "Update"}</button>`;
-    if (!tool.essential) buttons += `<button class="ghost tiny" data-remove="${tool.id}">Remove</button>`;
+    if (!tool.essential) buttons += `<button class="ghost tiny" data-remove="${tool.id}" aria-label="Remove ${tool.name}">Remove</button>`;
   }
 
   const size = tool.size ? ` · ${Math.round(tool.size / 1048576)} MB` : "";
@@ -3402,16 +3428,9 @@ function douyinNote(job) {
     changed it, an update will not fix this.</div>`;
 }
 
-const UPDATE_MODE_HINTS = {
-  ask: "A bar shows the updates waiting. A failed download offers “Update and retry”.",
-  auto: "Programs update by themselves when they have no download running, and a failed download is updated and retried once.",
-  manual: "Nothing is checked or offered by itself. The “update” badges below still show.",
-};
-
 $("update-mode").addEventListener("change", async () => {
   updateMode = $("update-mode").value;
   await api("/api/settings", { update_mode: updateMode });
-  $("update-mode-hint").textContent = UPDATE_MODE_HINTS[updateMode];
   notify("Saved: updates — " + $("update-mode").selectedOptions[0].text + ".");
   renderUpdateBar();
 });
@@ -4463,6 +4482,7 @@ function renderCookies(state) {
     el.classList.toggle("locked", paused);
     el.inert = paused;
   }
+  $("cookies-paused").classList.toggle("hidden", !paused);
 
   if (!have) {
     $("cookies-state-plain").textContent = "off — none saved";
@@ -4775,15 +4795,6 @@ $("login-cancel").addEventListener("click", async () => {
   setStatus("");
 });
 
-function renderKeepNote() {
-  $("cookies-keep-note").textContent = $("cookies-keep").value === "once"
-    ? "Every log-in is erased when you close the app — the cookies and the "
-      + "browsing kept by the log-in window. You log in again next time. "
-      + "Choose this on a shared computer."
-    : "Log-ins are kept, like in a browser, so you do not start again every "
-      + "time. \"Forget them\" erases them whenever you want.";
-}
-
 // "Choose a site below": the Log in buttons live in the site list.
 $("ways-to-sites").addEventListener("click", () => {
   $("sites-table").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -4799,7 +4810,6 @@ $("cookies-switch").addEventListener("change", async () => {
 });
 
 $("cookies-keep").addEventListener("change", async () => {
-  renderKeepNote();
   await api("/api/settings", { cookies_keep: $("cookies-keep").value });
   notify("Saved: when " + APP_NAME + " closes, "
     + ($("cookies-keep").value === "once" ? "every log-in is forgotten." : "you stay logged in."));
@@ -4865,11 +4875,9 @@ async function forgetCookies() {
   $("record-minutes").value = String(settings.record_minutes ?? 60);
   updateMode = ["ask", "auto", "manual"].includes(settings.update_mode) ? settings.update_mode : "ask";
   $("update-mode").value = updateMode;
-  $("update-mode-hint").textContent = UPDATE_MODE_HINTS[updateMode];
   $("ytdlp-channel").value = settings.ytdlp_channel === "preview" ? "preview" : "stable";
   askWhere = settings.ask_where !== false;
   $("cookies-keep").value = settings.cookies_keep === "once" ? "once" : "keep";
-  renderKeepNote();
   // Loaded at startup, not only when Settings is opened: a download can fail
   // before the user has ever been in there, and the failure must already know
   // which log-in to offer.
