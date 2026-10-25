@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import children, console, cookies, explain, notify, runners, ytdlp
+from . import children, console, cookies, explain, login, needs, notify, runners, ytdlp
 
 WAITING, RUNNING, DONE, ERROR, CANCELLED = "waiting", "running", "done", "error", "cancelled"
 ACTIVE_STATES = (WAITING, RUNNING)
@@ -730,6 +730,21 @@ class Queue:
             with self._lock:
                 state, skipped, count = job.state, job.skipped, len(job.files)
                 error = job.error
+            # What the site needs, kept true by real results (the user,
+            # 2026-10-25: "the needs may change with the updates"). Worked
+            # with no cookies -> "none"; with only a visit -> "visit"; the
+            # program asked for a log-in -> "account". Logged in proves
+            # nothing about the need, so nothing is written then.
+            try:
+                given = bool(job.cookie_file) or job.cookie_header
+                if state == DONE and not skipped and job.platform:
+                    seen = login.site_state(job.platform) if given else "none"
+                    if seen in ("none", "visited"):
+                        needs.record(job.platform, job.tool, "visit" if seen == "visited" else "none")
+                elif state == ERROR and job.platform and cookies.needs_login(error):
+                    needs.record(job.platform, job.tool, "account")
+            except Exception:
+                pass            # a line not updated is never a failed download
             # The console's last line for this download, in our words.
             console.add(job.id, "Done." if state == DONE and not skipped
                         else "Already there: nothing was downloaded." if state == DONE

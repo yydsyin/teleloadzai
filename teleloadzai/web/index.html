@@ -300,7 +300,9 @@
   .nav-icon { width: 18px; height: 18px; flex: none; background: currentColor;
     -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
   /* The sites: one row per site, its name, its program, its log-in. */
-  #sites-table { display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) auto; }
+  /* The name column holds "Needs your account · seen Oct 24" on one line
+     since 2026-10-25 (it wrapped at 150 px). */
+  #sites-table { display: grid; grid-template-columns: minmax(96px, 230px) minmax(0, 1fr) auto; }
   #sites-table > div { display: contents; }
   #sites-table > div > * {
     padding: 9px 10px 9px 0; border-top: 1px solid var(--line);
@@ -311,6 +313,9 @@
   #sites-table > div:first-child > * { border-top: 0; }
   #sites-table .site-head > * { font-size: 12px; color: var(--soft); min-height: 0; padding-top: 10px; padding-bottom: 6px; }
   #sites-table .program { color: var(--soft); font-size: 14px; }
+  /* The site's name, and under it what it needs (2026-10-25). */
+  #sites-table .site-name { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
+  #sites-table .need-line { font-size: 12px; color: var(--soft); font-weight: 400; }
   #sites-table .program-pick { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }
   #sites-table .program-why { font-size: 13px; }
   #sites-table .login { justify-content: flex-end; }
@@ -4530,12 +4535,25 @@ function renderSites() {
   for (const site of rows) {
     const row = cell("div");
     row.setAttribute("role", "row");
-    const name = cell("span", "label", site.name);
+    const name = cell("span", "label site-name");
+    name.append(cell("span", "", site.name));
     const program = cell("span", "program");
     const login = cell("span", "login");
     for (const c of [name, program, login]) c.setAttribute("role", "cell");
 
     const tools = site.tools ? site.tools.tools : [];
+    // What this site needs with the program chosen on its row, and when it
+    // was last seen -- only where something was seen (needs.py).
+    const needLine = cell("span", "need-line");
+    name.append(needLine);
+    const sayNeed = () => {
+      const chosen = tools.find((t) => t.id === (site.tools || {}).chosen) || tools[0];
+      const seen = chosen && siteNeeds[`${site.id}|${chosen.id}`];
+      needLine.textContent = seen ? `${NEED_WORDS[seen.need]} · seen `
+        + new Date(seen.seen + "T12:00").toLocaleDateString([], { day: "numeric", month: "short" }) : "";
+      needLine.classList.toggle("hidden", !seen);
+    };
+    sayNeed();
     if (tools.length > 1) {
       // The card's switch, here too (model S2, 2026-10-23): program names,
       // every one visible (decision 13). What the chosen one gives, and
@@ -4548,6 +4566,7 @@ function renderSites() {
         const usual = tools.find((t) => t.id === site.tools.default);
         why.textContent = `${chosen.name}: ${chosen.why}.`
           + (usual && usual.id !== chosen.id ? ` Usual: ${usual.name}.` : "");
+        sayNeed();            // the need follows the program chosen
       };
       const pick = document.createElement("span");
       pick.className = "seg-track";
@@ -4763,8 +4782,13 @@ $("cookies-keep").addEventListener("change", async () => {
     + ($("cookies-keep").value === "once" ? "every log-in is forgotten." : "you stay logged in."));
 });
 
+// What each site needs, per program, last seen (needs.py, 2026-10-25).
+let siteNeeds = {};
+const NEED_WORDS = { visit: "A visit is enough", none: "Works without a log-in", account: "Needs your account" };
+
 async function loadCookies() {
   const result = await api("/api/cookies");
+  siteNeeds = result.needs || {};
   renderCookies(result.cookies);
   renderLogin(result.login_platforms || [], result.login_blocked);
 }

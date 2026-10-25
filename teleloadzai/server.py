@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import console, cookies, dialogs, explain, login, notify, runners, toolservers, tools, ytdlp
+from . import console, cookies, dialogs, explain, login, needs, notify, runners, toolservers, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import ERROR, Queue
@@ -597,6 +597,8 @@ class Handler(BaseHTTPRequestHandler):
                     # Why the in-app log-in cannot run, when it cannot. Said,
                     # not hidden behind a button that does nothing.
                     "login_blocked": login.unavailable_reason(),
+                    # What each site needs per program, last seen (needs.py).
+                    "needs": needs.all_needs(),
                 })
                 return
 

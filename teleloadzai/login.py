@@ -238,6 +238,15 @@ def login_url(platform_id: str) -> str | None:
     return None
 
 
+def site_state(platform_id: str) -> str:
+    """One site's state now, by the same rule as its sign: "logged_in",
+    "expired", "visited" or "none" (`needs.py` reads it after a download)."""
+    platform = next((p for p in PLATFORMS if p.id == platform_id), None)
+    if platform is None:
+        return "none"
+    return _sign(platform, cookies.site_dates(), _history().get(platform_id, {}), time.time())[0]
+
+
 def choices() -> list[dict]:
     """The platforms worth offering a login for, for the page to draw.
 
