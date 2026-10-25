@@ -100,6 +100,9 @@ def open_window(port: int, httpd=None) -> int:
             APP_NAME, url,
             width=width, height=height, x=x, y=y,
             min_size=WINDOW_MINIMUM,
+            # Opens maximized (the user, 2026-10-25, with the left menu of
+            # model S1); the place above is where "Restore down" goes.
+            maximized=True,
         )
         window.events.closing += ask_before_closing
 

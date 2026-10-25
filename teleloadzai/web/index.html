@@ -37,8 +37,13 @@
     }
   }
   * { box-sizing: border-box; }
+  /* The left menu (model S1, chosen by the user 2026-10-25 from a drawing,
+     like the launcher they showed): Download and Programs at the top,
+     Settings at the bottom; each one its own page. It replaces layout A's
+     Settings button in the corner. */
+  :root { --side: 88px; }
   body {
-    margin: 0; padding: 0 16px; overflow-x: clip;
+    margin: 0; padding: 0 16px 0 calc(var(--side) + 16px); overflow-x: clip;
     background: var(--bg); color: var(--ink);
     font: 15px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   }
@@ -47,32 +52,32 @@
   html { scrollbar-color: color-mix(in srgb, var(--soft) 45%, transparent) transparent; accent-color: var(--accent); }
   .wrap { max-width: 860px; margin: 0 auto; }
   .sub { color: var(--soft); font-size: 13px; }
-  /* Layout A: one bar across the whole window -- the name, the link box,
-     Settings. Pulled to the window's edges, its content kept on the column. */
-  .topbar {
-    display: flex; align-items: center; gap: 14px; flex: none;
-    margin: 16px 0 28px;
+  .side {
+    position: fixed; left: 0; top: 0; bottom: 0; width: var(--side); z-index: 30;
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 0;
+    background: color-mix(in srgb, var(--ink) 4%, var(--bg)); border-right: 1px solid var(--line);
   }
+  .side button {
+    width: 72px; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 5px;
+    padding: 10px 0 8px; border: 0; border-radius: 10px; background: transparent;
+    color: var(--soft); font-size: 12px; font-weight: 500; cursor: pointer;
+  }
+  .side button .nav-icon { width: 22px; height: 22px; }
+  .side button:not([aria-current="page"]):hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+  .side button[aria-current="page"] { color: var(--ink); font-weight: 600; background: color-mix(in srgb, var(--go) 24%, var(--card)); }
+  .side .side-bottom { margin-top: auto; }
+  .wrap { padding-top: 16px; }
   .linkbox .linkbox-title { display: block; margin-bottom: 12px; }
-  .wrap[data-showing="settings"] .topbar { margin-bottom: 16px; }
   .screen-title { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: -.01em; }
-  /* A real button: a border, the ink colour, an icon. */
-  .topbar #settings-toggle {
-    display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px;
-    color: var(--ink); background: var(--card); border: 1px solid var(--line-strong); font-weight: 600;
-  }
-  .topbar #settings-toggle svg { width: 17px; height: 17px; flex: none; }
-  .topbar #settings-toggle:not(:disabled):hover { border-color: var(--soft); background: var(--card); }
   .linkbox { flex: none; margin: 0 0 18px; }
   /* The one field the app is for: taller than the others. */
   .linkbox input[type=text] { height: 48px; font-size: 16px; padding: 0 14px; }
   .linkbox #read { min-height: 48px; padding: 0 22px; }
   .linkbox .err { margin-top: 6px; }
-  #settings-toggle { margin-left: auto; }
   /* The main screen fills the window and never scrolls: the list scrolls in
      its own card instead. */
   .wrap[data-showing="main"] { display: flex; flex-direction: column; height: 100vh; padding-bottom: 16px; }
-  .wrap[data-showing="settings"] { padding-bottom: 60px; }
+  .wrap:not([data-showing="main"]) { padding-bottom: 60px; }
   .wrap[data-showing="main"] > .card { flex: none; }
   .wrap[data-showing="main"] > #jobs-card {
     flex: 1 1 auto; min-height: 170px; display: flex; flex-direction: column; margin-bottom: 0;
@@ -234,16 +239,22 @@
     padding-top: 18px; border-top: 1px solid var(--line);
   }
   h2.section:first-of-type { margin-top: 12px; padding-top: 0; border-top: 0; }
-  /* Settings, model S2 (the user's choice, 2026-10-23): a side menu with
-     icons, the page beside it, every setting a row -- the Windows 11
-     Settings app. One look with the download card's rows. */
-  #settings { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 24px; align-items: start; }
-  .settings-tabs { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 16px; }
-  .settings-tabs button {
-    display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px;
-    padding: 0 12px; border-radius: 8px; text-align: left;
-    background: transparent; color: var(--soft); font-size: 15px; font-weight: 500;
+  /* Settings, model S2 (the user's choice, 2026-10-23): every setting a
+     row, as on the download card. Its side menu became two tabs across the
+     top on 2026-10-25: the app's own menu is on the left now, and a second
+     left menu inside Settings would be one menu too many. Programs left
+     Settings for a page of its own. */
+  .settings-tabs {
+    display: flex; gap: 4px; width: fit-content; margin: 0 0 16px; padding: 3px; border-radius: 10px;
+    background: color-mix(in srgb, var(--ink) 6%, var(--card));
   }
+  .settings-tabs button {
+    display: flex; align-items: center; gap: 8px; min-height: 34px;
+    padding: 0 14px; border-radius: 8px;
+    background: transparent; color: var(--soft); font-size: 14px; font-weight: 500;
+  }
+  /* The tab already names the section: its title stays for screen readers. */
+  #settings .pane > .pane-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .settings-tabs button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
   .settings-tabs button[aria-selected="true"] {
     background: var(--card); color: var(--ink); font-weight: 600;
@@ -283,7 +294,7 @@
   @media (max-width: 700px) { .ways { grid-template-columns: minmax(0, 1fr); } .ways-or { justify-self: center; } }
   #settings .set-main#cookies-summary { display: block; line-height: 1.6; max-width: none; }
   .set-warning { margin: 0 0 14px; padding: 12px 16px; font-size: 14px; line-height: 1.5; }
-  #settings .card.warn:not(.set-warning) { margin: 0 0 14px; }
+  #settings .card.warn:not(.set-warning), #programs-page .card.warn { margin: 0 0 14px; }
   .set-group #tools-list { padding: 0 16px; }
   .set-group #tools-list .tool:first-child { border-top: 1px solid var(--line); }
   /* Windows' own on/off switch, drawn on the checkbox itself (the box and
@@ -323,19 +334,15 @@
      A green "Logged in" that no download used had been a lie. The elements
      are also made inert in the code, so the keyboard cannot reach them. */
   .locked { opacity: .45; filter: grayscale(1); pointer-events: none; user-select: none; }
-  /* Settings in a narrow window: the menu keeps its icons only. */
   @media (max-width: 700px) {
-    #settings { grid-template-columns: 48px minmax(0, 1fr); gap: 12px; }
-    .settings-tabs .nav-text { display: none; }
-    .settings-tabs button { justify-content: center; padding: 0; }
     .set-row { flex-wrap: wrap; }
   }
   /* Help lines reached 120 characters at 860 px: a comfortable line is
      shorter (review of 2026-09-27). */
-  #settings .hint { max-width: 72ch; }
+  #settings .hint, #programs-page .hint { max-width: 72ch; }
   /* A list, not a sentence: the tool rows stopped 190 px short of their
      card's edge (loop round 1, 2026-10-18). */
-  #settings #tools-list { max-width: none; }
+  #programs-page #tools-list { max-width: none; }
   /* A dead end hides every control of its row: the row's margin left an
      empty band at the card's foot (loop round 1). */
   #result.dead-end .controls { margin: 0; }
@@ -398,12 +405,13 @@
   /* Which SCREEN is on. Two different questions were being answered by one
      mechanism, and they kept fighting:
        .hidden       -- is this card relevant right now?  (a result, an error)
-       data-showing  -- which screen is the user on?      (main, or settings)
+       data-showing  -- which screen is the user on?  (main, programs, settings)
      A card is drawn only when BOTH say yes, and neither has to know about
      the other. Added 2026-09-22: Settings used to be a card wedged under the
      link box, and there was nowhere to say "this one replaces the others". */
-  .wrap[data-showing="main"]     [data-view="settings"] { display: none !important; }
-  .wrap[data-showing="settings"] [data-view="main"]     { display: none !important; }
+  .wrap:not([data-showing="main"])     [data-view="main"],
+  .wrap:not([data-showing="programs"]) [data-view="programs"],
+  .wrap:not([data-showing="settings"]) [data-view="settings"] { display: none !important; }
 
   /* A maximised window (asked by the user 2026-09-26: "if I turn into full
      screen it seems weird"). Measured at 1920x1040: one 720 px column, 62 %
@@ -436,9 +444,7 @@
      list showed about one row, and Download fell onto a line of its own.
      The normal window (860 x 900) and full screen are not touched. */
   @media (max-width: 640px), (max-height: 720px) {
-    .topbar { margin: 10px 0 12px; }
-    .wrap[data-showing="settings"] .topbar { margin-bottom: 10px; }
-    .topbar #settings-toggle { min-height: 32px; }
+    .wrap { padding-top: 10px; }
     .linkbox { margin-bottom: 12px; }
     .linkbox .linkbox-title { margin-bottom: 6px; font-size: 16px; }
     .linkbox input[type=text] { height: 40px; font-size: 15px; }
@@ -533,6 +539,7 @@
   .choice[data-mode="mp3"], .bchoice[data-bmode="mp3"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E"); }
   .icon-sliders { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6'/%3E%3C/svg%3E"); }
   .icon-tool { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z'/%3E%3C/svg%3E"); }
+  .icon-gear { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z'/%3E%3C/svg%3E"); }
   .icon-cc { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Cpath d='M10 10.5a2 2 0 1 0 0 3M16 10.5a2 2 0 1 0 0 3'/%3E%3C/svg%3E"); }
   #result.dead-end #row-subs { display: none; }
   .icon-download { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E"); }
@@ -763,6 +770,13 @@
 </style>
 </head>
 <body>
+<!-- The app's menu (model S1, the user's choice, 2026-10-25): each item is
+     its own page; Settings at the bottom, as in the launcher they showed. -->
+<nav class="side" aria-label="Pages">
+  <button type="button" data-go="main" aria-current="page"><span class="nav-icon icon-download" aria-hidden="true"></span>Download</button>
+  <button type="button" data-go="programs"><span class="nav-icon icon-tool" aria-hidden="true"></span>Programs</button>
+  <button type="button" data-go="settings" class="side-bottom"><span class="nav-icon icon-gear" aria-hidden="true"></span>Settings</button>
+</nav>
 <div class="wrap" data-showing="main">
 
   <!-- Layout A, chosen by the user 2026-10-22: the link box lives in the top
@@ -773,23 +787,6 @@
        "change that"). One line instead: what this screen is for, and the
        way to the other one. The name stays for screen readers. -->
   <h1 class="sr-only">__APP_NAME__</h1>
-  <div class="topbar">
-    <h2 class="screen-title" data-view="settings">Settings</h2>
-    <button class="ghost" id="settings-toggle" aria-pressed="false">
-      <!-- A gear on the main screen, an arrow back in Settings: the plain
-           grey word was not seen as a button (the user, 2026-10-22). -->
-      <svg data-view="main" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
-      </svg>
-      <svg data-view="settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M19 12H5M12 19l-7-7 7-7"/>
-      </svg>
-      <span id="settings-toggle-text">Settings</span>
-    </button>
-  </div>
 
   <!-- Every message the app says, on every screen. It used to live inside
        the link card, which meant a message sent while Settings was open
@@ -1050,16 +1047,14 @@
          went ("plenty of sentences which are useless", the user): only the
          cookie explanation stays, short (decision 35). Before: three tabs
          over pages of paragraphs (model S3, 2026-10-22). -->
-    <nav class="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+    <h2 class="pane-title page-title">Settings</h2>
+    <nav class="settings-tabs" role="tablist" aria-label="Settings sections" aria-orientation="horizontal">
       <button type="button" role="tab" id="tab-downloads" data-pane="downloads"
               aria-controls="pane-downloads" aria-selected="true">
         <span class="nav-icon icon-download" aria-hidden="true"></span><span class="nav-text">Downloads</span></button>
       <button type="button" role="tab" id="tab-sites" data-pane="sites"
               aria-controls="pane-sites" aria-selected="false" tabindex="-1">
         <span class="nav-icon icon-globe" aria-hidden="true"></span><span class="nav-text">Sites</span></button>
-      <button type="button" role="tab" id="tab-programs" data-pane="programs"
-              aria-controls="pane-programs" aria-selected="false" tabindex="-1">
-        <span class="nav-icon icon-tool" aria-hidden="true"></span><span class="nav-text">Programs</span></button>
     </nav>
 
     <div class="settings-page">
@@ -1125,60 +1120,6 @@
             </select>
           </span>
         </div>
-      </div>
-    </section>
-
-    <section class="pane hidden" id="pane-programs" role="tabpanel" aria-labelledby="tab-programs">
-      <h2 class="pane-title" id="set-tools" tabindex="-1">Programs</h2>
-      <div class="set-group">
-        <div class="set-row">
-          <span class="opt-icon icon-tool" aria-hidden="true"></span>
-          <span class="set-main set-name">Installed programs</span>
-          <span class="set-control">
-            <button class="tiny hidden" id="tools-update-all">Update all</button>
-            <button class="ghost tiny" id="tools-refresh">Check versions</button>
-          </span>
-        </div>
-        <div id="tools-list" class="hint">Loading…</div>
-      </div>
-      <div class="set-group">
-        <div class="set-row">
-          <span class="opt-icon icon-refresh" aria-hidden="true"></span>
-          <label class="set-main set-name" for="update-mode">Updates</label>
-          <span class="set-control">
-            <select id="update-mode">
-              <option value="ask">Ask me first (recommended)</option>
-              <option value="auto">Automatic</option>
-              <option value="manual">Manual</option>
-            </select>
-          </span>
-        </div>
-        <div class="hint hidden" id="update-mode-hint"></div>
-        <div class="set-row">
-          <span class="opt-icon icon-branch" aria-hidden="true"></span>
-          <div class="set-main">
-            <label class="set-name" for="ytdlp-channel">yt-dlp version</label>
-            <!-- The one line a user needs to choose (the user, 2026-10-23:
-                 without it the row was a puzzle). -->
-            <span class="set-sub">Preview gets fixes for broken sites sooner.</span>
-          </div>
-          <span class="set-control">
-            <select id="ytdlp-channel">
-              <option value="stable">Stable (recommended)</option>
-              <option value="preview">Preview</option>
-            </select>
-          </span>
-        </div>
-      </div>
-      <div class="card warn hidden" id="python-help">
-        <div class="title" id="python-help-title">Python is needed</div>
-        <div class="hint" style="margin:6px 0 10px" id="python-help-text"></div>
-        <div class="row" style="flex-wrap:wrap">
-          <button id="python-install">Install Python</button>
-          <button class="ghost" id="python-manual">Download it myself</button>
-          <button class="ghost" id="python-recheck">Check again</button>
-        </div>
-        <div class="hint" id="python-help-status" style="margin-top:8px"></div>
       </div>
     </section>
 
@@ -1307,6 +1248,62 @@
       </div>
       <div class="hint hidden" id="cookies-error" style="margin-top:8px"></div>
     </section>
+    </div>
+  </div>
+
+  <!-- Programs: its own page in the left menu since 2026-10-25 (model S1);
+       until then a section of Settings. -->
+  <div data-view="programs" id="programs-page">
+    <h2 class="pane-title page-title" id="set-tools" tabindex="-1">Programs</h2>
+    <div class="set-group">
+      <div class="set-row">
+        <span class="opt-icon icon-tool" aria-hidden="true"></span>
+        <span class="set-main set-name">Installed programs</span>
+        <span class="set-control">
+          <button class="tiny hidden" id="tools-update-all">Update all</button>
+          <button class="ghost tiny" id="tools-refresh">Check versions</button>
+        </span>
+      </div>
+      <div id="tools-list" class="hint">Loading…</div>
+    </div>
+    <div class="set-group">
+      <div class="set-row">
+        <span class="opt-icon icon-refresh" aria-hidden="true"></span>
+        <label class="set-main set-name" for="update-mode">Updates</label>
+        <span class="set-control">
+          <select id="update-mode">
+            <option value="ask">Ask me first (recommended)</option>
+            <option value="auto">Automatic</option>
+            <option value="manual">Manual</option>
+          </select>
+        </span>
+      </div>
+      <div class="hint hidden" id="update-mode-hint"></div>
+      <div class="set-row">
+        <span class="opt-icon icon-branch" aria-hidden="true"></span>
+        <div class="set-main">
+          <label class="set-name" for="ytdlp-channel">yt-dlp version</label>
+          <!-- The one line a user needs to choose (the user, 2026-10-23:
+               without it the row was a puzzle). -->
+          <span class="set-sub">Preview gets fixes for broken sites sooner.</span>
+        </div>
+        <span class="set-control">
+          <select id="ytdlp-channel">
+            <option value="stable">Stable (recommended)</option>
+            <option value="preview">Preview</option>
+          </select>
+        </span>
+      </div>
+    </div>
+    <div class="card warn hidden" id="python-help">
+      <div class="title" id="python-help-title">Python is needed</div>
+      <div class="hint" style="margin:6px 0 10px" id="python-help-text"></div>
+      <div class="row" style="flex-wrap:wrap">
+        <button id="python-install">Install Python</button>
+        <button class="ghost" id="python-manual">Download it myself</button>
+        <button class="ghost" id="python-recheck">Check again</button>
+      </div>
+      <div class="hint" id="python-help-status" style="margin-top:8px"></div>
     </div>
   </div>
 
@@ -3335,7 +3332,7 @@ async function tryPreview(job, button) {
   $("ytdlp-channel").value = "preview";
   await api("/api/tools/check", { id: "yt-dlp" });
   await loadTools();
-  notify("yt-dlp now comes from its preview builds (Settings → Programs to go back).");
+  notify("yt-dlp now comes from its preview builds (the Programs page to go back).");
   updateAndRetry(job, button);
 }
 
@@ -3384,8 +3381,7 @@ async function closeWelcome() {
 $("welcome-done").addEventListener("click", closeWelcome);
 $("welcome-tools-open").addEventListener("click", async () => {
   await closeWelcome();
-  showView("settings");
-  openPane("programs", true);
+  showView("programs");
 });
 
 $("tools-refresh").addEventListener("click", () => {
@@ -3419,19 +3415,25 @@ $("python-install").addEventListener("click", async () => {
 function showView(name) {
   const wrap = document.querySelector(".wrap");
   wrap.dataset.showing = name;
-  $("settings-toggle-text").textContent = name === "settings" ? "Back" : "Settings";
-  // A whole screen changes, not a panel opening: "pressed", and the keyboard
-  // moves with it -- a screen reader stayed on "Back" and heard nothing of
-  // the new screen (round 1 of the loop, 2026-09-26).
-  $("settings-toggle").setAttribute("aria-pressed", String(name === "settings"));
+  // The left menu says which page is on (model S1, 2026-10-25).
+  for (const item of document.querySelectorAll(".side [data-go]")) {
+    if (item.dataset.go === name) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  }
+  if (name === "programs") loadTools();   // versions from the cache: instant
   if (name === "settings") {
-    loadTools();      // versions come from the 24 h cache, so this is instant
+    loadTools();      // the Sites table names each site's programs
     loadCookies();
     loadToolChoices();
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
+  // The keyboard moves with the page -- a screen reader stayed on the old
+  // button and heard nothing of the new screen (round 1, 2026-09-26).
   (name === "settings" ? document.querySelector(".settings-tabs [aria-selected=true]")
-    : $("url")).focus({ preventScroll: true });
+    : name === "programs" ? $("set-tools") : $("url")).focus({ preventScroll: true });
+}
+for (const item of document.querySelectorAll(".side [data-go]")) {
+  item.addEventListener("click", () => showView(item.dataset.go));
 }
 
 async function loadToolChoices() {
@@ -3464,16 +3466,12 @@ for (const tab of document.querySelectorAll(".settings-tabs [role=tab]")) {
   });
 }
 
-// Kept as a name because the rest of the page already says it, and a rename
-// is the kind of change that leaves six callers behind (see 2.2).
-const showSettings = (open) => showView(open ? "settings" : "main");
-
 // Esc leaves Settings, as a window's Back would (round 1 of the loop).
 // A message at the bottom goes first: Esc closes it, the next Esc leaves.
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!$("status").classList.contains("hidden")) { setStatus(""); return; }
-  if (document.querySelector(".wrap").dataset.showing === "settings") { showView("main"); return; }
+  if (document.querySelector(".wrap").dataset.showing !== "main") { showView("main"); return; }
   if (!$("result").classList.contains("hidden") || !$("batch").classList.contains("hidden")) closeCard();
 });
 
@@ -3511,10 +3509,6 @@ document.addEventListener("keydown", (event) => {
 });
 $("result-close").addEventListener("click", closeCard);
 $("batch-close").addEventListener("click", closeCard);
-
-$("settings-toggle").addEventListener("click", () => {
-  showView(document.querySelector(".wrap").dataset.showing === "settings" ? "main" : "settings");
-});
 
 // "Update yt-dlp" on a card whose title the tool could not read: update,
 // then read the link again -- said on the button while it works.
