@@ -411,6 +411,7 @@
      link box, and there was nowhere to say "this one replaces the others". */
   .wrap:not([data-showing="main"])     [data-view="main"],
   .wrap:not([data-showing="programs"]) [data-view="programs"],
+  .wrap:not([data-showing="console"])  [data-view="console"],
   .wrap:not([data-showing="settings"]) [data-view="settings"] { display: none !important; }
 
   /* A maximised window (asked by the user 2026-09-26: "if I turn into full
@@ -539,6 +540,33 @@
   .choice[data-mode="mp3"], .bchoice[data-bmode="mp3"] { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E"); }
   .icon-sliders { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6'/%3E%3C/svg%3E"); }
   .icon-tool { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z'/%3E%3C/svg%3E"); }
+  .icon-terminal { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M7 9l3 3-3 3M13 15h4'/%3E%3C/svg%3E"); }
+  /* The Console page (2026-10-25, like the yutto window the user showed):
+     a state line, five tools, and the programs' own words in a dark box
+     that takes the page's height -- the page itself never scrolls. */
+  .wrap[data-showing="console"] { display: flex; flex-direction: column; height: 100vh; padding-bottom: 16px; max-width: none; }
+  #console-page { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+  .con-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .con-chip { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 99px;
+    background: color-mix(in srgb, var(--ink) 8%, var(--card)); color: var(--soft); }
+  .con-chip.running { background: color-mix(in srgb, var(--ok) 16%, var(--card)); color: var(--ok-text); }
+  .con-state { flex: 1; min-width: 160px; color: var(--soft); font-size: 14px; }
+  .con-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+  .con-tools [aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .con-box {
+    flex: 1; min-height: 0; overflow: auto; border-radius: 12px; padding: 12px 14px;
+    background: #1d1f24; color: #d8d4cb; white-space: pre;
+    font: 12.5px/1.65 "Cascadia Mono", Consolas, monospace;
+  }
+  .con-box.wrap-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .con-box:empty::before { content: "Nothing yet. Each download's program writes here while it works."; color: #868c96; }
+  .con-box .t { color: #7d838e; margin-right: 12px; }
+  /* "hd", not "head": .head is the page's row that spreads to both ends. */
+  .con-box .hd { color: #f5c400; margin-top: 8px; }
+  .con-box .hd:first-child { margin-top: 0; }
+  .con-box .end { color: #a3a9b3; }
+  .con-box .err { color: #ff8f80; }
+  .con-box .lk { color: #84b6ff; }
   .icon-gear { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z'/%3E%3C/svg%3E"); }
   .icon-cc { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Cpath d='M10 10.5a2 2 0 1 0 0 3M16 10.5a2 2 0 1 0 0 3'/%3E%3C/svg%3E"); }
   #result.dead-end #row-subs { display: none; }
@@ -774,6 +802,7 @@
      its own page; Settings at the bottom, as in the launcher they showed. -->
 <nav class="side" aria-label="Pages">
   <button type="button" data-go="main" aria-current="page"><span class="nav-icon icon-download" aria-hidden="true"></span>Download</button>
+  <button type="button" data-go="console"><span class="nav-icon icon-terminal" aria-hidden="true"></span>Console</button>
   <button type="button" data-go="programs"><span class="nav-icon icon-tool" aria-hidden="true"></span>Programs</button>
   <button type="button" data-go="settings" class="side-bottom"><span class="nav-icon icon-gear" aria-hidden="true"></span>Settings</button>
 </nav>
@@ -1249,6 +1278,24 @@
       <div class="hint hidden" id="cookies-error" style="margin-top:8px"></div>
     </section>
     </div>
+  </div>
+
+  <!-- Console (2026-10-25): what each program says while it works. Read
+       only -- nothing is typed here; washed of secrets by the server. -->
+  <div data-view="console" id="console-page">
+    <h2 class="sr-only" id="con-title" tabindex="-1">Console</h2>
+    <div class="con-head">
+      <span class="con-chip" id="con-chip">idle</span>
+      <span class="con-state" id="con-state">No download running</span>
+      <span class="con-tools">
+        <button class="ghost tiny" id="con-clear">Clear</button>
+        <button class="ghost tiny" id="con-copy">Copy all</button>
+        <button class="ghost tiny" id="con-save">Save as file</button>
+        <button class="ghost tiny" id="con-scroll" aria-pressed="true">Auto-scroll</button>
+        <button class="ghost tiny" id="con-wrap" aria-pressed="false">Wrap lines</button>
+      </span>
+    </div>
+    <div class="con-box" id="con-box" role="log" aria-label="What the programs say" tabindex="0"></div>
   </div>
 
   <!-- Programs: its own page in the left menu since 2026-10-25 (model S1);
@@ -3421,6 +3468,9 @@ function showView(name) {
     else item.removeAttribute("aria-current");
   }
   if (name === "programs") loadTools();   // versions from the cache: instant
+  // The Console reads the server's lines once a second, only while shown.
+  clearInterval(consoleTimer);
+  if (name === "console") { pollConsole(); consoleTimer = setInterval(pollConsole, 1000); }
   if (name === "settings") {
     loadTools();      // the Sites table names each site's programs
     loadCookies();
@@ -3430,7 +3480,89 @@ function showView(name) {
   // The keyboard moves with the page -- a screen reader stayed on the old
   // button and heard nothing of the new screen (round 1, 2026-09-26).
   (name === "settings" ? document.querySelector(".settings-tabs [aria-selected=true]")
-    : name === "programs" ? $("set-tools") : $("url")).focus({ preventScroll: true });
+    : name === "programs" ? $("set-tools") : name === "console" ? $("con-title")
+    : $("url")).focus({ preventScroll: true });
+}
+
+// ---- The Console page (2026-10-25) ----------------------------------------
+let consoleTimer = 0;
+let consoleNext = 0;          // the next line number the server will give
+const consoleTime = (at) => new Date(at * 1000).toLocaleTimeString([], { hour12: false });
+
+/** One line, as text only: a program's words are never read as HTML.
+ *  Links stand out in blue, errors in red, a download's title in yellow. */
+function consoleLine(line) {
+  const row = document.createElement("div");
+  row.className = line.kind === "head" ? "hd" : line.kind === "end" ? "end"
+    : /^(ERROR|.*\bERROR\b)/.test(line.text) ? "err" : "";
+  const t = document.createElement("span");
+  t.className = "t";
+  t.textContent = consoleTime(line.at) + " ";
+  row.appendChild(t);
+  const text = line.kind === "head" ? `── ${line.text} ──` : line.text;
+  for (const part of text.split(/(https?:\/\/\S+)/)) {
+    if (!part) continue;
+    if (/^https?:\/\//.test(part)) {
+      const link = document.createElement("span");
+      link.className = "lk";
+      link.textContent = part;
+      row.appendChild(link);
+    } else row.appendChild(document.createTextNode(part));
+  }
+  return row;
+}
+
+async function pollConsole() {
+  let data;
+  try { data = await api("/api/console?since=" + consoleNext); } catch { return; }
+  const box = $("con-box");
+  // A line number the server no longer has (Teleloadzai restarted): start again.
+  if (data.next < consoleNext) { box.textContent = ""; consoleNext = 0; return pollConsole(); }
+  for (const line of data.lines) box.appendChild(consoleLine(line));
+  consoleNext = data.next;
+  while (box.childElementCount > 2000) box.firstElementChild.remove();
+  if (data.lines.length && $("con-scroll").getAttribute("aria-pressed") === "true") box.scrollTop = box.scrollHeight;
+  const running = data.running || [];
+  $("con-chip").textContent = running.length ? "running" : "idle";
+  $("con-chip").classList.toggle("running", running.length > 0);
+  $("con-state").textContent = !running.length ? "No download running"
+    : running.length === 1 ? `1 download: ${running[0].title} (${running[0].tool})`
+    : `${running.length} downloads: ` + running.map((r) => r.title).join(" · ");
+}
+
+$("con-clear").addEventListener("click", async () => {
+  await api("/api/console/clear", {});
+  $("con-box").textContent = "";
+});
+$("con-copy").addEventListener("click", async () => {
+  const text = [...$("con-box").children].map((row) => row.textContent).join("\n");
+  if (!text) { notify("Nothing to copy yet."); return; }
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    // The window may refuse the clipboard API: the older way, a hidden box.
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed"; area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const done = document.execCommand("copy");
+    area.remove();
+    if (!done) { setStatus("Could not copy the console."); return; }
+  }
+  notify("Console copied.");
+});
+$("con-save").addEventListener("click", async () => {
+  const answer = await api("/api/console/save", {});
+  if (answer.error) setStatus("Not saved: " + answer.error);
+  else if (!answer.cancelled) notify(`Saved: ${answer.path}`);
+});
+for (const id of ["con-scroll", "con-wrap"]) {
+  $(id).addEventListener("click", () => {
+    const on = $(id).getAttribute("aria-pressed") !== "true";
+    $(id).setAttribute("aria-pressed", String(on));
+    if (id === "con-wrap") $("con-box").classList.toggle("wrap-lines", on);
+    if (id === "con-scroll" && on) $("con-box").scrollTop = $("con-box").scrollHeight;
+  });
 }
 for (const item of document.querySelectorAll(".side [data-go]")) {
   item.addEventListener("click", () => showView(item.dataset.go));

@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from . import children, cookies, explain, notify, runners, ytdlp
+from . import children, console, cookies, explain, notify, runners, ytdlp
 
 WAITING, RUNNING, DONE, ERROR, CANCELLED = "waiting", "running", "done", "error", "cancelled"
 ACTIVE_STATES = (WAITING, RUNNING)
@@ -491,6 +491,14 @@ class Queue:
             worker.start()
 
     def _work(self, job: Job) -> None:
+        # The Console page (2026-10-25): a title line, then what the program
+        # says, then how it ended. The name, never a cookie path.
+        from .platforms import tool_name
+        console.add(job.id, f"{job.title or job.url} · {tool_name(job.tool)}", "head")
+
+        def on_line(text: str) -> None:
+            console.add(job.id, text)
+
         def on_progress(progress: ytdlp.Progress) -> None:
             with self._lock:
                 job.percent, job.speed, job.eta = progress.percent, progress.speed, progress.eta
@@ -501,6 +509,9 @@ class Queue:
         def on_step(step: str) -> None:
             with self._lock:
                 job.step = step
+            # TikTokDownloader and KS-Downloader print nothing we read: their
+            # steps are what the console can say of them.
+            console.add(job.id, step[:1].upper() + step[1:] + "…")
 
         def on_start(process: subprocess.Popen) -> None:
             # It dies with Teleloadzai, even when the app is killed (children.py).
@@ -579,7 +590,7 @@ class Queue:
                     force=job.force, cookie_file=cookie_file, on_step=on_step,
                     on_destination=on_destination, on_writing=on_writing,
                     on_live=on_live, on_title=on_title,
-                    subs=job.subs, sub_lang=job.sub_lang,
+                    subs=job.subs, sub_lang=job.sub_lang, on_line=on_line,
                 )
             else:
                 # A specialist tool cannot be told an exact file name, so it
@@ -604,7 +615,7 @@ class Queue:
                         subs=job.subs, sub_lang=job.sub_lang,
                     ),
                     on_progress=on_percent, on_start=on_start, on_step=on_step,
-                    on_bytes=on_bytes,
+                    on_bytes=on_bytes, on_line=on_line,
                 )
 
         try:
@@ -718,6 +729,12 @@ class Queue:
             # Not for a Stop: the user did it, and is looking.
             with self._lock:
                 state, skipped, count = job.state, job.skipped, len(job.files)
+                error = job.error
+            # The console's last line for this download, in our words.
+            console.add(job.id, "Done." if state == DONE and not skipped
+                        else "Already there: nothing was downloaded." if state == DONE
+                        else f"Failed: {error}" if state == ERROR else "Stopped.", "end")
+            with self._lock:
                 saved = Path(job.files[0]).name if job.files else ""
                 # Never the link: a message on the screen says a name only
                 # ("A download failed" when there is none).

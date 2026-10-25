@@ -68,6 +68,8 @@ _FILTERS = {
     "mp4": "MP4 video (*.mp4)|*.mp4|All files (*.*)|*.*",
     # A cookie export is almost always literally named cookies.txt.
     "cookies": "Cookie file (*.txt)|*.txt|All files (*.*)|*.*",
+    # The Console page's "Save as file" (2026-10-25).
+    "txt": "Text file (*.txt)|*.txt|All files (*.*)|*.*",
 }
 
 
@@ -238,7 +240,7 @@ def save_file(suggested_name: str, mode: str, start: Path) -> Path | None:
     Windows asks about replacing an existing file by itself, so when a path
     comes back the user has already agreed to overwrite it.
     """
-    extension = "mp3" if mode == "mp3" else "mp4"
+    extension = mode if mode in ("mp3", "txt") else "mp4"
     base = safe_filename(without_media_ending(suggested_name), fallback="")
     name = f"{base or free_name(start, UNKNOWN, extension)}.{extension}"
     script = _SAVE_FILE.format(

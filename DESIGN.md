@@ -200,9 +200,10 @@ Warm, low-chroma paper and ink, with one saturated yellow kept for the single ac
 
 ## Layout
 
-- **One column**, centred, 860 px wide at most (1040 px from 1200 px wide), with a 16 px gutter on each side of the window.
-- **The main screen never scrolls.** It is one column `100vh` tall: bar, link box, card, then the list, which takes the room left (at least 170 px) and scrolls inside its card.
-- **Settings** is a grid: a 190 px side menu (it stays in place while you scroll) and the page beside it. Below 700 px wide, the menu keeps only its icons.
+- **A menu on the left** (model S1, chosen by the user 2026-10-25 from a drawing, after a launcher they showed): an 88 px strip fixed to the window's left edge, a hair darker than the page, with **Download · Console · Programs** at the top and **Settings** at the bottom. Each item is a 72 px tile — icon (22 px) over its name (12 px) — and **each one is its own page**; the open one is tinted yellow. It replaced layout A's Settings button in the corner. **The window opens maximized** ("Restore down" gives the old 860-wide window).
+- **One column** beside the menu, centred, 860 px wide at most (1040 px from 1200 px wide), with a 16 px gutter.
+- **The Download page never scrolls.** It is one column `100vh` tall: link box, card, then the list, which takes the room left (at least 170 px) and scrolls inside its card.
+- **Settings** has a title and two tabs across the top, **Downloads · Sites** (a second left menu inside it would be one too many). **Programs** is its own page.
 - **The compact step:** a window ≤ 640 px wide or ≤ 720 px tall has smaller margins, a 40 px link field, a smaller picture and lower rows. The real window (860×814 inside) and full screen (1463×834) are above it.
 - **Test at the user's two real sizes:** the small window (860×814 inside) and full screen (1463×834). Invented sizes missed what the user saw at once.
 - **Rhythm:** 16 px inside cards, 14 px between cards, 12 px between a title and its box, rows at least 54 px (card) or 60 px (Settings).
@@ -299,8 +300,13 @@ Over the Downloads list:
 
 **Interrupted downloads** (cut off when Teleloadzai closed) get the updates band's tint: a yellow band over the list, "1 download did not finish when Teleloadzai closed.", with a ghost **Continue it / Continue them**. Each such row says "Interrupted" on its stop and has its own Continue and Remove. Nothing restarts by itself.
 
+### Console (2026-10-25, like the yutto window the user showed)
+- **A state line:** a chip, *idle* (grey) or *running* (green), and what runs ("1 download: Me at the zoo (yt-dlp)").
+- **Five tools** on the right, small ghost buttons: Clear · Copy all · Save as file · **Auto-scroll** (on) · **Wrap lines** (off); a tool that is on has an ochre border.
+- **The box** takes the page's height (the page never scrolls): near-black `#1d1f24`, 12 px radius, Cascadia Mono / Consolas 12.5 px, each line led by its time in grey. A download's title line is yellow ("── Me at the zoo · yt-dlp ──"), links blue, errors red, our closing line ("Done.", "Failed: …") light grey. Read only. Empty: "Nothing yet. Each download's program writes here while it works."
+
 ### Settings (the Windows Settings model)
-- **Side menu:** icon + name, 40 px rows. The open page is raised on a card.
+- **Tabs across the top** (Downloads · Sites, since 2026-10-25): a segmented track; the open tab is raised on a card.
 - **Groups:** cards of rows with a name (600), an optional help line (13 px soft), and the control on the right.
 - **Paused:** while log-ins are paused, the whole Sites page except its switch is at 45 % opacity, greyscale, and out of reach (`inert`).
 - **Downloads page, its switches in order:** Ask where to save each file · Use a link I copied · **Tell me when a download ends** (a bell icon; "A Windows message, only while you are in another window. Click it while it is on screen to come back.").

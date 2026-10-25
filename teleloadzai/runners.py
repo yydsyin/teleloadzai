@@ -1171,6 +1171,7 @@ def run(
     on_start: Callable[[subprocess.Popen], None] | None = None,
     on_step: Callable[[str], None] | None = None,
     on_bytes: Callable[[int, int], None] | None = None,
+    on_line: Callable[[str], None] | None = None,
 ) -> RunResult:
     """Run one specialist tool and report what it actually wrote."""
     if tool_id == "tiktokdownloader":
@@ -1203,7 +1204,7 @@ def run(
     keep = False
     try:
         return _run_in(work, recipe, exe, head, tool_id, request,
-                       on_progress, on_start, on_step, on_bytes)
+                       on_progress, on_start, on_step, on_bytes, on_line)
     except Exception as problem:
         # A finished file that could not be moved out stays in the work
         # folder, still listed: the next start puts it in the user's folder.
@@ -1235,7 +1236,8 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
             on_progress: Callable[[int], None] | None,
             on_start: Callable[[subprocess.Popen], None] | None,
             on_step: Callable[[str], None] | None,
-            on_bytes: Callable[[int, int], None] | None) -> RunResult:
+            on_bytes: Callable[[int, int], None] | None,
+            on_line: Callable[[str], None] | None = None) -> RunResult:
     """One tool run inside its work folder; finished files end in the user's."""
     # The tool is told the work folder. Names are still decided against the
     # user's folder when the files move out ("unknown (2)", decision 24).
@@ -1280,6 +1282,11 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
     for line in _lines(process.stdout):
         if not line.strip():
             continue
+        # The Console page (2026-10-25): the tool's words, but not its
+        # percentage lines -- N_m3u8DL-RE repaints them many times a second,
+        # and the row already shows the progress.
+        if on_line and not _PERCENT.search(line):
+            on_line(line)
         if on_progress:
             found_percent = _PERCENT.search(line)
             if found_percent:

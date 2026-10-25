@@ -626,6 +626,7 @@ def download(
     on_title: Callable[[str], None] | None = None,
     subs: str = "",
     sub_lang: str = "",
+    on_line: Callable[[str], None] | None = None,
 ) -> DownloadResult:
     """Download one link as MP3 or MP4, reporting progress line by line.
 
@@ -705,6 +706,10 @@ def download(
         elif line.startswith(_FILE_TAG):
             files.append(Path(line.split("\t", 1)[1].strip()))
         elif line.strip():
+            # The Console page (2026-10-25): every line but our own progress,
+            # title and file lines -- the row already shows those.
+            if on_line:
+                on_line(line)
             # "[download] Destination: C:\...\name.f137.mp4" -- the one place
             # yt-dlp names the files it is writing. A stopped job uses these,
             # and only these, to remove what it leaves half-written.

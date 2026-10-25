@@ -21,9 +21,9 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
-from . import cookies, dialogs, explain, login, notify, runners, toolservers, tools, ytdlp
+from . import console, cookies, dialogs, explain, login, notify, runners, toolservers, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import ERROR, Queue
@@ -619,6 +619,19 @@ class Handler(BaseHTTPRequestHandler):
                 })
                 return
 
+            if path == "/api/console":
+                # The Console page (2026-10-25): the lines since `since`, and
+                # what runs now, for its state line. Washed when kept.
+                try:
+                    start = int(parse_qs(urlsplit(self.path).query).get("since", ["0"])[0])
+                except ValueError:
+                    start = 0
+                lines, upto = console.since(start)
+                running = [{"title": j["title"] or j["url"], "tool": tool_name(j["tool"])}
+                           for j in QUEUE.all() if j["state"] == "running"]
+                self._json({"lines": lines, "next": upto, "running": running})
+                return
+
             if path == "/api/jobs":
                 jobs = QUEUE.all()
                 for job in jobs:
@@ -776,6 +789,33 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"links": clipboard_links()})
             except OSError as problem:
                 self._json({"links": [], "error": f"The clipboard could not be read: {problem}."})
+            return
+
+        if path == "/api/console/clear":
+            console.clear()
+            self._json({"ok": True})
+            return
+
+        if path == "/api/console/save":
+            # "Save as file": the Windows window, then the lines the SERVER
+            # kept (already washed) -- never text the page sends.
+            try:
+                chosen = dialogs.save_file("Teleloadzai console", "txt", download_folder())
+            except dialogs.DialogError as problem:
+                self._json({"error": str(problem)}, 500)
+                return
+            if chosen is None:
+                self._json({"cancelled": True})
+                return
+            lines, _ = console.since(0)
+            text = "\n".join(time.strftime("%H:%M:%S", time.localtime(l["at"])) + "  " + l["text"]
+                             for l in lines)
+            try:
+                chosen.write_text(text + "\n", encoding="utf-8")
+            except OSError as problem:
+                self._json({"error": f"Windows could not write the file: {problem}"}, 500)
+                return
+            self._json({"path": str(chosen), "lines": len(lines)})
             return
 
         if path == "/api/pick-folder":
