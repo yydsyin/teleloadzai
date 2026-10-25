@@ -143,8 +143,8 @@
   .each-choices select { font-size: 13px; }
   .each-choices .prog { color: var(--soft); }
   #batch-skipped { margin-top: 8px; line-height: 1.6; }
-  /* Over the list: its total, then filters with counts and the bulk buttons. */
-  #list-total { margin-left: auto; margin-right: 4px; }
+  /* Over the list: filters with counts. ("6 of 6 finished · 3 failed" went
+     on 2026-10-25, model D: the filters already say the counts.) */
   .list-bar { height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 0 0 10px; }
   .list-bar > i { display: block; height: 100%; width: 100%; background: var(--ok); transform-origin: left;
     transform: scaleX(0); transition: transform .7s linear; }
@@ -159,7 +159,7 @@
   .list-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
   .list-actions { margin-left: auto; display: flex; gap: 6px; }
   #list-filters:not(:has(button:not(.hidden))) { display: none; }
-  .job.filtered-out { display: none; }
+  .job.filtered-out, .fail-group.filtered-out { display: none; }
   #list-filters button { min-height: 30px; padding: 0 10px; font-size: 13px; }
   #list-filters button[data-filter="error"]:not([aria-pressed="true"]) { color: var(--bad); }
   #result-close {
@@ -609,7 +609,7 @@
   .job.compact .track { display: none; }
   .job.compact .job-top { align-items: center; flex-wrap: nowrap; }
   .job.compact .job-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .job.compact .job-right { flex: none; display: inline-flex; align-items: center; gap: 0; }
+  .job.compact .job-right { flex: none; display: inline-flex; align-items: center; gap: 8px; }
   .job.compact .small { color: var(--soft); white-space: pre; }
   .ftag {
     display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .03em;
@@ -618,7 +618,6 @@
   }
   .done-at { font-size: 13px; font-weight: 600; color: var(--ok-text); }
   .done-at.gone { color: var(--soft); font-weight: 500; }
-  .job.compact .done-at:not(.gone) + .small:not(:empty)::before { content: " · "; }
   .done-links { display: inline-flex; gap: 14px; margin-left: 16px; }
   .link-btn {
     min-height: 28px; padding: 0 2px; border: 0; background: none; cursor: pointer;
@@ -632,16 +631,52 @@
   .job.failrow .track { display: none; }
   .job.failrow .job-top { align-items: center; flex-wrap: nowrap; }
   .job.failrow .job-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .job.failrow .job-right { flex: none; display: inline-flex; align-items: center; gap: 14px; }
+  .job.failrow .job-right { flex: none; display: inline-flex; align-items: center; gap: 8px; }
   .job.failrow .small { display: none; }      /* always empty: a gap for nothing */
   .fail-why:empty { display: none; }
-  .fail-word { font-size: 13px; font-weight: 600; color: var(--bad); }
   .fail-why { color: var(--soft); font-size: 13px; margin-top: 3px; line-height: 1.45; }
   .fail-why b { font-weight: inherit; }
   .fail-more { margin-top: 8px; padding: 10px 12px; border-radius: 8px;
                background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
   .fail-more .err { margin: 0 0 8px; }
   .fail-more .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  /* Model D (chosen by the user 2026-10-25, the list was "so busy"): a mark
+     at the start of each ended row, ONE button, the rest behind "⋯"; the
+     failed rows grouped under a thin red line, their reason said once. */
+  .mark {
+    width: 20px; height: 20px; border-radius: 50%; flex: none; margin-right: 2px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; line-height: 1; color: var(--card);
+  }
+  .mark.ok { background: var(--ok); }
+  .mark.bad { background: var(--bad); }
+  .mark.gone { background: var(--line); color: var(--soft); }
+  .job.failrow .fail-why, .job.failrow .fail-more { margin-left: 32px; }
+  .fail-group { border-left: 3px solid var(--bad); padding: 4px 0 0 12px; margin: 2px 0 10px; }
+  .fail-group .fg-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .fail-group .fg-title { color: var(--bad); font-weight: 600; }
+  .fail-group .fg-why { color: var(--soft); font-size: 13px; margin: 2px 0 4px; }
+  .fail-group .fg-why:empty { display: none; }
+  .fail-group .fg-why b { font-weight: inherit; }
+  .fail-group.same-why .job .fail-why { display: none; }
+  .fail-group + .job { border-top: 0; }
+  .more-wrap { position: relative; display: inline-flex; }
+  .more-btn {
+    min-height: 28px; width: 30px; padding: 0; border: 0; background: none; cursor: pointer;
+    color: var(--soft); font-size: 18px; line-height: 1; border-radius: 8px;
+  }
+  .more-btn:hover, .more-btn[aria-expanded="true"] { background: color-mix(in srgb, var(--ink) 7%, var(--card)); color: var(--ink); }
+  .more-menu {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 160px;
+    display: flex; flex-direction: column; padding: 4px; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--line-strong); box-shadow: 0 6px 18px #0002;
+  }
+  .more-menu.hidden { display: none; }
+  .more-menu button {
+    text-align: left; border: 0; background: none; min-height: 32px; padding: 0 10px;
+    border-radius: 6px; font-size: 13px; color: var(--ink); cursor: pointer; white-space: nowrap;
+  }
+  .more-menu button:hover, .more-menu button:focus-visible { background: color-mix(in srgb, var(--ink) 7%, var(--card)); }
   .job-name { font-weight: 500; word-break: break-word; }
   /* At the smallest window a long name was squeezed into an 83 px column,
      8 lines tall, beside a progress line that never wrapped (review of
@@ -928,7 +963,6 @@
   <div class="card" data-view="main" id="jobs-card">
     <div class="head">
       <span class="hint" id="queue-info" role="heading" aria-level="2">Downloads</span>
-      <span class="small hidden" id="list-total"></span>
       <button class="ghost tiny" id="clear">Clear finished</button>
     </div>
     <!-- A long list stays readable (the study: Parabolic's filters with
@@ -943,10 +977,20 @@
     </div>
     <div class="list-tools hidden" id="list-tools">
       <span class="seg-track" id="list-filters" role="group" aria-label="Show"></span>
-      <span class="list-actions">
-        <button class="ghost tiny hidden" id="retry-failed">Retry all failed</button>
-      </span>
     </div>
+    <!-- The failed rows, together under one red line (model D, 2026-10-25):
+         put in the list only while there is one, so an empty list stays
+         :empty and shows its empty state. -->
+    <template id="fail-group-template">
+      <div class="fail-group" role="group" aria-label="Failed downloads">
+        <div class="fg-head">
+          <span class="fg-title"></span>
+          <button class="tiny hidden" id="retry-failed">Retry all</button>
+        </div>
+        <div class="fg-why"></div>
+        <div class="fg-rows"></div>
+      </div>
+    </template>
     <div id="jobs"></div>
     <!-- What goes here, while nothing does. Which sites work: the empty
          window said nothing about it (review of 2026-09-27). -->
@@ -2223,9 +2267,13 @@ function failButtons(job) {
     ["preview", previewOffer(job, hopeless) && `data-preview="${job.id}">Try yt-dlp's preview version`],
     ["retry", !hopeless && `data-retry="${job.id}">Retry`],
   ].filter(([, inner]) => inner);
-  const first = all.find(([name]) => name === primary);
-  return { primary: first ? `<button class="tiny" ${first[1]}</button>` : "",
-           rest: all.filter((b) => b !== first).map(([, inner]) => `<button class="ghost tiny" ${inner}</button>`) };
+  // Model D (2026-10-25): ONE button on the row -- the way out the case
+  // calls for, else Retry: under "Details" it hid where the user looked for
+  // it. Outlined: the group's "Retry all" is the list's filled button. The
+  // others go in the row's "⋯" menu.
+  const first = all.find(([name]) => name === primary) || all.find(([name]) => name === "retry");
+  return { primary: first ? `<button class="ghost tiny" ${first[1]}</button>` : "",
+           rest: all.filter((b) => b !== first).map(([, inner]) => `<button type="button" role="menuitem" ${inner}</button>`) };
 }
 
 // Failed rows whose Details are open: kept when a row is drawn again.
@@ -2415,31 +2463,39 @@ function jobRow(job) {
   const canCancel = job.state === "waiting" || job.state === "running";
   const compact = compactRow(job);
   if (compact) row.classList.add("compact");
-  // A failed row: one line and its reason; the rest under Details (2026-10-25).
+  // A failed row: one line, in the red group, its reason said once there
+  // (model D, 2026-10-25); one button, the rest in "⋯".
   const failed = job.state === "error";
   if (failed) row.classList.add("failrow");
   const fails = failed ? failButtons(job) : { primary: "", rest: [] };
   const toolSaid = failed && job.error && job.error_from_tool;
   const pieces = failed ? job.pieces_on_disk || 0 : 0;
-  const hasDetails = failed && Boolean(fails.rest.length || toolSaid || douyinNote(job) || pieces);
+  const hasDetails = failed && Boolean(toolSaid || douyinNote(job) || pieces);
+  // The mark says the state at a glance; the words stay for screen readers
+  // (sayState) and on the line itself ("Gone").
+  const mark = failed ? '<span class="mark bad" aria-hidden="true">✕</span>'
+    : compact && job.on_disk ? '<span class="mark ok" aria-hidden="true">✓</span>'
+    : compact ? '<span class="mark gone" aria-hidden="true">–</span>' : "";
+  const menu = failed ? moreMenu([
+      hasDetails && `<button type="button" role="menuitem" data-details="${job.id}">Details</button>`,
+      ...fails.rest,
+      `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove</button>`])
+    : compact ? moreMenu([job.on_disk
+      ? `<button type="button" role="menuitem" data-reveal="${job.id}">Show in folder</button>`
+      // Its file moved or deleted: Open and Show in folder could only
+      // answer an error (decision 40) -- the row can go instead.
+      : `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove</button>`]) : "";
 
   row.innerHTML = `
     <div class="job-top">
-      <span class="job-name"></span><span class="sr-only job-state"></span>
+      ${mark}<span class="job-name"></span><span class="sr-only job-state"></span>
       <span class="job-right">
-        ${compact ? `<span class="done-at${job.on_disk ? "" : " gone"}">${job.on_disk
-          ? "In your folder" : "Not in the folder any more"}</span>` : ""}
-        ${failed ? `<span class="fail-word">Failed</span>${fails.primary}` : ""}
+        ${compact && !job.on_disk ? '<span class="done-at gone">Gone</span>' : ""}
         <span class="small"></span>
-        ${hasDetails ? `<button class="link-btn" data-details="${job.id}" aria-expanded="false">Details</button>` : ""}
-        ${failed ? `<button class="link-btn" data-dismiss="${job.id}">Remove</button>` : ""}
+        ${failed ? fails.primary : ""}
+        ${compact && job.on_disk ? `<button class="ghost tiny" data-open="${job.id}">Open</button>` : ""}
         ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
-        ${compact ? `<span class="done-links">${job.on_disk
-          ? `<button class="link-btn" data-open="${job.id}">Open</button><button
-          class="link-btn" data-reveal="${job.id}">Show in folder</button>`
-          // Its file moved or deleted: Open and Show in folder could only
-          // answer an error (decision 40) -- the row can go instead.
-          : `<button class="link-btn" data-dismiss="${job.id}">Remove</button>`}</span>` : ""}
+        ${menu}
       </span>
     </div>
     <div class="track" aria-hidden="true">
@@ -2490,7 +2546,6 @@ function jobRow(job) {
           ? "1 unfinished piece of this download is still in your folder."
           : `${pieces} unfinished pieces of this download are still in your folder.`}
           <button class="link-btn" data-reveal="${job.id}">Show in folder</button></div>` : ""}
-        ${fails.rest.length ? `<div class="row">${fails.rest.join("\n")}</div>` : ""}
       </div>` : ""}` : ""}`;
   // A failure used to open on the tool's raw words in red ("Use --cookies,
   // --username…"), then four equal grey buttons, and "failed" in small grey
@@ -2581,6 +2636,8 @@ function jobRow(job) {
   for (const button of row.querySelectorAll("button")) {
     button.setAttribute("aria-label", `${button.textContent.trim()}: ${shown}`);
   }
+  const moreButton = row.querySelector(".more-btn");
+  if (moreButton) moreButton.setAttribute("aria-label", `More: ${shown}`);
   const update = row.querySelector("[data-update]");
   if (update) update.addEventListener("click", () => updateAndRetry(job, update));
   const preview = row.querySelector("[data-preview]");
@@ -2646,6 +2703,66 @@ function jobRow(job) {
 // 2026-09-25). Now a row is rebuilt only when its shape changes.
 const jobRows = new Map();
 
+// The failed rows' group (model D): made once, in the list only while a row
+// failed. Its "Retry all" lives in it.
+const failGroup = $("fail-group-template").content.firstElementChild.cloneNode(true);
+const retryFailedButton = failGroup.querySelector("#retry-failed");
+
+/** Put each element at its place in `box`, in this order, moving only what
+ *  is out of place (a row under the pointer is not replaced). */
+function placeInOrder(box, elements) {
+  elements.forEach((el, index) => {
+    if (box.children[index] !== el) box.insertBefore(el, box.children[index] || null);
+  });
+}
+
+/** Which rows go in the failed group: failed rows, and the reason they
+ *  share. One reason said once when every failed row has the same; else
+ *  each row keeps its own line (the user's list, 2026-10-25: the same
+ *  sentence three times). */
+function paintFailGroup(failed) {
+  const words = failed.map((j) => errorExplanation(j));
+  const same = words.length > 0 && words.every((w) => w === words[0]) && words[0] !== "";
+  failGroup.querySelector(".fg-title").textContent =
+    failed.length === 1 ? "1 download failed" : `${failed.length} downloads failed`;
+  failGroup.querySelector(".fg-why").innerHTML = same ? words[0] : "";
+  failGroup.classList.toggle("same-why", same);
+}
+
+// The "⋯" menus: one open at a time, closed by any click outside it (a click
+// on one of its items closes it too, after the item did its work) or Esc.
+function closeMenus(except) {
+  for (const menu of document.querySelectorAll(".more-menu:not(.hidden)")) {
+    if (menu === except) continue;
+    menu.classList.add("hidden");
+    menu.previousElementSibling.setAttribute("aria-expanded", "false");
+  }
+}
+document.addEventListener("click", (event) => {
+  const button = event.target.closest(".more-btn");
+  if (!button) { closeMenus(null); return; }
+  const menu = button.nextElementSibling;
+  closeMenus(menu);
+  const open = menu.classList.toggle("hidden") === false;
+  button.setAttribute("aria-expanded", String(open));
+  if (open) menu.querySelector("button")?.focus();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const open = document.querySelector(".more-menu:not(.hidden)");
+  if (!open) return;
+  closeMenus(null);
+  open.previousElementSibling.focus();
+  event.stopPropagation();
+}, true);
+
+/** A "⋯" button and its menu, from the buttons' HTML ("" when there are none). */
+function moreMenu(items) {
+  const list = items.filter(Boolean);
+  return list.length ? `<span class="more-wrap"><button class="more-btn" type="button" aria-haspopup="menu"
+    aria-expanded="false">⋯</button><span class="more-menu hidden" role="menu">${list.join("")}</span></span>` : "";
+}
+
 async function refresh() {
   const data = await api("/api/jobs");
   const jobs = data.jobs || [];
@@ -2655,7 +2772,7 @@ async function refresh() {
   for (const [id, row] of jobRows) {
     if (!present.has(id)) { row.remove(); jobRows.delete(id); }
   }
-  jobs.forEach((job, index) => {
+  jobs.forEach((job) => {
     let row = jobRows.get(job.id);
     if (row && row.dataset.shape === jobShape(job)) {
       const { percent, right } = jobProgress(job);
@@ -2680,9 +2797,18 @@ async function refresh() {
       row = fresh;
       if (justFailed) checkForFix(job);
     }
-    // Newest first, as the server sends them.
-    if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null);
   });
+  // Newest first, as the server sends them -- with model D's order: what is
+  // on its way first, then the failed ones together, then the rest.
+  const rowOf = (job) => jobRows.get(job.id);
+  const failedJobs = jobs.filter((j) => j.state === "error");
+  const onItsWay = jobs.filter((j) => j.state === "waiting" || j.state === "running");
+  const others = jobs.filter((j) => j.state !== "error" && j.state !== "waiting" && j.state !== "running");
+  if (failedJobs.length) {
+    paintFailGroup(failedJobs);
+    placeInOrder(failGroup.querySelector(".fg-rows"), failedJobs.map(rowOf));
+  } else failGroup.remove();
+  placeInOrder(list, [...onItsWay.map(rowOf), ...(failedJobs.length ? [failGroup] : []), ...others.map(rowOf)]);
 
   const running = jobs.filter((j) => j.state === "running").length;
   const waiting = jobs.filter((j) => j.state === "waiting").length;
@@ -2739,21 +2865,19 @@ function paintListTools(jobs) {
     const row = jobRows.get(job.id);
     if (row) row.classList.toggle("filtered-out", listFilter !== "all" && job.state !== listFilter);
   }
+  failGroup.classList.toggle("filtered-out", listFilter !== "all" && listFilter !== "error");
   // A real count, never an estimate (decision 33): finished = done, failed
-  // or stopped, out of every row.
+  // or stopped, out of every row. Drawn by the bar only -- the line "6 of 6
+  // finished · 3 failed" went with model D (the filters say the counts).
   const ended = jobs.filter((j) => ["done", "error", "cancelled"].includes(j.state) && !j.interrupted).length;
-  const failed = count("error");
   const show = jobs.length >= 2;
-  $("list-total").textContent = show
-    ? `${ended} of ${jobs.length} finished` + (failed ? ` · ${failed} failed` : "") : "";
-  $("list-total").classList.toggle("hidden", !show);
   // The bar only while something is on its way: all green under a finished
   // list was one more line saying nothing (2026-10-24).
   $("list-bar").classList.toggle("hidden",
     !show || !jobs.some((j) => j.state === "waiting" || j.state === "running"));
   $("list-bar").firstElementChild.style.transform = `scaleX(${show ? ended / jobs.length : 0})`;
   // One failed row has its own Retry; from two, one button for all of them.
-  $("retry-failed").classList.toggle("hidden", retryable(jobs).length < 2);
+  retryFailedButton.classList.toggle("hidden", retryable(jobs).length < 2);
   // Cut off when Teleloadzai closed: nothing restarts by itself (the user's
   // choice, 2026-10-24) -- one button continues them all.
   const cut = jobs.filter((j) => j.state === "cancelled" && j.interrupted).length;
@@ -2761,7 +2885,7 @@ function paintListTools(jobs) {
     : `${cut} downloads did not finish when Teleloadzai closed.`;
   $("resume-all").textContent = cut === 1 ? "Continue it" : "Continue them";
   $("resume-bar").classList.toggle("hidden", !cut);
-  $("list-tools").classList.toggle("hidden", !long && $("retry-failed").classList.contains("hidden"));
+  $("list-tools").classList.toggle("hidden", !long);
 }
 
 let loadProblemSaid = false;
@@ -2781,9 +2905,9 @@ $("resume-all").addEventListener("click", async () => {
     : `${again} of ${rows.length} downloads continue; the others are no longer in the list.`);
 });
 
-$("retry-failed").addEventListener("click", async () => {
+retryFailedButton.addEventListener("click", async () => {
   const rows = retryable(lastJobs);
-  const button = $("retry-failed");
+  const button = retryFailedButton;
   button.disabled = true;
   let again = 0;
   for (const job of rows) {
