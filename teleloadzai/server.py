@@ -26,7 +26,7 @@ from urllib.parse import urlsplit
 from . import cookies, dialogs, explain, login, notify, runners, toolservers, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
-from .jobs import Queue
+from .jobs import ERROR, Queue
 from .paths import DATA_DIR, DEFAULT_DOWNLOAD_DIR, WEB_DIR, ensure_dirs
 from .platforms import PLATFORMS, tool_name
 
@@ -810,6 +810,10 @@ class Handler(BaseHTTPRequestHandler):
             job_id, _, action = path[len("/api/job/"):].rpartition("/")
             job = QUEUE.get(job_id)
             saved = [Path(f) for f in (job.files if job else []) if Path(f).is_file()]
+            # A failed row with no file shows its unfinished pieces -- only
+            # in the folder, never opened (they are half a video).
+            if not saved and job and action == "reveal" and job.state == ERROR:
+                saved = [Path(p) for p in job.pieces if Path(p).is_file()]
             if not saved:
                 self._json({"error": "The file is no longer where it was saved: "
                                      "it may have been moved or deleted."}, 404)

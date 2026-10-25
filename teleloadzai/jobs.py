@@ -31,7 +31,7 @@ ACTIVE_STATES = (WAITING, RUNNING)
 # path, not its note -- the error words are already washed (decision 37).
 _KEPT = ("id", "url", "mode", "quality", "title", "folder", "target", "tool",
          "platform", "skipped", "skip_reason", "state", "files", "error",
-         "error_from_tool", "limit_minutes", "live", "interrupted", "note")
+         "error_from_tool", "limit_minutes", "live", "interrupted", "note", "pieces")
 HISTORY_LIMIT = 200         # rows kept; the oldest finished ones go first
 
 
@@ -158,6 +158,10 @@ class Job:
     # A finished job's one plain sentence about what it did not get: "Saved
     # without a cover picture." (Phase 2 item 5, decision 34).
     note: str = ""
+    # A failed yt-dlp job's unfinished pieces, left in the folder for a Retry
+    # to pick up: the row says they are there (a Bilibili video, 2026-10-24:
+    # its whole sound and 1.4 MB of picture, and the row said nothing).
+    pieces: list[str] = field(default_factory=list)
     # When the job started running. Until a tool prints a percentage there is
     # nothing else true to show, and a silent 0% bar looks frozen (decision
     # 33). Seen 2026-09-25: 12 to 18 s of nothing at the start of every
@@ -204,6 +208,10 @@ class Job:
             "eta": self.eta, "done_bytes": self.done_bytes, "total_bytes": self.total_bytes,
             "estimated": self.estimated, "files": self.files, "error": self.error,
             "note": self.note,
+            # Asked to the disk at each refresh, like the finished files: a
+            # piece the user deleted is no longer said.
+            "pieces_on_disk": sum(1 for p in self.pieces if os.path.isfile(p))
+                              if self.state == ERROR else 0,
             # A finished row's files as they are NOW on the disk: how many are
             # still there, and their size -- asked to the files themselves,
             # never remembered (the compact finished row, 2026-10-24).
@@ -661,6 +669,7 @@ class Queue:
             with self._lock:
                 job.process = None
                 stopped = job.state == CANCELLED
+                failed = job.state == ERROR
                 destinations = list(job.destinations)
                 writing = list(job.writing)
                 live = job.live
@@ -686,6 +695,13 @@ class Queue:
                         piece.unlink()
                     except OSError:
                         pass            # still held: a leftover, never a crash
+            # A failure keeps its pieces -- yt-dlp picks them up on Retry --
+            # and remembers them, so the row can say where they are. The same
+            # narrow list as a Stop's: only names announced for THIS job.
+            if failed and not live:
+                pieces = [str(p) for p in _leftovers(destinations, job.started - 2, writing)]
+                with self._lock:
+                    job.pieces = pieces
             # A Windows message when the user is elsewhere (Phase 2 item 6).
             # Not for a Stop: the user did it, and is looking.
             with self._lock:

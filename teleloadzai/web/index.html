@@ -625,6 +625,23 @@
     color: var(--ink); font-size: 13px; text-decoration: underline; text-underline-offset: 3px;
   }
   .link-btn:hover { color: var(--accent); }
+  /* A failed row: one line and its reason (chosen 2026-10-25 from drawn
+     pictures; it was 173-198 px, two rows filled the small window). The red
+     "Failed" says it stopped; the program's words and the other ways out
+     wait under Details. */
+  .job.failrow .track { display: none; }
+  .job.failrow .job-top { align-items: center; flex-wrap: nowrap; }
+  .job.failrow .job-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job.failrow .job-right { flex: none; display: inline-flex; align-items: center; gap: 14px; }
+  .job.failrow .small { display: none; }      /* always empty: a gap for nothing */
+  .fail-why:empty { display: none; }
+  .fail-word { font-size: 13px; font-weight: 600; color: var(--bad); }
+  .fail-why { color: var(--soft); font-size: 13px; margin-top: 3px; line-height: 1.45; }
+  .fail-why b { font-weight: inherit; }
+  .fail-more { margin-top: 8px; padding: 10px 12px; border-radius: 8px;
+               background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
+  .fail-more .err { margin: 0 0 8px; }
+  .fail-more .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .job-name { font-weight: 500; word-break: break-word; }
   /* At the smallest window a long name was squeezed into an 83 px column,
      8 lines tall, beside a progress line that never wrapped (review of
@@ -2110,6 +2127,14 @@ function loginOffer(job) {
   return loginablePlatforms[job.platform] || "";
 }
 
+/** Logged in to this site, with "Use my log-ins" on: then "logging in may
+ *  help" is false, and a plain "Log in" says it again (a Bilibili row with
+ *  the user logged in, 2026-10-24). Same state as the Settings sign. */
+function loggedIn(platformId) {
+  const p = loginPlatforms.find((x) => x.id === platformId);
+  return Boolean(p && p.state === "logged_in" && $("cookies-switch").checked);
+}
+
 // What to say under a failed job (decision 38). Three cases, never mixed:
 // an error we have really met gets its plain meaning; a log-in the tool
 // itself asked for is said as the tool's words; anything else is admitted to
@@ -2137,11 +2162,12 @@ function errorExplanation(job) {
   // Two sentences: the buttons carry the rest (Update is always one of
   // them), and the fold right below is seen without a sentence pointing at
   // it -- the row was four sentences, 180-200 px tall (review of 2026-09-27).
-  return `<b>The download failed, and Teleloadzai does not recognise why.</b>`
+  // One line on the compact failed row (2026-10-25).
+  return `<b>Teleloadzai does not know this error.</b>`
     // One sentence, not "newest. Updating will not help." (loop round 2).
-    + (other || (newest ? newest + " Its next version may fix this: try again in a few days."
+    + (other || (newest ? ` ${name} is already the newest version: try again in a few days.`
       : ` Updating ${name} is the first thing to try.`))
-    + (loginOffer(job) ? ` If this link needs an account, logging in may help.` : "");
+    + (loginOffer(job) && !loggedIn(job.platform) ? ` If this link needs an account, logging in may help.` : "");
 }
 
 /**
@@ -2175,24 +2201,35 @@ function failChoice(job) {
   return { hopeless, canUpdate, primary };
 }
 
+/** { primary: the filled button, on the row's line (or ""), rest: the
+ *  others, under Details }. Remove is the row's own link, always there:
+ *  "Clear finished" leaves failed rows alone (loop round 1, 2026-10-23). */
 function failButtons(job) {
   const { hopeless, canUpdate, primary } = failChoice(job);
-  const cls = (name) => (primary === name ? "" : "ghost ") + "tiny";
-  return [
-    loginOffer(job) && `<button class="${cls("login")}" data-login="${job.platform}">Log in to ${loginOffer(job)}</button>`,
-    job.other_tool && `<button class="${cls("switch")}" data-switch="${job.id}" data-tool="${job.other_tool.id}">Try with ${job.other_tool.name}</button>`,
+  const asked = job.needs_login || (job.explain || {}).action === "login";
+  const site = loginOffer(job);
+  const inside = loggedIn(job.platform);
+  const all = [
+    // Logged in already: offered only when the program asked for a log-in
+    // (the session may have ended early), and said "again".
+    ["login", site && (asked || !inside)
+      && `data-login="${job.platform}">${inside ? "Log in again to" : "Log in to"} ${site}`],
+    ["switch", job.other_tool && `data-switch="${job.id}" data-tool="${job.other_tool.id}">Try with ${job.other_tool.name}`],
     // Update, then the retry by itself: "updated — press Retry" made the
     // user do the obvious second half (update system, 2026-10-21).
-    canUpdate && `<button class="${cls("update")}" data-update="${job.tool}">Update ${job.tool_name || job.tool} and retry</button>`,
+    ["update", canUpdate && `data-update="${job.tool}">Update ${job.tool_name || job.tool} and retry`],
     // yt-dlp already the newest stable, and the error not known: its
     // preview builds get fixes days earlier -- the next way out.
-    previewOffer(job, hopeless) && `<button class="ghost tiny" data-preview="${job.id}">Try yt-dlp's preview version</button>`,
-    !hopeless && `<button class="${cls("retry")}" data-retry="${job.id}">Retry</button>`,
-    // Every failed row has its own way out of the list: "Clear finished"
-    // leaves failed rows alone since loop round 1 (2026-10-23).
-    `<button class="ghost tiny" data-dismiss="${job.id}">Remove</button>`,
-  ].filter(Boolean).join("\n");
+    ["preview", previewOffer(job, hopeless) && `data-preview="${job.id}">Try yt-dlp's preview version`],
+    ["retry", !hopeless && `data-retry="${job.id}">Retry`],
+  ].filter(([, inner]) => inner);
+  const first = all.find(([name]) => name === primary);
+  return { primary: first ? `<button class="tiny" ${first[1]}</button>` : "",
+           rest: all.filter((b) => b !== first).map(([, inner]) => `<button class="ghost tiny" ${inner}</button>`) };
 }
+
+// Failed rows whose Details are open: kept when a row is drawn again.
+const openDetails = new Set();
 
 /** A finished row with its file(s): ONE line -- a format tag, the name, "In
  *  your folder · 4.7 MB", Open · Show in folder. Its tracking line said
@@ -2362,6 +2399,7 @@ function jobShape(job) {
   return JSON.stringify([job.state, job.interrupted, job.skipped, job.skip_reason, job.error, job.note,
     Boolean(job.on_disk),
     job.cookie_note, job.other_tool && job.other_tool.id, loginOffer(job),
+    loggedIn(job.platform), job.pieces_on_disk,
     job.tool, job.target, job.title, job.mode, job.quality]);
 }
 
@@ -2377,6 +2415,13 @@ function jobRow(job) {
   const canCancel = job.state === "waiting" || job.state === "running";
   const compact = compactRow(job);
   if (compact) row.classList.add("compact");
+  // A failed row: one line and its reason; the rest under Details (2026-10-25).
+  const failed = job.state === "error";
+  if (failed) row.classList.add("failrow");
+  const fails = failed ? failButtons(job) : { primary: "", rest: [] };
+  const toolSaid = failed && job.error && job.error_from_tool;
+  const pieces = failed ? job.pieces_on_disk || 0 : 0;
+  const hasDetails = failed && Boolean(fails.rest.length || toolSaid || douyinNote(job) || pieces);
 
   row.innerHTML = `
     <div class="job-top">
@@ -2384,7 +2429,10 @@ function jobRow(job) {
       <span class="job-right">
         ${compact ? `<span class="done-at${job.on_disk ? "" : " gone"}">${job.on_disk
           ? "In your folder" : "Not in the folder any more"}</span>` : ""}
+        ${failed ? `<span class="fail-word">Failed</span>${fails.primary}` : ""}
         <span class="small"></span>
+        ${hasDetails ? `<button class="link-btn" data-details="${job.id}" aria-expanded="false">Details</button>` : ""}
+        ${failed ? `<button class="link-btn" data-dismiss="${job.id}">Remove</button>` : ""}
         ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
         ${compact ? `<span class="done-links">${job.on_disk
           ? `<button class="link-btn" data-open="${job.id}">Open</button><button
@@ -2434,11 +2482,16 @@ function jobRow(job) {
         <span class="saved-before"></span>
         <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
       </div>` : ""}
-    ${job.state === "error" ? `<div class="hint" style="margin-top:6px; line-height:1.6">${errorExplanation(job)}</div>${douyinNote(job)}
-      ${job.error && job.error_from_tool ? `<details class="more" style="margin-top:4px">
-        <summary class="hint">Show ${job.tool_name || job.tool}'s message</summary><div class="err"></div>
-      </details>` : ""}
-      <div class="row" style="margin-top:8px; flex-wrap:wrap">${failButtons(job)}</div>` : ""}`;
+    ${failed ? `<div class="fail-why">${errorExplanation(job)}</div>
+      ${hasDetails ? `<div class="fail-more hidden">
+        ${toolSaid ? '<div class="err"></div>' : ""}
+        ${douyinNote(job)}
+        ${pieces ? `<div class="hint" style="margin-bottom:8px">${pieces === 1
+          ? "1 unfinished piece of this download is still in your folder."
+          : `${pieces} unfinished pieces of this download are still in your folder.`}
+          <button class="link-btn" data-reveal="${job.id}">Show in folder</button></div>` : ""}
+        ${fails.rest.length ? `<div class="row">${fails.rest.join("\n")}</div>` : ""}
+      </div>` : ""}` : ""}`;
   // A failure used to open on the tool's raw words in red ("Use --cookies,
   // --username…"), then four equal grey buttons, and "failed" in small grey
   // -- the worst moment to be unclear (round 1 of the loop, 2026-09-26). Now:
@@ -2473,26 +2526,43 @@ function jobRow(job) {
     : job.mode === "mp4" && original ? original : job.mode.toUpperCase();
   row.querySelector(".job-name").textContent =
     [shown, [kind, quality].filter(Boolean).join(" ")].filter(Boolean).join("  ·  ");
-  if (compact) {
+  if (compact || failed) {
     // The format in a tag, the name without its ending: "#music .mp3" and
     // "#music .mp4" were the only difference between two rows (2026-10-24).
-    // A row of several files (a playlist) is named by its title.
+    // A row of several files (a playlist) is named by its title. A failed
+    // row the same way, from the name it was going to have (2026-10-25).
     const name = row.querySelector(".job-name");
     const tag = document.createElement("span");
     tag.className = "ftag";
     tag.textContent = [original && job.mode === "mp4" ? "Files" : job.mode.toUpperCase(), quality]
       .filter(Boolean).join(" · ");
-    const plain = files.length > 1 ? (job.title || fileName(files[0]))
+    const plain = !compact ? shown.replace(/\s*\.[a-z0-9]{2,4}$/i, "")
+      : files.length > 1 ? (job.title || fileName(files[0]))
       : fileName(files[0]).replace(/\s*\.[a-z0-9]{2,4}$/i, "");
     name.textContent = "";
     name.append(tag, plain);
-    name.title = files.length > 1 ? plain : fileName(files[0]);
+    name.title = !compact ? shown : files.length > 1 ? plain : fileName(files[0]);
   }
   row.querySelector(".small").textContent = right;
   paintTrack(row, job, percent);
   sayState(row, job);
   const errorText = row.querySelector(".err");
-  if (errorText) errorText.textContent = job.error || "";
+  if (errorText) errorText.textContent = (toolSaid ? `${job.tool_name || job.tool} said: ` : "") + (job.error || "");
+  const details = row.querySelector("[data-details]");
+  if (details) {
+    const more = row.querySelector(".fail-more");
+    const show = (open) => {
+      more.classList.toggle("hidden", !open);
+      details.textContent = open ? "Hide details" : "Details";
+      details.setAttribute("aria-expanded", String(open));
+    };
+    show(openDetails.has(job.id));
+    details.addEventListener("click", () => {
+      const open = !openDetails.has(job.id);
+      if (open) openDetails.add(job.id); else openDetails.delete(job.id);
+      show(open);
+    });
+  }
   // What a finished job did not get ("Saved without a cover picture."):
   // the server's sentence, set as text (Phase 2 item 5).
   const note = row.querySelector(".job-note");
@@ -2595,7 +2665,10 @@ async function refresh() {
       // An end said aloud for a screen reader: the rows themselves are not
       // announced -- every 0.7 s would drown it (round 1 of the loop).
       if (row && (job.state === "done" || job.state === "error")) {
-        const name = row.querySelector(".job-name").textContent.split("  ·  ")[0];
+        // A row with a format tag (finished, failed) keeps its full name
+        // in its title: its text starts with the tag ("MP4Name").
+        const shownName = row.querySelector(".job-name");
+        const name = row.querySelector(".ftag") ? shownName.title : shownName.textContent.split("  ·  ")[0];
         $("announce").textContent = job.state === "done"
           ? (job.skipped ? `${name}: nothing was downloaded.` : `${name}: download finished.`)
           : `${name}: download failed.`;
@@ -4049,6 +4122,8 @@ function renderLogin(platforms, blocked) {
   $("login-blocked").textContent = blocked ? "⚠️ Cannot log in here: " + blocked + "." : "";
   $("login-blocked").classList.toggle("hidden", !blocked);
   renderSites();
+  // A failed row says "logging in may help" or not, by the log-in state.
+  redrawFailedRows();
 }
 
 function renderSites() {
