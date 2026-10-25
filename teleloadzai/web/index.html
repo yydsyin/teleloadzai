@@ -781,6 +781,8 @@
   }
   .badge.ok { color: var(--ok-text); border-color: var(--ok); }
   .badge.alert { color: var(--bad); border-color: var(--bad); }
+  /* An update is good news, not a failure: ochre, not red (review of 2026-10-25). */
+  .badge.new { color: var(--accent); border-color: var(--accent); }
   .err { color: var(--bad); font-size: 13px; margin-top: 6px; word-break: break-word; }
   a { color: var(--accent); }
   /* A warning is a tinted card, not a thick coloured side bar. */
@@ -1271,7 +1273,7 @@
   <!-- Console (2026-10-25): what each program says while it works. Read
        only -- nothing is typed here; washed of secrets by the server. -->
   <div data-view="console" id="console-page">
-    <h2 class="sr-only" id="con-title" tabindex="-1">Console</h2>
+    <h2 class="pane-title page-title" id="con-title" tabindex="-1">Console</h2>
     <div class="con-head">
       <span class="con-chip" id="con-chip">idle</span>
       <span class="con-state" id="con-state">No download running</span>
@@ -2432,6 +2434,12 @@ function compactRow(job) {
   return job.state === "done" && !job.skipped && (job.files || []).length > 0;
 }
 
+/** A skip because the file is in the folder (decision 24, gallery-dl's own
+ *  "# path"), not a tool's history skip. */
+function skipInFolder(job) {
+  return !job.skip_reason || /already in this folder/.test(job.skip_reason);
+}
+
 /** What moves while a job runs: the bar and the line on the right. */
 function jobProgress(job) {
   const percent = parseFloat((job.percent || "0").replace("%", ""))
@@ -2451,7 +2459,10 @@ function jobProgress(job) {
     right = !job.on_disk ? ""
       : [n > 1 ? `${job.on_disk} files` : "", formatSize(job.disk_bytes || 0)].filter(Boolean).join(" · ");
   }
-  else if (job.state === "done") right = job.skipped ? (job.skip_reason ? "skipped" : "already there") : "";
+  // "Already in your folder" only when it is: XHS-Downloader skips from its
+  // own history, into any folder (its reason says so, under the line).
+  else if (job.state === "done") right = !job.skipped ? ""
+    : skipInFolder(job) ? "Already in your folder" : "Skipped";
   else if (["error", "cancelled", "waiting"].includes(job.state)) right = "";
   // A live recording has a real measure: the time against its limit
   // (decision 33's own example, "14 of 60 minutes" -- never shown until
@@ -2607,7 +2618,10 @@ function jobRow(job) {
 
   const canCancel = job.state === "waiting" || job.state === "running";
   const compact = compactRow(job);
-  if (compact) row.classList.add("compact");
+  // "Already there" is one line too, like the finished rows (review of
+  // 2026-10-25: it was the last row of three lines among them).
+  const already = job.state === "done" && job.skipped;
+  if (compact || already) row.classList.add("compact");
   // A failed row: one line, in the red group, its reason said once there
   // (model D, 2026-10-25); one button, the rest in "⋯".
   const failed = job.state === "error";
@@ -2620,7 +2634,7 @@ function jobRow(job) {
   // (sayState) and on the line itself ("Gone").
   const mark = failed ? '<span class="mark bad" aria-hidden="true">✕</span>'
     : compact && job.on_disk ? '<span class="mark ok" aria-hidden="true">✓</span>'
-    : compact ? '<span class="mark gone" aria-hidden="true">–</span>' : "";
+    : compact || already ? '<span class="mark gone" aria-hidden="true">–</span>' : "";
   const menu = failed ? moreMenu([
       hasDetails && `<button type="button" role="menuitem" data-details="${job.id}">Details</button>`,
       ...fails.rest,
@@ -2631,7 +2645,9 @@ function jobRow(job) {
       && `<button type="button" role="menuitem" data-reveal="${job.id}">Show in folder</button>`,
       // Its file moved or deleted: Open and Show in folder could only
       // answer an error (decision 40) -- the row can go.
-      `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`]) : "";
+      `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`])
+    : already ? moreMenu([`<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`])
+    : "";
 
   row.innerHTML = `
     <div class="job-top">
@@ -2641,6 +2657,7 @@ function jobRow(job) {
         <span class="small"></span>
         ${failed ? fails.primary : ""}
         ${compact && job.on_disk ? `<button class="ghost tiny" data-open="${job.id}">Open</button>` : ""}
+        ${already ? `<button class="ghost tiny" data-force="${job.id}">Download again</button>` : ""}
         ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
         ${menu}
       </span>
@@ -2661,13 +2678,7 @@ function jobRow(job) {
         <button class="ghost tiny" data-open="${job.id}">Open</button>
         <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
       </div>` : ""}
-    ${job.state === "done" && job.skipped ? `<div class="hint" style="margin-top:6px">
-        ${job.skip_reason ? job.skip_reason + " <b>Nothing was downloaded.</b>"
-          : "<b>Nothing was downloaded.</b>"}
-      </div>
-      <div class="row" style="margin-top:6px">
-        <button class="ghost tiny" data-force="${job.id}">Download again</button>
-      </div>` : ""}
+    ${already && !skipInFolder(job) ? '<div class="hint skip-why" style="margin-top:4px"></div>' : ""}
     ${job.state === "cancelled" && (job.files || []).length ? `<div class="hint" style="margin-top:6px">
         <span class="saved-before"></span>
         <button class="ghost tiny" data-open="${job.id}">Open</button>
@@ -2728,23 +2739,29 @@ function jobRow(job) {
     : job.mode === "mp4" && original ? original : job.mode.toUpperCase();
   row.querySelector(".job-name").textContent =
     [shown, [kind, quality].filter(Boolean).join(" ")].filter(Boolean).join("  ·  ");
-  if (compact || failed) {
+  {
     // The format in a tag, the name without its ending: "#music .mp3" and
     // "#music .mp4" were the only difference between two rows (2026-10-24).
     // A row of several files (a playlist) is named by its title. A failed
     // row the same way, from the name it was going to have (2026-10-25).
+    // Every row since the review of 2026-10-25: a running row said
+    // "· MP4 720p" in words while the finished ones had the tag.
     const name = row.querySelector(".job-name");
     const tag = document.createElement("span");
     tag.className = "ftag";
     tag.textContent = [original && job.mode === "mp4" ? "Files" : job.mode.toUpperCase(), quality]
       .filter(Boolean).join(" · ");
-    const plain = !compact ? shown.replace(/\s*\.[a-z0-9]{2,4}$/i, "")
+    // Only a file's name loses its ending: a link shown while waiting keeps
+    // its ".com" or ".tv".
+    const plain = !compact ? (job.target || files.length ? shown.replace(/\s*\.[a-z0-9]{2,4}$/i, "") : shown)
       : files.length > 1 ? (job.title || fileName(files[0]))
       : fileName(files[0]).replace(/\s*\.[a-z0-9]{2,4}$/i, "");
     name.textContent = "";
     name.append(tag, plain);
     name.title = !compact ? shown : files.length > 1 ? plain : fileName(files[0]);
   }
+  const skipWhy = row.querySelector(".skip-why");
+  if (skipWhy) skipWhy.textContent = job.skip_reason;
   row.querySelector(".small").textContent = right;
   paintTrack(row, job, percent);
   sayState(row, job);
@@ -3087,7 +3104,7 @@ function toolRow(tool, progress) {
   // "Installed programs" said nothing (loop round 1, 2026-10-23).
   if (tool.essential) badges.push('<span class="badge">needed by all</span>');
   if (tool.installed && tool.outside) badges.push('<span class="badge alert">not ours</span>');
-  if (tool.update_available) badges.push('<span class="badge alert">update</span>');
+  if (tool.update_available) badges.push('<span class="badge new">update</span>');
   for (const need of tool.requires || []) {
     const missing = need === "Python" ? tool.blocked
       : !(toolsData.tools.find((t) => t.name === need) || {}).installed;
@@ -3265,6 +3282,12 @@ function redrawFailedRows() {
     const fresh = jobRow(row._job);
     row.replaceWith(fresh);
     jobRows.set(id, fresh);
+  }
+  // The group's shared reason depends on the versions too: it kept "Updating
+  // yt-dlp is the first thing to try" for a yt-dlp already the newest
+  // (review of 2026-10-25).
+  if (failGroup.isConnected) {
+    paintFailGroup([...failGroup.querySelectorAll(".fg-rows > .job")].map((r) => r._job));
   }
 }
 
@@ -3632,7 +3655,7 @@ $("need-tool-install").addEventListener("click", async () => {
   $("need-tool-install").disabled = false;
   if (result && result.state === "error") {
     $("need-tool-text").textContent = result.error === "python_missing"
-      ? "This program needs Python. Open Settings to install it."
+      ? "This program needs Python. Open the Programs page to install it."
       : "Install failed: " + result.error;
     return;
   }
