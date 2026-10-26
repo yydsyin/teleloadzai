@@ -108,8 +108,19 @@ def open_window(port: int, httpd=None) -> int:
 
         def to_front() -> None:
             """A click on the end-of-download message brings the window back
-            (Phase 2 item 6): out of the taskbar if minimised, then in front."""
-            window.restore()
+            (Phase 2 item 6) at the size it had: out of the taskbar if
+            minimised, then in front. pywebview's restore() always sets the
+            small size (winforms: WindowState Normal), so a maximized window
+            came back 860 wide (the user, 2026-10-26). Windows' own
+            SW_RESTORE brings a minimised window back as it was, maximized
+            included; a window not minimised keeps its size."""
+            try:
+                import ctypes
+                handle = ctypes.c_void_p(int(window.native.Handle.ToInt64()))
+                if ctypes.windll.user32.IsIconic(handle):
+                    ctypes.windll.user32.ShowWindow(handle, 9)        # SW_RESTORE
+            except Exception:
+                window.restore()    # no handle: the old way, it still comes back
             window.show()
 
         notify.on_click = to_front
