@@ -815,7 +815,13 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/download":
+            # "Read the link again" on a failed row (the user, 2026-10-26):
+            # the card's Download takes that row's place, like Retry -- only
+            # while the row is still there and still failed; else a new row.
+            replace = (body.get("replace") or "").strip()
+            old = QUEUE.get(replace) if replace else None
             answer, status = queue_download(
+                replace=replace if old is not None and old.state == ERROR else "",
                 url=(body.get("url") or "").strip(),
                 mode=body.get("mode") or "mp4",
                 quality=str(body.get("quality") or "best"),

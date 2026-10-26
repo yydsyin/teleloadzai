@@ -2688,6 +2688,10 @@ function jobRow(job) {
   const menu = failed ? moreMenu([
       hasDetails && `<button type="button" role="menuitem" data-details="${job.id}">Details</button>`,
       ...fails.rest,
+      // A fresh card for this link: the program and choices chosen NOW
+      // (a log-in since, another format); its Download takes this row's
+      // place (the user, 2026-10-26). Retry stays the same try, at once.
+      job.url && `<button type="button" role="menuitem" data-reread="${job.id}">Read the link again</button>`,
       `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`])
     // A finished row had no Remove of its own -- only "Clear finished", all
     // at once (the user, 2026-10-25). "from list": the file stays.
@@ -2883,6 +2887,16 @@ function jobRow(job) {
   if (force) force.addEventListener("click", async () => {
     await api("/api/job/" + force.dataset.force + "/retry", { force: true });
     refresh();
+  });
+  const reread = row.querySelector("[data-reread]");
+  if (reread) reread.addEventListener("click", () => {
+    closeMenus(null);
+    if (!$("result").classList.contains("hidden") || !$("batch").classList.contains("hidden")) closeCard();
+    rereadFor = { id: job.id, url: job.url };
+    $("url").value = job.url;
+    setReadLabel();
+    read();                 // asked for: read whatever the paste switch says
+    $("url").focus();
   });
   // A finished row's "Download again" replaces a file that is there: two
   // clicks. The first stays in its menu (a click inside a menu closes it).
@@ -3766,6 +3780,8 @@ $("url").addEventListener("input", setReadLabel);
 
 // The links last offered: cleared by hand, they do not come back.
 let lastOffered = "";
+// The failed row a card was opened from ("Read the link again"): { id, url }.
+let rereadFor = null;
 // Read a link the moment it is pasted (Settings; off by default, the user,
 // 2026-10-26). Off: a pasted or offered link waits for Read or Enter.
 let autoRead = false;
@@ -3926,9 +3942,13 @@ $("go").addEventListener("click", async () => {
     quality: $("quality").classList.contains("hidden") ? "best" : $("quality").value,
     tool: (chosenTool() || {}).id || "yt-dlp",
     platform: currentPlatformId,
+    // Opened by "Read the link again": the failed row's place, for this
+    // same link only (another link pasted since gets a row of its own).
+    replace: rereadFor && rereadFor.url === currentUrl ? rereadFor.id : "",
     ...subsRequest(),
   });
   if (job.error) { setStatus("Error: " + job.error); return; }
+  rereadFor = null;
   // The card goes: it stayed with a bright Download for the SAME video,
   // beside an empty link box -- an invitation to download it twice
   // (review of 2026-09-27). The row in Downloads is where it lives now.
