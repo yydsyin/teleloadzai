@@ -115,6 +115,9 @@
   }
   #update-bar-text { flex: 1; min-width: 200px; }
   #update-bar button { min-height: 32px; }
+  /* Ink, not the soft grey: on the dark band's yellow tint the grey measured
+     4.28:1 (review of 2026-10-25). */
+  #update-bar button.ghost { color: var(--ink); }
   #result, #batch { position: relative; }
   #batch-close {
     position: absolute; top: 8px; right: 8px; min-width: 28px; min-height: 28px;
@@ -230,8 +233,8 @@
   button.tiny { min-height: 30px; padding: 4px 12px; font-size: 13px; font-weight: 500; }
   /* Quiet text buttons: Settings in the bar, "Clear finished", a row's own
      actions. A box around every one made the screen a grid of boxes. */
-  #clear { border-color: transparent; }
-  #clear:not(:disabled):hover {
+  #clear, #clear-all:not(.danger) { border-color: transparent; }
+  #clear:not(:disabled):hover, #clear-all:not(.danger):not(:disabled):hover {
     background: color-mix(in srgb, var(--ink) 6%, transparent); border-color: transparent;
   }
 
@@ -628,6 +631,7 @@
   #quality-why { text-align: right; }
 
   .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .head-tools { display: inline-flex; gap: 6px; }
   /* The list's title, in ink: small grey, it was weaker than the rows under it. */
   #jobs-card > .head #queue-info { font-size: 16px; font-weight: 600; color: var(--ink); }
   /* relative: the row's screen-reader words (.sr-only, absolute) sat at the
@@ -1007,7 +1011,12 @@
   <div class="card" data-view="main" id="jobs-card">
     <div class="head">
       <span class="hint" id="queue-info" role="heading" aria-level="2">Downloads</span>
-      <button class="ghost tiny" id="clear">Clear finished</button>
+      <!-- "Remove all": every ended row, failed ones too -- "Clear finished"
+           keeps them (the user's placement, 2026-10-26). -->
+      <span class="head-tools">
+        <button class="ghost tiny hidden" id="clear-all">Remove all</button>
+        <button class="ghost tiny" id="clear">Clear finished</button>
+      </span>
     </div>
     <!-- A long list stays readable (the study: Parabolic's filters with
          counts, Media Downloader's asked-for total). Drawn only when the
@@ -3002,6 +3011,8 @@ async function refresh() {
   // interrupted rows stay.
   $("clear").classList.toggle("hidden",
     !jobs.some((j) => j.state === "done" || (j.state === "cancelled" && !j.interrupted)));
+  // Only with a failed row: without one it would do what "Clear finished" does.
+  $("clear-all").classList.toggle("hidden", !jobs.some((j) => j.state === "error"));
   // The kept list could not be read: said once, never a silent empty list.
   if (data.load_problem && !loadProblemSaid) { loadProblemSaid = true; setStatus(data.load_problem); }
   paintListTools(jobs);
@@ -3094,6 +3105,12 @@ $("resume-all").addEventListener("click", async () => {
 retryFailedButton.addEventListener("click", async () => {
   const rows = retryable(lastJobs);
   const button = retryFailedButton;
+  // Never "0 downloads started again." as if it were a success.
+  if (!rows.length) {
+    paintListTools(lastJobs);
+    notify("None of these downloads can be retried now: their words above say why.");
+    return;
+  }
   button.disabled = true;
   let again = 0;
   for (const job of rows) {
@@ -3315,6 +3332,10 @@ function redrawFailedRows() {
   if (failGroup.isConnected) {
     paintFailGroup([...failGroup.querySelectorAll(".fg-rows > .job")].map((r) => r._job));
   }
+  // "Retry all" too: it counts the rows a retry can help, which depends on
+  // the versions -- it stayed beside "try again in a few days" and answered
+  // "0 downloads started again." (review round 3, 2026-10-25).
+  paintListTools(lastJobs);
 }
 
 function renderUpdateBar() {
@@ -3322,6 +3343,9 @@ function renderUpdateBar() {
   const working = Object.entries(toolsData.progress || {})
     .filter(([, p]) => p.state === "running");
   $("tools-update-all").classList.toggle("hidden", list.length === 0 || working.length > 0);
+  // How many it will update, said on the button (the user, 2026-10-26):
+  // the same list updateAll() goes through.
+  for (const id of ["tools-update-all", "update-bar-all"]) $(id).textContent = `Update all (${list.length})`;
   const show = updateMode === "ask" && (working.length > 0 || (!updateBarLater && list.length > 0));
   $("update-bar").classList.toggle("hidden", !show);
   if (!show) return;
@@ -3560,10 +3584,12 @@ async function pollConsole() {
     : `${running.length} downloads: ` + running.map((r) => r.title).join(" · ");
 }
 
-$("con-clear").addEventListener("click", async () => {
+// Two clicks, like every other button that destroys (review of 2026-10-25):
+// the lines cannot come back.
+$("con-clear").addEventListener("click", () => twoClicks($("con-clear"), "Clear all? Click again", async () => {
   await api("/api/console/clear", {});
   $("con-box").textContent = "";
-});
+}));
 $("con-copy").addEventListener("click", async () => {
   const text = [...$("con-box").children].map((row) => row.textContent).join("\n");
   if (!text) { notify("Nothing to copy yet."); return; }
@@ -3610,12 +3636,14 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!$("status").classList.contains("hidden")) { setStatus(""); return; }
   if (document.querySelector(".wrap").dataset.showing !== "main") { showView("main"); return; }
-  if (!$("result").classList.contains("hidden") || !$("batch").classList.contains("hidden")) closeCard();
+  // The link typed stays in the box: Esc closed the card AND erased it
+  // (review of 2026-10-25). The × and Download still empty it.
+  if (!$("result").classList.contains("hidden") || !$("batch").classList.contains("hidden")) closeCard(true);
 });
 
 /** The card's ×, and Esc: the card goes, as after Download, and a read still
  *  running is dropped -- its answer must not bring the card back. */
-function closeCard() {
+function closeCard(keepLink = false) {
   readNumber++;
   stopWaiting();
   $("result").classList.add("hidden");
@@ -3625,7 +3653,7 @@ function closeCard() {
   eachRead++;                 // its videos still being read are dropped
   $("read").disabled = false;
   currentUrl = "";
-  $("url").value = "";
+  if (!keepLink) $("url").value = "";
   $("url").focus();
   setReadLabel();
 }
@@ -3645,8 +3673,8 @@ document.addEventListener("keydown", (event) => {
   event.preventDefault();
   go.click();
 });
-$("result-close").addEventListener("click", closeCard);
-$("batch-close").addEventListener("click", closeCard);
+$("result-close").addEventListener("click", () => closeCard());
+$("batch-close").addEventListener("click", () => closeCard());
 
 // "Update yt-dlp" on a card whose title the tool could not read: update,
 // then read the link again -- said on the button while it works.
@@ -4396,6 +4424,14 @@ async function downloadEach(ready) {
 }
 
 $("clear").addEventListener("click", async () => { await api("/api/jobs/clear", {}); refresh(); });
+// Two clicks: it takes the failed rows too, with their reasons.
+$("clear-all").addEventListener("click", () => {
+  const ended = lastJobs.filter((j) => ["done", "cancelled", "error"].includes(j.state) && !j.interrupted).length;
+  twoClicks($("clear-all"), `Remove ${ended}? Click again`, async () => {
+    await api("/api/jobs/clear-all", {});
+    refresh();
+  });
+});
 
 $("browse").addEventListener("click", async () => {
   setStatus("Choose a folder in the Windows window…");

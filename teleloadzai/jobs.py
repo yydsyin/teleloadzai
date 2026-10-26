@@ -450,6 +450,20 @@ class Queue:
         self.save()
         return True
 
+    def clear_all(self) -> int:
+        """Every ended row -- done, "already there", stopped AND failed: the
+        list's "Remove all" (the user, 2026-10-26: three Bilibili failures took
+        six clicks to clear). Never a running, waiting or interrupted one. The
+        files stay on the disk: only the rows go."""
+        with self._lock:
+            ended = [i for i in self._order if self._jobs[i].state in (DONE, CANCELLED, ERROR)
+                     and not self._jobs[i].interrupted]
+            for job_id in ended:
+                del self._jobs[job_id]
+                self._order.remove(job_id)
+        self.save()
+        return len(ended)
+
     def clear_finished(self) -> int:
         """Done, "already there" and stopped rows -- never a failed one: its
         words and its Retry went with the rest in one click, and "finished"

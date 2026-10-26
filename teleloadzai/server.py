@@ -909,6 +909,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"removed": QUEUE.clear_finished()})
             return
 
+        if path == "/api/jobs/clear-all":
+            self._json({"removed": QUEUE.clear_all()})
+            return
+
         if path == "/api/cookies/import":
             # The user points at the cookies.txt his browser extension wrote.
             try:

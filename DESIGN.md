@@ -172,11 +172,11 @@ Warm, low-chroma paper and ink, with one saturated yellow kept for the single ac
 - **Ink** (ink): text. **Ink fill** (ink-fill) with **on-fill** text is used for filled buttons other than Download, and for an "on" switch.
 - **Soft Ink** (soft-ink): help lines, program names, finished rows, inactive menu items, placeholders.
 - **Line / Line strong** (line, line-strong): row dividers and card borders / field borders and the Settings button's border.
-- **OK Green / Bad Red** (ok-green, bad-red): only for states: a step passed, "done", a log-in sign / a failure, a warning. A warning is a card tinted 7 % red, never a thick coloured bar on its side.
+- **OK Green / Bad Red** (ok-green, bad-red): only for states: a step passed, "done", a log-in sign / a failure, a warning. A warning is a card tinted 7 % red, never a thick coloured bar on its side. *(The failed group's 3 px red line is not a card: it marks a group of rows, model D — the one place a side line is used.)*
 
 ### Named Rules
 **The One Yellow Rule.** Only Download is filled yellow. A doubtful card turns Download into an outline ("Try anyway"), and then it is grey.
-**The One Filled Button Rule.** Only one filled button is visible at a time. Once a card shows, Read becomes an outline: Download is the next step. The update band's **Update all** and the list's **Retry all** are outlines; on Programs, **Update all** is the filled one and each row's Update an outline (review of 2026-10-25: three or four filled buttons on the Download page).
+**The One Filled Button Rule.** Only one filled button is visible at a time. Once a card shows, Read becomes an outline: Download is the next step. The update band's **Update all** and the list's **Retry all** are outlines; on Programs, **Update all** is the filled one and each row's Update an outline (review of 2026-10-25: three or four filled buttons on the Download page). Both **Update all** buttons say how many programs they will update: "Update all (2)" (the user, 2026-10-26).
 **The Words-Too Rule.** A colour never speaks alone. A green or red sign always has words beside it, or in its accessible name.
 
 ## Typography
@@ -196,7 +196,7 @@ Warm, low-chroma paper and ink, with one saturated yellow kept for the single ac
 - **Label** (12px, tabular numbers): sizes, speeds, times, the step names.
 
 ### Named Rules
-**The Few Sizes Rule.** Eight sizes: 12, 13, 14, 15, 16, 17, 18, 22. No new ones. A new screen picks one of these roles.
+**The Few Sizes Rule.** Eight sizes: 12, 13, 14, 15, 16, 17, 18, 22. No new ones. A new screen picks one of these roles. Two exceptions, each for one part only: the **format tag** (11 px bold, a label inside a pill) and the **Console's** monospace lines (12.5 px, Cascadia Mono / Consolas).
 
 ## Layout
 
@@ -216,6 +216,7 @@ The design is flat and depth comes from tone: paper, then a lighter card, then a
 - **Selected menu item** (`0 1px 3px rgba(40,30,10,.14)`): the open Settings page in the side menu.
 - **Switch knob** (`0 1px 2px rgba(0,0,0,.25)`).
 - **Floating message** (`0 6px 20px rgba(0,0,0,.18)`): the message at the bottom of the window.
+- **The ⋯ menu** (`0 6px 18px #0002`, about 13 % black): the small menu of a list row, the one shadow of the list.
 
 **The Flat Card Rule.** Cards and groups never cast a shadow. Only something you can press and have chosen is lifted.
 
@@ -296,15 +297,15 @@ Over the Downloads list:
 - **from 4 rows:** a two-way-switch style row of filters with counts (All · Running · Waiting · Done · Failed, in red when not chosen);
 - **from 2 retryable failed rows:** "Retry all", in the failed group (below).
 
-"Clear finished" stays in the header. Nothing shows before it is needed.
+"Clear finished" stays in the header (done, "already there" and stopped rows; never a failed one). **"Remove all"** sits just left of it, a plain text button like it, only while a failed row exists: it removes every ended row, failed ones too, in two clicks ("Remove 3? Click again"); the files stay on the disk (the user's placement, 2026-10-26). Nothing shows before it is needed.
 
 **Interrupted downloads** (cut off when Teleloadzai closed) get the updates band's tint: a yellow band over the list, "1 download did not finish when Teleloadzai closed.", with a ghost **Continue it / Continue them**. Each such row says "Interrupted" on its stop and has its own Continue and Remove. Nothing restarts by itself.
 
 ### Console (2026-10-25, like the yutto window the user showed)
 - **Its title, "Console"**, at the top like Programs, Sites and Settings (review of 2026-10-25: it was the only page without one).
 - **A state line:** a chip, *idle* (grey) or *running* (green), and what runs ("1 download: Me at the zoo (yt-dlp)").
-- **Five tools** on the right, small ghost buttons: Clear · Copy all · Save as file · **Auto-scroll** (on) · **Wrap lines** (off); a tool that is on has an ochre border.
-- **The box** takes the page's height (the page never scrolls): near-black `#1d1f24`, 12 px radius, Cascadia Mono / Consolas 12.5 px, each line led by its time in grey. A download's title line is yellow ("── Me at the zoo · yt-dlp ──"), links blue, errors red, our closing line ("Done.", "Failed: …") light grey. Read only. Empty: "Nothing yet. Each download's program writes here while it works."
+- **Five tools** on the right, small ghost buttons: Clear · Copy all · Save as file · **Auto-scroll** (on) · **Wrap lines** (off); a tool that is on has an ochre border. **Clear** takes two clicks ("Clear all? Click again"), like every button that destroys.
+- **The box** takes the page's height (the page never scrolls): near-black `#1d1f24`, 12 px radius, Cascadia Mono / Consolas 12.5 px, text `#d8d4cb`, each line led by its time in grey `#7d838e`. A download's title line is yellow (`--go`, "── Me at the zoo · yt-dlp ──"), links blue `#84b6ff`, errors red `#ff8f80`, our closing line ("Done.", "Failed: …") light grey `#a3a9b3`, the empty line grey `#868c96`. The box is dark in both modes, so these colours have no light / dark pair. Read only. Empty: "Nothing yet. Each download's program writes here while it works."
 
 ### Settings (the Windows Settings model)
 - **Groups:** cards of rows with a name (600), an optional help line (13 px soft), and the control on the right.
