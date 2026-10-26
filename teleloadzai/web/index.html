@@ -70,7 +70,9 @@
   .side button:not([aria-current="page"]):hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
   .side button[aria-current="page"] { color: var(--ink); font-weight: 600; background: color-mix(in srgb, var(--go) 24%, var(--card)); }
   .side .side-bottom { margin-top: auto; }
-  .wrap { padding-top: 16px; }
+  /* 48 px above every page's title: at 16 the title touched the top of the
+     window (the user, 2026-10-26, model A of three). */
+  .wrap { padding-top: 48px; }
   .linkbox .linkbox-title { display: block; margin-bottom: 12px; }
   .screen-title { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: -.01em; }
   .linkbox { flex: none; margin: 0 0 18px; }
@@ -93,10 +95,14 @@
      ~450 px under the link box on the user's screen (2026-10-22). */
   #jobs-empty {
     flex: 1; display: flex; flex-direction: column; justify-content: flex-start;
-    align-items: center; text-align: center; padding: min(14vh, 120px) 12px 24px; color: var(--ink);
+    align-items: center; text-align: center; padding: min(24vh, 200px) 12px 24px; color: var(--ink);
   }
-  #jobs-empty svg { width: 64px; height: 64px; margin-bottom: 14px; color: var(--line-strong); }
-  #jobs-empty .empty-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  /* Lower and bigger (the user, 2026-10-26, model A of three): 120 px
+     down, a 64 px drawing and a 17 px title looked lost in the empty card.
+     Still above the middle, where it floated too far (2026-10-22). */
+  #jobs-empty svg { width: 96px; height: 96px; margin-bottom: 18px; color: var(--line-strong); }
+  #jobs-empty .empty-title { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  #jobs-empty .hint { font-size: 16px; }
   /* Under an open card, nothing: "Your downloads will appear here" under
      a link waiting for Download read as if the app ignored it (the user,
      2026-10-24). Until then a smaller drawing stayed there. */
@@ -559,13 +565,15 @@
     font: 12.5px/1.65 "Cascadia Mono", Consolas, monospace;
   }
   .con-box.wrap-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .con-box:empty::before { content: "Nothing yet. Each download's program writes here while it works."; color: #868c96; }
+  .con-box:empty::before { content: "Nothing yet. Title reads, downloads and updates write here while they work."; color: #868c96; }
   .con-box .t { color: #7d838e; margin-right: 12px; }
   /* "hd", not "head": .head is the page's row that spreads to both ends. */
   .con-box .hd { color: #f5c400; margin-top: 8px; }
   .con-box .hd:first-child { margin-top: 0; }
-  .con-box .end { color: #a3a9b3; }
-  .con-box .err { color: #ff8f80; }
+  .con-box .end, .con-box .note { color: #a3a9b3; }
+  /* The page's general .err (a row's error line) gave Console lines its
+     13 px and 6 px margin: red lines sat apart and shifted. */
+  .con-box .err { color: #ff8f80; font-size: inherit; margin-top: 0; word-break: normal; }
   .con-box .lk { color: #84b6ff; }
   .icon-gear { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z'/%3E%3C/svg%3E"); }
   .icon-cc { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Cpath d='M10 10.5a2 2 0 1 0 0 3M16 10.5a2 2 0 1 0 0 3'/%3E%3C/svg%3E"); }
@@ -580,6 +588,7 @@
   .icon-branch { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='6' r='2'/%3E%3Ccircle cx='6' cy='18' r='2'/%3E%3Ccircle cx='18' cy='8' r='2'/%3E%3Cpath d='M6 8v8M18 10a6 6 0 0 1-6 6H8'/%3E%3C/svg%3E"); }
   .icon-key { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='15' r='4'/%3E%3Cpath d='m10.8 12.2 9.2-9.2M17 6l3 3M14 9l2 2'/%3E%3C/svg%3E"); }
   .icon-clipboard { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='4' width='14' height='17' rx='2'/%3E%3Cpath d='M9 4V3h6v1M9 4h6v2H9zM9 11h6M9 15h4'/%3E%3C/svg%3E"); }
+  .icon-play { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 4v16l13-8z'/%3E%3C/svg%3E"); }
   .icon-bell { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0'/%3E%3C/svg%3E"); }
   .icon-door { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8M10 12h11M18 9l3 3-3 3'/%3E%3C/svg%3E"); }
   #go, #batch-go { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'/%3E%3C/svg%3E"); }
@@ -1105,6 +1114,16 @@
           <span class="opt-icon icon-file" aria-hidden="true"></span>
           <span class="set-main set-name">Ask where to save each file</span>
           <span class="set-control"><input type="checkbox" class="toggle" id="ask-where"></span>
+        </label>
+        <!-- The user, 2026-10-26: a pasted link was read before it could be
+             changed. Off by default: it waits in the box for Read or Enter. -->
+        <label class="set-row" style="cursor:pointer">
+          <span class="opt-icon icon-play" aria-hidden="true"></span>
+          <span class="set-main">
+            <span class="set-name">Read a link as soon as it is pasted</span>
+            <span class="set-sub">Off: the link waits in the box, so you can change it, then press Read.</span>
+          </span>
+          <span class="set-control"><input type="checkbox" class="toggle" id="auto-read"></span>
         </label>
         <!-- Phase 2 item 3 (2026-10-24): the clipboard can hold a password,
              so the line says what is taken and what is not (decision 35). -->
@@ -1917,6 +1936,9 @@ const setStatus = (text) => {
   clearTimeout(statusTimer);
   $("status-text").textContent = text || "";
   $("status").classList.toggle("hidden", !text);
+  // Kept in the Console too, after it fades (the user, 2026-10-26). A lost
+  // line is not worth a message about it: the message itself is on screen.
+  if (text) api("/api/console/note", { text }).catch(() => {});
 };
 
 /** A confirmation ("Saved…"): said, then gone after 4 s. */
@@ -2671,6 +2693,9 @@ function jobRow(job) {
     // at once (the user, 2026-10-25). "from list": the file stays.
     : compact ? moreMenu([job.on_disk
       && `<button type="button" role="menuitem" data-reveal="${job.id}">Show in folder</button>`,
+      // The same video again, in the same place (the user, 2026-10-26). Its
+      // file is still there: two clicks, it will be replaced (decision 24).
+      job.on_disk && `<button type="button" role="menuitem" data-again="${job.id}">Download again</button>`,
       // Its file moved or deleted: Open and Show in folder could only
       // answer an error (decision 40) -- the row can go.
       `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`])
@@ -2685,6 +2710,7 @@ function jobRow(job) {
         <span class="small"></span>
         ${failed ? fails.primary : ""}
         ${compact && job.on_disk ? `<button class="ghost tiny" data-open="${job.id}">Open</button>` : ""}
+        ${compact && !job.on_disk ? `<button class="ghost tiny" data-force="${job.id}">Download again</button>` : ""}
         ${already ? `<button class="ghost tiny" data-force="${job.id}">Download again</button>` : ""}
         ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
         ${menu}
@@ -2857,6 +2883,17 @@ function jobRow(job) {
   if (force) force.addEventListener("click", async () => {
     await api("/api/job/" + force.dataset.force + "/retry", { force: true });
     refresh();
+  });
+  // A finished row's "Download again" replaces a file that is there: two
+  // clicks. The first stays in its menu (a click inside a menu closes it).
+  const again = row.querySelector("[data-again]");
+  if (again) again.addEventListener("click", (event) => {
+    if (again.dataset.armed !== "yes") event.stopPropagation();
+    twoClicks(again, "Replace the file? Click again", async () => {
+      await api("/api/job/" + again.dataset.again + "/retry", { force: true });
+      closeMenus(null);
+      refresh();
+    });
   });
 
   const retry = row.querySelector("[data-retry]");
@@ -3548,7 +3585,8 @@ const consoleTime = (at) => new Date(at * 1000).toLocaleTimeString([], { hour12:
 function consoleLine(line) {
   const row = document.createElement("div");
   row.className = line.kind === "head" ? "hd" : line.kind === "end" ? "end"
-    : /^(ERROR|.*\bERROR\b)/.test(line.text) ? "err" : "";
+    : line.kind === "err" || /^(ERROR|.*\bERROR\b)/.test(line.text) ? "err"
+    : line.kind === "note" ? "note" : "";
   const t = document.createElement("span");
   t.className = "t";
   t.textContent = consoleTime(line.at) + " ";
@@ -3728,6 +3766,9 @@ $("url").addEventListener("input", setReadLabel);
 
 // The links last offered: cleared by hand, they do not come back.
 let lastOffered = "";
+// Read a link the moment it is pasted (Settings; off by default, the user,
+// 2026-10-26). Off: a pasted or offered link waits for Read or Enter.
+let autoRead = false;
 
 /** `asked`: the Paste button. Otherwise the window came to the front, and
  *  only then, only on the main screen, only with an empty box and no card,
@@ -3750,8 +3791,16 @@ async function useClipboard(asked) {
     return;
   }
   lastOffered = links.join(" ");
-  if (links.length > 1) { $("url").value = links.join(" "); readMany(links); }
-  else { $("url").value = links[0]; read(); }
+  $("url").value = links.join(" ");
+  if (!autoRead) {
+    // The link waits in the box, to be changed if needed (the setting).
+    $("url").focus();
+    setReadLabel();
+    if (!asked) notify(links.length === 1 ? "The link you copied is in the box. Press Read when it is ready."
+      : `The ${links.length} links you copied are in the box. Press Read when they are ready.`);
+    return;
+  }
+  if (links.length > 1) readMany(links); else read();
   // After the read has started: its first step clears the message line, and
   // the sentence said before it was gone at once (seen 2026-10-24). Said so
   // a card that appears by itself is never a mystery.
@@ -3785,10 +3834,11 @@ $("url").addEventListener("paste", (event) => {
   if (several.length > 1) {
     event.preventDefault();
     $("url").value = several.join(" ");
-    readMany(several);
+    if (autoRead) readMany(several); else setReadLabel();
     return;
   }
-  setTimeout(read, 0);
+  // Off (the setting): the link waits in the box for Read or Enter.
+  setTimeout(autoRead ? read : setReadLabel, 0);
 });
 
 /**
@@ -4471,6 +4521,12 @@ $("notify-done").addEventListener("change", async () => {
             : "Saved: no Windows message. The Downloads list still shows every end.");
 });
 
+$("auto-read").addEventListener("change", async () => {
+  autoRead = $("auto-read").checked;
+  await api("/api/settings", { auto_read: autoRead });
+  notify(autoRead ? "Saved: a pasted link is read at once."
+                  : "Saved: a pasted link waits in the box. Press Read when it is ready.");
+});
 $("use-clipboard").addEventListener("change", async () => {
   const on = $("use-clipboard").checked;
   await api("/api/settings", { use_clipboard: on });
@@ -4927,6 +4983,8 @@ async function forgetCookies() {
   });
   $("ask-where").checked = askWhere;
   $("use-clipboard").checked = settings.use_clipboard !== false;
+  autoRead = settings.auto_read === true;
+  $("auto-read").checked = autoRead;
   $("notify-done").checked = settings.notify_done !== false;
   severalMode = settings.several_mode === "each" ? "each" : "same";
   subsMode = ["embed", "file"].includes(settings.subs_mode) ? settings.subs_mode : "";

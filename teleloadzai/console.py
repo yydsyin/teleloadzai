@@ -23,8 +23,10 @@ _next = 0
 
 
 def add(job_id: str, text: str, kind: str = "out") -> None:
-    """One line. ``kind``: "head" (a download starts: its name and program),
-    "out" (the program's own words), "end" (how it ended, our words)."""
+    """One line. ``kind``: "head" (a download, a title read or an install
+    starts), "out" (the program's own words, or a step), "end" (how it ended,
+    our words), "err" (how it failed), "note" (a message the page showed).
+    Since 2026-10-26 the Console is not only downloads (the user's request)."""
     global _next
     clean = cookies.redact(text.rstrip())
     if not clean.strip():

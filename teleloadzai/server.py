@@ -9,6 +9,7 @@ Two safety rules, because a web page is easy to reach by accident:
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -78,6 +79,10 @@ def load_settings() -> dict:
         # (Phase 2 item 3, 2026-10-24). On by default, as in Open Video
         # Downloader; only the links ever leave `clipboard_links`.
         "use_clipboard": bool(stored.get("use_clipboard", True)),
+        # Read a link the moment it is pasted. OFF by default (the user,
+        # 2026-10-26: a link to change was read before it could be changed);
+        # off, the link waits in the box for Read or Enter.
+        "auto_read": bool(stored.get("auto_read", False)),
         # Several links or a playlist: "same" (one set of choices for all) or
         # "each" (a row of choices per video). The user's own pick, kept
         # (asked 2026-10-24: "its users to choose what mode").
@@ -374,8 +379,22 @@ def start_install(tool_id: str) -> dict:
         _installs[tool_id] = {"state": "running", "stage": "starting",
                               "percent": 0, "error": ""}
 
+    # The Console shows installs and updates too (the user, 2026-10-26): a
+    # title line, each step once (never every percent), then the result.
+    line_id = f"install-{tool_id}-{next(_read_numbers)}"
+    spec = tools.spec(tool_id)
+    name = spec.name if spec else tool_id
+    said = {"stage": ""}
+
+    def step(stage: str, pct) -> None:
+        _set_install(tool_id, stage=stage, percent=pct)
+        if stage and stage != said["stage"]:
+            said["stage"] = stage
+            console.add(line_id, stage[:1].upper() + stage[1:] + "…")
+
     def work() -> None:
         try:
+            console.add(line_id, f"{'Updating' if tools.status(tool_id, check_online=False)['installed'] else 'Installing'} {name}", "head")
             # Never while this tool downloads (decision 19): it waits, and
             # says so. Its new downloads do not start meanwhile.
             while QUEUE.busy(tool_id):
@@ -386,8 +405,7 @@ def start_install(tool_id: str) -> dict:
             QUEUE.hold(tool_id)
             try:
                 before = tools.status(tool_id, check_online=False)
-                tools.install(tool_id, lambda stage, pct: _set_install(
-                    tool_id, stage=stage, percent=pct))
+                tools.install(tool_id, step)
                 after = tools.status(tool_id, check_online=False)
             finally:
                 QUEUE.release(tool_id)
@@ -401,11 +419,19 @@ def start_install(tool_id: str) -> dict:
                          or before["channel"] != after["channel"],
                          switched=before["installed"] and before["channel"] != after["channel"],
                          channel=after["channel"])
+            # Our words, the same as the page's (installSentence): "updated"
+            # only when the version read really changed.
+            console.add(line_id, f"{name} installed: {new}." if not before["installed"]
+                        else f"Updated: {old} → {new}." if old != new
+                        else f"Switched to its {after['channel']} builds: {new}." if before["channel"] != after["channel"]
+                        else f"The update did not change {name}: {new} is kept.", "end")
         except tools.InstallError as exc:
             # "python_missing" is not a failure, it is a question for the user.
             _set_install(tool_id, state="error", error=str(exc))
+            console.add(line_id, f"Failed: {exc}", "err")
         except Exception as exc:
             _set_install(tool_id, state="error", error=f"{type(exc).__name__}: {exc}")
+            console.add(line_id, f"Failed: {type(exc).__name__}: {exc}", "err")
 
     threading.Thread(target=work, daemon=True).start()
     with _installs_lock:
@@ -428,6 +454,20 @@ _READ_BY_TOOL = ("douyin", "kuaishou")
 # said "no preview" there. Xiaohongshu, 2026-09-26, the user's own note: title
 # read in 6.8 s, while XHS-Downloader downloaded it (198 MB, 1280p).
 _READ_BY_YTDLP = ("xiaohongshu",)
+
+
+_read_numbers = itertools.count(1)
+
+
+def _console_read(read_id: str, url: str, name: str, answer: dict) -> None:
+    """A title read by the site's own tool, in the Console: what was asked,
+    then the title or the error."""
+    console.add(read_id, f"Reading the title · {name} — {url}", "head")
+    if answer.get("error"):
+        console.add(read_id, f"Could not read the title: {answer['error']}", "err")
+    else:
+        console.add(read_id, f"Title: {answer['title']}" if answer.get("title")
+                    else "No title in the answer.", "end")
 
 
 def tool_probe(platform_id: str, url: str) -> dict:
@@ -681,9 +721,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/probe":
             url = (body.get("url") or "").strip()
             platform_id = detect(url).platform.id
+            # The Console shows title reads too, not only downloads (the
+            # user, 2026-10-26): a failed read kept only one line on the card.
+            read_id = f"read-{next(_read_numbers)}"
             if platform_id in _READ_BY_TOOL:
-                self._json(tool_probe(platform_id, url))
+                answer = tool_probe(platform_id, url)
+                _console_read(read_id, url, answer.get("extractor") or (
+                    "TikTokDownloader" if platform_id == "douyin" else "KS-Downloader"), answer)
+                self._json(answer)
                 return
+            console.add(read_id, f"Reading the title · yt-dlp — {url}", "head")
             try:
                 # A private post has no readable title without the cookies,
                 # and the window would show "(no title)" with no reason why.
@@ -693,14 +740,17 @@ class Handler(BaseHTTPRequestHandler):
                         "yt-dlp", load_settings()["cookies_enabled"])) as run_cookies:
                     info = ytdlp.probe(url, cookie_file=run_cookies)
             except ytdlp.ToolMissing as exc:
+                console.add(read_id, f"Could not read the title: {exc}", "err")
                 self._json({"error": str(exc), "kind": "tool_missing"})
                 return
             except Exception as exc:
                 said = cookies.redact(str(exc))
+                console.add(read_id, f"Could not read the title: {said}", "err")
                 self._json({"error": said, "kind": "probe_failed",
                             "explain": explain.explain(said, "yt-dlp"),
                             "from_tool": explain.said_by_tool(exc)})
                 return
+            console.add(read_id, f"Title: {info.title}" if info.title else "No title in the answer.", "end")
             self._json({
                 "title": info.title, "uploader": info.uploader,
                 "duration": info.duration, "thumbnail": info.thumbnail,
@@ -795,6 +845,16 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/console/clear":
             console.clear()
+            self._json({"ok": True})
+            return
+
+        if path == "/api/console/note":
+            # What the page itself said at the bottom of the window, so it
+            # stays readable after it fades (the user, 2026-10-26). Washed by
+            # console.add like every line; one line, 500 characters at most.
+            text = " ".join(str(body.get("text") or "").split())[:500]
+            if text:
+                console.add("app", f"Teleloadzai: {text}", "note")
             self._json({"ok": True})
             return
 
@@ -1029,6 +1089,8 @@ class Handler(BaseHTTPRequestHandler):
                 settings["cookies_keep"] = body["cookies_keep"]
             if "use_clipboard" in body:      # False is a real value, not "missing"
                 settings["use_clipboard"] = bool(body["use_clipboard"])
+            if "auto_read" in body:
+                settings["auto_read"] = bool(body["auto_read"])
             if body.get("several_mode") in ("same", "each"):
                 settings["several_mode"] = body["several_mode"]
             if body.get("subs_mode") in ("", "embed", "file"):
