@@ -760,9 +760,12 @@ class Queue:
             except Exception:
                 pass            # a line not updated is never a failed download
             # The console's last line for this download, in our words.
+            # A failure is red, like a failed install or title read (grids of
+            # 2026-10-26: downloads ended grey, installs red).
             console.add(job.id, "Done." if state == DONE and not skipped
                         else "Already there: nothing was downloaded." if state == DONE
-                        else f"Failed: {error}" if state == ERROR else "Stopped.", "end")
+                        else f"Failed: {error}" if state == ERROR else "Stopped.",
+                        "err" if state == ERROR else "end")
             with self._lock:
                 saved = Path(job.files[0]).name if job.files else ""
                 # Never the link: a message on the screen says a name only

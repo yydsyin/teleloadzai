@@ -459,10 +459,9 @@ _READ_BY_YTDLP = ("xiaohongshu",)
 _read_numbers = itertools.count(1)
 
 
-def _console_read(read_id: str, url: str, name: str, answer: dict) -> None:
-    """A title read by the site's own tool, in the Console: what was asked,
-    then the title or the error."""
-    console.add(read_id, f"Reading the title · {name} — {url}", "head")
+def _console_read(read_id: str, answer: dict) -> None:
+    """How a title read by the site's own tool ended, in the Console: the
+    title or the error (its first line is written as the read starts)."""
     if answer.get("error"):
         console.add(read_id, f"Could not read the title: {answer['error']}", "err")
     else:
@@ -725,9 +724,13 @@ class Handler(BaseHTTPRequestHandler):
             # user, 2026-10-26): a failed read kept only one line on the card.
             read_id = f"read-{next(_read_numbers)}"
             if platform_id in _READ_BY_TOOL:
+                # The line first, as for yt-dlp: these reads take 12-22 s,
+                # and the Console said nothing until the end (grids of
+                # 2026-10-26).
+                name = "TikTokDownloader" if platform_id == "douyin" else "KS-Downloader"
+                console.add(read_id, f"Reading the title · {name} — {url}", "head")
                 answer = tool_probe(platform_id, url)
-                _console_read(read_id, url, answer.get("extractor") or (
-                    "TikTokDownloader" if platform_id == "douyin" else "KS-Downloader"), answer)
+                _console_read(read_id, answer)
                 self._json(answer)
                 return
             console.add(read_id, f"Reading the title · yt-dlp — {url}", "head")
