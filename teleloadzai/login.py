@@ -473,7 +473,7 @@ def open_for(platform_id: str) -> dict:
 
     with _lock:
         if _window is not None:
-            raise LoginError("a log-in window is already open — finish that one first")
+            raise LoginError("a log-in window is already open. Finish that one first")
         name = next((p.name for p in PLATFORMS if p.id == platform_id), platform_id)
         # A non-main thread after start(): pywebview then creates the window
         # at once. The HTTP handler that calls this IS such a thread.

@@ -229,7 +229,7 @@ def _read_lines(path: Path) -> list[str]:
     size = path.stat().st_size
     if size == 0:
         raise CookieFileError(
-            "That file is empty. Export your cookies again — the extension may "
+            "That file is empty. Export your cookies again. The extension may "
             "have saved nothing."
         )
     if size > _MAX_BYTES:
@@ -373,9 +373,9 @@ def inspect(path: Path) -> dict:
         others = sorted(dropped_domains)[:4]
         raise CookieFileError(
             "That file has no cookies for a site Teleloadzai can download from"
-            + (f" — it holds {', '.join(others)} and others" if others else "")
+            + (f". It holds {', '.join(others)} and others" if others else "")
             + ". Log in to the site you want, then export again. If you need a "
-              "site Teleloadzai does not know yet, tick \"keep every site\"."
+              "site Teleloadzai does not know yet, it cannot use that site's cookies."
         )
 
     if expired == len(kept):

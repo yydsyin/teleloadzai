@@ -47,7 +47,7 @@ KNOWN: tuple[Known, ...] = (
         tools=("yt-dlp",),
         title="TikTok does not show this video on your internet connection.",
         retry=False,
-        next_step=("Other TikTok videos can still work — try another one. "
+        next_step=("Other TikTok videos can still work. Try another one. "
                    "TikTok does not say why; it may be a video limited to "
                    "some countries."),
         seen=("2026-09-22/23, Telecom Malagasy (Madagascar): two videos gave "
@@ -98,10 +98,10 @@ KNOWN: tuple[Known, ...] = (
         words=("there is no video in this post",),
         tools=("yt-dlp",),
         # What happened first, the program second (review of 2026-09-28).
-        title="This post has no video — yt-dlp downloads videos only.",
+        title="This post has no video. yt-dlp downloads videos only.",
         # Updating does not change it: yt-dlp builds nothing for a photo.
         retry=False,
-        next_step=("If the post holds photos, gallery-dl can save them — it "
+        next_step=("If the post holds photos, gallery-dl can save them. It "
                    "needs you to be logged in to Instagram. Not tested yet "
                    "on such a post."),
         seen=("2026-09-27, no cookies: instagram.com/p/DDhF_64RGd9 and "
@@ -160,7 +160,7 @@ KNOWN: tuple[Known, ...] = (
         tools=("tiktokdownloader",),
         title="TikTokDownloader could not read this video.",
         next_step=("We have seen this in three cases: no cookies for the "
-                   "site — log in to it in Settings; a video the site does "
+                   "site (log in to it in Settings); a video the site does "
                    "not show on your connection; and a video that does not "
                    "exist. Check the link, or try another video."),
         seen=("2026-09-22: /douyin/detail without a cookie failed this way, "
@@ -186,7 +186,7 @@ KNOWN: tuple[Known, ...] = (
         tools=("yt-dlp",),
         title="The site says this page does not exist (error 404).",
         retry=False,
-        next_step="Check the link: it may be mistyped, or the page was removed.",
+        next_step="Check the link: it may be mistyped, or the site removed the page.",
         seen="https://example.com/some-page -- a page that does not exist.",
     ),
     Known(
@@ -202,7 +202,7 @@ KNOWN: tuple[Known, ...] = (
     Known(
         words=("notfounderror",),
         tools=("gallery-dl",),
-        title="The site says this item could not be found.",
+        title="The site says it cannot find this item.",
         retry=False,
         next_step="The link may be wrong, or the item was deleted.",
         seen=("Pinterest pin 999999999999999999, which does not exist: "
@@ -273,7 +273,7 @@ KNOWN: tuple[Known, ...] = (
         tools=("n-m3u8dl-re",),
         title="N_m3u8DL-RE cannot read this link.",
         retry=False,
-        next_step=("It reads stream playlists — links ending in .m3u8 or "
+        next_step=("It reads stream playlists: links ending in .m3u8 or "
                    ".mpd. Check that the link is one."),
         seen="https://example.com/, a web page: 'Unhandled exception: ...: Input not supported'.",
     ),

@@ -272,7 +272,8 @@ def _retry_target(old, replace_own: bool = False) -> str:
 def queue_download(url: str, mode: str, quality: str, title: str, target: str,
                    tool: str, platform: str, force: bool = False,
                    replace: str = "", folder: str = "",
-                   subs: str = "", sub_lang: str = "") -> tuple[dict, int]:
+                   subs: str = "", sub_lang: str = "",
+                   items: list[str] | None = None) -> tuple[dict, int]:
     """Check a download request and put it in the queue. Returns (json, status).
 
     ``replace`` is the id of a finished job this one takes the place of --
@@ -324,7 +325,7 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
                         cookie_note=cookies.unusable_reason(tool, on) or "",
                         platform=platform,
                         cookie_header=on and tool in cookies.HEADER_CAPABLE,
-                        replace=replace, subs=subs, sub_lang=sub_lang)
+                        replace=replace, subs=subs, sub_lang=sub_lang, items=items)
     except TargetInUse as taken:
         return {"error": f"Another download in the list is already saving to “{taken}”. "
                          "Choose another name."}, 409
@@ -781,12 +782,12 @@ class Handler(BaseHTTPRequestHandler):
                 # and the Console said nothing until the end (grids of
                 # 2026-10-26).
                 name = "TikTokDownloader" if platform_id == "douyin" else "KS-Downloader"
-                console.add(read_id, f"Reading the title · {name} — {url}", "head")
+                console.add(read_id, f"Reading the title · {name} · {url}", "head")
                 answer = tool_probe(platform_id, url)
                 _console_read(read_id, answer)
                 self._json(answer)
                 return
-            console.add(read_id, f"Reading the title · yt-dlp — {url}", "head")
+            console.add(read_id, f"Reading the title · yt-dlp · {url}", "head")
             try:
                 # A private post has no readable title without the cookies,
                 # and the window would show "(no title)" with no reason why.
@@ -889,6 +890,10 @@ class Handler(BaseHTTPRequestHandler):
                 folder=(body.get("folder") or "").strip(),
                 subs=str(body.get("subs") or ""),
                 sub_lang=str(body.get("sub_lang") or ""),
+                # A playlist's titles as the card read them: each video is
+                # listed on its row from the start (2026-10-31). Text only.
+                items=[str(t) for t in body["items"]]
+                      if isinstance(body.get("items"), list) else None,
             )
             self._json(answer, status)
             return

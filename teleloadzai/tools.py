@@ -553,7 +553,7 @@ def _download(url: str, target: Path, on_progress: ProgressFn | None, label: str
             target.unlink(missing_ok=True)      # never keep half a file
             if attempt < DOWNLOAD_TRIES:
                 if on_progress:
-                    on_progress(f"{label} — connection lost, trying again "
+                    on_progress(f"{label} · connection lost, trying again "
                                 f"({attempt + 1} of {DOWNLOAD_TRIES})", 0)
                 time.sleep(2 * attempt)
 

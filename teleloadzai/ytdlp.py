@@ -300,7 +300,7 @@ def kbps_note(files: list[Path], asked: str) -> str:
         real = _kbps(f) if f.suffix.lower() == ".mp3" else None
         if real and real < int(asked) * 0.9:
             return (f"Saved at {real} kbps, not {asked}: the site already gave an MP3, "
-                    "kept as it is — converting it cannot add quality.")
+                    "kept as it is. Converting it cannot add quality.")
     return ""
 
 
@@ -761,6 +761,12 @@ def download(
                 problem.saved = [f for f in done.files if f not in done.skipped]
             except DownloadFailed:
                 pass
+        elif files:
+            # An MP4 playlist whose 1st video failed still downloaded the 2nd
+            # (seen 2026-10-31: 5,672,839 bytes on the disk), and the row said
+            # only "failed". The files this run finished are said too.
+            problem.saved = [f for f in files
+                             if f.is_file() and f.stat().st_mtime >= started_at]
         raise problem
     # Ended well and named no file: a playlist with no video in it, an empty
     # channel tab. The row said "done" with nothing behind it (silent-failure

@@ -350,7 +350,7 @@ def port_holder(port: int) -> str:
     if not name:
         return ""
     known = _KNOWN_HOLDERS.get(name.lower())
-    return f"{name} — {known}" if known else name
+    return f"{name} ({known})" if known else name
 
 
 # --------------------------------------------------------------------------

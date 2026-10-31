@@ -50,8 +50,89 @@ def target_clashes(target: str, taken: set[str]) -> bool:
 _KEPT = ("id", "url", "mode", "quality", "title", "folder", "target", "tool",
          "platform", "skipped", "skip_reason", "state", "files", "error",
          "error_from_tool", "limit_minutes", "live", "interrupted", "note", "pieces",
-         "subs", "sub_lang")
+         "subs", "sub_lang", "items")
 HISTORY_LIMIT = 200         # rows kept; the oldest finished ones go first
+
+# Each video or file of a row that holds several (the user, 2026-10-31: "see
+# the process of all videos in the list, not only for yt-dlp"). Read from the
+# lines each program prints, all seen 2026-10-31 (docs/BELIEFS.md):
+#   yt-dlp 2026.10.29, a playlist: "[download] Downloading item 2 of 4", then
+#     that item's progress; an item that fails says "ERROR: [youtube] <id>: …"
+#     and yt-dlp goes on to the next one.
+#   XHS-Downloader, a note of 2 pictures: "文件 <name> 下载成功" per file, all
+#     at the end -- no count before, no progress.
+#   gallery-dl, a Pinterest pin: the path of each finished file, one per
+#     line; "# <path>" for a file already there.
+# TikTokDownloader and KS-Downloader fetch one video per link: nothing to list.
+ITEM_RUNNING, ITEM_DONE, ITEM_FAILED, ITEM_STOPPED, ITEM_THERE, ITEM_MISSED = (
+    "running", "done", "failed", "stopped", "there", "missed")
+ITEMS_KEPT = 2000           # a 5,000-video channel must not fill jobs.json
+_ITEM_START = re.compile(r"^\[download\] Downloading item (\d+) of (\d+)")
+_ITEM_ERROR = re.compile(r"^ERROR: \[[^\]]+\] [^:\s]+: (.+)")
+_PLAYLIST_END = "[download] Finished downloading playlist"
+_XHS_FILE = re.compile(r"^文件 (.+) 下载成功\s*$")
+_WINDOWS_PATH = re.compile(r"^(# )?[A-Za-z]:\\")
+
+
+def _item(title: str = "", state: str = WAITING) -> dict:
+    return {"title": title, "state": state, "error": ""}
+
+
+def _read_item_line(job: "Job", text: str) -> None:
+    """Move the row's items on, from one line its program printed. Call with
+    the queue's lock held."""
+    line = text.strip()
+    if job.tool == "yt-dlp":
+        start = _ITEM_START.match(line)
+        if start:
+            number, count = int(start.group(1)), int(start.group(2))
+            # The card's titles fill the list beforehand; a post read with
+            # none (several links at once) gets its places as they come.
+            while len(job.items) < min(count, ITEMS_KEPT):
+                job.items.append(_item())
+            for item in job.items:
+                if item["state"] == ITEM_RUNNING:
+                    item["state"] = ITEM_DONE
+            if number <= len(job.items):
+                job.items[number - 1]["state"] = ITEM_RUNNING
+            return
+        if line.startswith(_PLAYLIST_END):
+            # The last item came through. Without this, a playlist whose 1st
+            # video failed ended "failed" as a whole, and its 2nd video --
+            # downloaded -- was marked failed with it (test of 2026-10-31).
+            for item in job.items:
+                if item["state"] == ITEM_RUNNING:
+                    item["state"] = ITEM_DONE
+            return
+        failed = _ITEM_ERROR.match(line)
+        if failed:
+            for item in job.items:
+                if item["state"] == ITEM_RUNNING:
+                    item["state"] = ITEM_FAILED
+                    item["error"] = cookies.redact(failed.group(1))[:200]
+        return
+    if len(job.items) >= ITEMS_KEPT:
+        return
+    if job.tool == "xhs-downloader":
+        done = _XHS_FILE.match(line)
+        if done:
+            job.items.append(_item(done.group(1), ITEM_DONE))
+    elif job.tool == "gallery-dl" and _WINDOWS_PATH.match(line):
+        there = line.startswith("# ")
+        job.items.append(_item(Path(line[2:] if there else line).name,
+                               ITEM_THERE if there else ITEM_DONE))
+
+
+def _end_items(job: "Job") -> None:
+    """The run is over: the item it was on ends with it. Lock held."""
+    for item in job.items:
+        if item["state"] == ITEM_RUNNING:
+            item["state"] = {DONE: ITEM_DONE, ERROR: ITEM_FAILED}.get(job.state, ITEM_STOPPED)
+        elif item["state"] == WAITING and job.state not in ACTIVE_STATES:
+            # The run is over and never reached it: stopped or failed before,
+            # or the playlist changed since the card read it. "Waiting" on a
+            # row that has ended would be false (seen 2026-10-31).
+            item["state"] = ITEM_MISSED
 
 
 # Stop a tool AND every process it started (moved to children.py, 2026-10-18).
@@ -176,6 +257,9 @@ class Job:
     # (time, bytes) of the last few seconds, for the specialist tools' speed.
     samples: list[tuple[float, int]] = field(default_factory=list, repr=False)
     files: list[str] = field(default_factory=list)
+    # Each video or file of a row that holds several: {"title", "state",
+    # "error"}; state is WAITING or one of the ITEM_ states above.
+    items: list[dict] = field(default_factory=list)
     error: str = ""
     error_from_tool: bool = False   # is `error` the tool's own words? (decision 38)
     # A finished job's one plain sentence about what it did not get: "Saved
@@ -230,6 +314,7 @@ class Job:
             "state": self.state, "percent": self.percent, "speed": self.speed,
             "eta": self.eta, "done_bytes": self.done_bytes, "total_bytes": self.total_bytes,
             "estimated": self.estimated, "files": self.files, "error": self.error,
+            "items": self.items,
             "note": self.note,
             # Asked to the disk at each refresh, like the finished files: a
             # piece the user deleted is no longer said.
@@ -303,6 +388,7 @@ class Queue:
                 job = Job(**kept)
                 if job.state in ACTIVE_STATES:
                     job.state, job.interrupted = CANCELLED, True
+                    _end_items(job)
                 loaded.append(job)
         except (OSError, ValueError, KeyError, TypeError) as problem:
             # Never a silent empty list (decision 34): the file is kept aside
@@ -408,11 +494,16 @@ class Queue:
             tool: str = "yt-dlp", limit_minutes: int = 60,
             cookie_file: Path | None = None, cookie_note: str = "",
             platform: str = "", cookie_header: bool = False,
-            replace: str = "", subs: str = "", sub_lang: str = "") -> Job | None:
+            replace: str = "", subs: str = "", sub_lang: str = "",
+            items: list[str] | None = None) -> Job | None:
         """Queue a download. With ``replace``, it takes the place of that
         finished job -- same id, same spot in the list -- instead of adding a
         row: a Retry used to leave the failed row behind, one more each time.
-        Returns None when ``replace`` is unknown or still running."""
+        Returns None when ``replace`` is unknown or still running.
+
+        ``items``: the titles of a playlist, as the card read them, so every
+        video is listed and waiting from the start. A Retry keeps the old
+        row's titles, every item waiting again."""
         job = Job(
             id=replace or uuid.uuid4().hex[:12], url=url, mode=mode, quality=quality,
             title=title, folder=str(target.parent if target else folder),
@@ -431,10 +522,14 @@ class Queue:
                 old = self._jobs.get(replace)
                 if old is None or old.state in ACTIVE_STATES:
                     return None
+                if items is None and job.tool == "yt-dlp":
+                    items = [item.get("title", "") for item in old.items]
                 self._jobs[replace] = job           # its place in _order stays
             else:
                 self._jobs[job.id] = job
                 self._order.append(job.id)
+            if items:
+                job.items = [_item(str(title)[:300]) for title in items[:ITEMS_KEPT]]
         self._pump()
         self.save()
         return job
@@ -587,6 +682,8 @@ class Queue:
 
         def on_line(text: str) -> None:
             console.add(job.id, text)
+            with self._lock:
+                _read_item_line(job, text)
 
         def on_progress(progress: ytdlp.Progress) -> None:
             with self._lock:
@@ -780,6 +877,7 @@ class Queue:
         finally:
             with self._lock:
                 job.process = None
+                _end_items(job)
                 stopped = job.state == CANCELLED
                 failed = job.state == ERROR
                 destinations = list(job.destinations)

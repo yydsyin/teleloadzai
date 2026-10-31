@@ -783,6 +783,19 @@
      shows no download, so its row stays on "Started" with the time. The
      segment after "Downloading" IS the progress bar. */
   .track { display: flex; align-items: center; gap: 6px; margin-top: 9px; font-size: 12px; color: var(--soft); }
+  /* Each video of a row that holds several, with its own state (the user,
+     2026-10-31: "see the process of all videos in the list"). A long
+     playlist scrolls inside the row and follows the video under way. */
+  .items { list-style: none; margin: 8px 0 0 8px; padding: 0 0 0 12px; border-left: 2px solid var(--line);
+    max-height: 220px; overflow-y: auto; font-size: 13px; }
+  .items li { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; }
+  .items .imark { flex: none; width: 1em; text-align: center; color: var(--soft); }
+  .items .iname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .items .istate { flex: none; color: var(--soft); font-size: 12px; }
+  .items .item-done .imark { color: var(--ok); }
+  .items .item-failed .imark, .items .item-failed .istate { color: var(--bad); }
+  .items .item-running .iname { font-weight: 600; }
+  .items .item-running .imark { color: var(--accent); }
   .stop { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
   .stop::before {
     content: ""; width: 9px; height: 9px; border-radius: 50%; flex: none;
@@ -1056,7 +1069,7 @@
         <span class="opt-control">
           <label class="sr-only" for="batch-quality">Quality</label>
           <select id="batch-quality" class="hidden"></select>
-          <span class="hint" id="batch-quality-why">Best — each video at its own best size</span>
+          <span class="hint" id="batch-quality-why">Best · each video at its own best size</span>
         </span>
       </div>
       <div class="opt-row">
@@ -1292,7 +1305,7 @@
         <div class="set-row set-row-plain">
           <div class="set-main">
             <details class="more" style="margin:0">
-              <summary>What is a cookie, exactly?</summary>
+              <summary>What is a cookie?</summary>
               <div class="hint" style="line-height:1.6">
                 A small piece of text a site saves when you log in, which says "this
                 is me". The log-in window takes only the cookies of the one site you
@@ -1334,7 +1347,7 @@
               kind of file, choose <b>Netscape</b>. Your file is never changed.
               <br>
               <b>Teleloadzai keeps only the sites it can download from</b> and throws
-              the rest away before saving — your bank and your mail never come in.
+              the rest away before saving. Your bank and your mail never come in.
             </div>
             <!-- "Keep every site" was removed here on 2026-10-23 (the user's
                  decision): it saved a whole browser export, bank and mail
@@ -1468,7 +1481,7 @@ async function api(path, body) {
   const response = await fetch(path, options);
   if (response.status === 403 && !tokenRefused) {
     tokenRefused = true;
-    setStatus("Teleloadzai was restarted. Reload this page (F5) to continue.");
+    setStatus("Teleloadzai restarted. Reload this page (F5) to continue.");
   }
   return response.json();
 }
@@ -1699,7 +1712,7 @@ function applyChoices(tool) {
   // explained it -- the line came and went with the switch (loop round 3).
   const why = mode !== "mp4" ? ""
     : can.mp4 ? (!hasQuality ? qualityWhy() : "")
-    : !can.label && tool && !deadEnd(tool) ? `Quality: Best — ${tool.name} has no size choice` : "";
+    : !can.label && tool && !deadEnd(tool) ? `Quality: Best · ${tool.name} has no size choice` : "";
   // The row already says "Quality" (style H, 2026-10-23): not twice.
   $("quality-why").textContent = why.replace(/^Quality: /, "");
   $("quality-why").classList.toggle("hidden", !why);
@@ -1810,10 +1823,10 @@ function qualityWhy() {
   if (probeProblem) return "";
   // "no other size" was false: Me at the zoo HAS 144p, the list just
   // never offers anything under 360p (loop round 2).
-  if (maxHeight) return "Quality: Best — no smaller size to choose";
+  if (maxHeight) return "Quality: Best · no smaller size to choose";
   // "not read" was false after a read that returned no size (Instagram,
   // a stream link -- review of 2026-10-05).
-  return "Quality: Best — the sizes are not known before the download";
+  return "Quality: Best · the sizes are not known before the download";
 }
 
 /** The title read, with this very tool, gave a known answer no retry changes. */
@@ -1863,7 +1876,7 @@ function needText(tool) {
     // "with the button below" only when there is one (hidden where the
     // log-in window cannot open -- seen in round 1 of the loop).
     return `Tip: if ${tool.name} is refused, open ${site} once`
-      + (loginIsBlocked ? "" : " with the button below") + " — no log-in needed.";
+      + (loginIsBlocked ? "" : " with the button below") + ". No log-in needed.";
   }
   if (n.kind === "asked") {
     // In the user's words, not the audit's ("on every link we tried"); and
@@ -1877,7 +1890,7 @@ function needText(tool) {
       return (readBy && tool.id === readBy.id ? "" : probeReason + " ")
         + "Logging in may let you download it.";
     }
-    return `${site} asks for an account. Logging in may help — not tested yet.`;
+    return `${site} asks for an account. Logging in may help. Not tested yet.`;
   }
   return `${tool.name} needs you to be logged in to ${site}.` + orFree;
 }
@@ -1951,8 +1964,8 @@ function showChosenTool() {
   // silently; MP4 gives the user's tool back.
   const from = formatFrom && currentTools.find((t) => t.id === formatFrom);
   const subsOf = subsFrom && currentTools.find((t) => t.id === subsFrom);
-  const whyText = (why + (from ? ` Chosen for the MP3 — ${from.name} makes none.` : "")
-    + (subsOf ? ` Chosen for the subtitles — ${subsOf.name} makes none.` : "")
+  const whyText = (why + (from ? ` Chosen for the MP3: ${from.name} makes none.` : "")
+    + (subsOf ? ` Chosen for the subtitles: ${subsOf.name} makes none.` : "")
     + (mp3Waiting && chosen ? ` ${chosen.name} makes no MP3.` : "")).trim();
   // MP3 drops the picture claim: its line keeps its room, or Download jumped
   // 26 px up as the hand went to it (review of 2026-10-05).
@@ -2193,7 +2206,7 @@ async function read() {
     $("unsupported").classList.add("hidden");
     stopWaiting();
     $("url-error").textContent =
-      "That is not a link. Copy the address of the video — it starts with https:// — and paste it here.";
+      "That is not a link. Copy the address of the video (it starts with https://) and paste it here.";
     $("url-error").classList.remove("hidden");
     $("url").setAttribute("aria-invalid", "true");
     // The error speaks for itself (role="alert"); the read announcer kept
@@ -2313,7 +2326,7 @@ async function readLink(url, mine) {
   const blocked = found.blocked || [];
   $("blocked-tools").classList.toggle("hidden", blocked.length === 0);
   $("blocked-tools").textContent = blocked.length
-    ? "Not usable yet — " + blocked.map((b) => `${b.name}: ${b.why}`).join(" · ")
+    ? "Not usable yet: " + blocked.map((b) => `${b.name}: ${b.why}`).join(" · ")
     : "";
 
   // The card appears NOW, with the site and the tool -- known within about a
@@ -2362,7 +2375,7 @@ async function readLink(url, mine) {
   // Their servers take 12-22 s to start and answer (measured 2026-09-26):
   // said, so the wait never looks frozen (decision 33).
   startWaiting(readBy.id === "yt-dlp" ? `Asking ${asking} for the title…`
-    : `${readBy.name} is reading the post — this takes about 20 seconds…`);
+    : `${readBy.name} is reading the post. This takes about 20 seconds…`);
 
   let titleArrived;
   titleReady = new Promise((resolve) => { titleArrived = resolve; });
@@ -2429,7 +2442,7 @@ async function readLink(url, mine) {
     // (Instagram ignores --no-playlist), now each under its own number
     // (seen 2026-09-27). The title read uses the download's own rule, so
     // "N items" is what the download gets.
-    if (info.is_playlist) bits.push(`${info.entries} items — you get all ${info.entries}`);
+    if (info.is_playlist) bits.push(`${info.entries} items: you get all ${info.entries}`);
     $("meta").textContent = bits.join(" · ");
     if (info.thumbnail) { $("thumb").src = info.thumbnail; $("thumb").classList.remove("hidden"); }
     else { $("thumb").classList.add("hidden"); }
@@ -2762,6 +2775,65 @@ function sayState(row, job) {
 }
 
 /** Everything that changes the SHAPE of a row. Same shape -> update in place. */
+/* Each video or file of a row that holds several (2026-10-31), from the
+ * lines its program printed (jobs.py `_read_item_line`). The video under way
+ * carries the row's own progress; the row's right side says how many are
+ * done. Drawn once, then only what changed is rewritten: rebuilt every
+ * 0.7 s, a long list jumped back to its top. Titles are text, never HTML. */
+const ITEM_WORDS = { waiting: "Waiting", done: "In your folder", failed: "Failed", stopped: "Stopped",
+  there: "Already in your folder", missed: "Not downloaded" };
+const ITEM_MARKS = { waiting: "·", running: "↓", done: "✓", failed: "✕", stopped: "–", there: "–", missed: "–" };
+
+function paintItems(row, job, right) {
+  const items = job.items || [];
+  let list = row.querySelector(".items");
+  // One file is the row itself; a finished row that got everything stays
+  // one line (model D) -- the list is for what is under way or went wrong.
+  const allWell = job.state === "done" && items.every((i) => i.state === "done");
+  if (items.length < 2 || (allWell && row.classList.contains("compact"))) {
+    if (list) list.remove();
+    return;
+  }
+  if (!list) {
+    list = document.createElement("ul");
+    list.className = "items";
+    const anchor = row.querySelector(".track") || row.lastElementChild;
+    anchor.after(list);
+  }
+  while (list.children.length < items.length) {
+    const li = document.createElement("li");
+    li.innerHTML = '<span class="imark" aria-hidden="true"></span><span class="iname"></span><span class="istate"></span>';
+    list.appendChild(li);
+  }
+  while (list.children.length > items.length) list.lastElementChild.remove();
+  const counted = job.tool === "yt-dlp";      // the others say no total beforehand
+  items.forEach((item, n) => {
+    const li = list.children[n];
+    const name = item.title || (counted ? `Video ${n + 1}` : `File ${n + 1}`);
+    const state = item.state === "running" ? (right || "Downloading") : ITEM_WORDS[item.state] || item.state;
+    if (li.className !== "item-" + item.state) li.className = "item-" + item.state;
+    li.children[0].textContent = ITEM_MARKS[item.state] || "·";
+    if (li.children[1].textContent !== name) { li.children[1].textContent = name; li.children[1].title = name; }
+    if (li.children[2].textContent !== state) li.children[2].textContent = state;
+    li.title = item.error || "";
+  });
+  // The row's right side: how far the whole list is.
+  const done = items.filter((i) => i.state === "done" || i.state === "there").length;
+  const failedCount = items.filter((i) => i.state === "failed").length;
+  const summary = counted
+    ? `${done} of ${items.length} done` + (failedCount ? ` · ${failedCount} failed` : "")
+    : `${done} file${done === 1 ? "" : "s"}` + (job.state === "running" ? " so far" : "");
+  const small = row.querySelector(".small");
+  if (small && small.textContent !== summary) small.textContent = summary;
+  // Follow the video under way, once each time it changes.
+  const runningAt = items.findIndex((i) => i.state === "running");
+  if (runningAt >= 0 && list._following !== runningAt) {
+    list._following = runningAt;
+    const li = list.children[runningAt];
+    list.scrollTop = Math.max(0, li.offsetTop - list.offsetTop - list.clientHeight / 2);
+  }
+}
+
 function jobShape(job) {
   return JSON.stringify([job.state, job.interrupted, job.skipped, job.skip_reason, job.error, job.note,
     Boolean(job.on_disk),
@@ -2899,7 +2971,7 @@ function jobRow(job) {
     : (job.files || []).length ? fileName(job.files[0])
     : job.title ? job.title
     : ["waiting", "running"].includes(job.state) ? shortLink(job.url)
-    : `Unknown title — ${shortLink(job.url)}`;
+    : `Unknown title · ${shortLink(job.url)}`;
   // "Me at the zoo · MP4 720" said no unit, "name.mp4 · MP4" said the format
   // twice, and a gallery-dl job said "MP4" where the card had said "the
   // post's original files" (round 1 of the loop, 2026-09-26).
@@ -2938,6 +3010,7 @@ function jobRow(job) {
   if (skipWhy) skipWhy.textContent = job.skip_reason;
   row.querySelector(".small").textContent = right;
   paintTrack(row, job, percent);
+  paintItems(row, job, right);
   sayState(row, job);
   const errorText = row.querySelector(".err");
   // Its own words, raw English with its own advice ("…using yt-dlp -U"):
@@ -3169,6 +3242,7 @@ async function refresh() {
       const { percent, right } = jobProgress(job);
       row.querySelector(".small").textContent = right;
       paintTrack(row, job, percent);
+      paintItems(row, job, right);
     } else {
       // An end said aloud for a screen reader: the rows themselves are not
       // announced -- every 0.7 s would drown it (round 1 of the loop).
@@ -3204,7 +3278,7 @@ async function refresh() {
   const running = jobs.filter((j) => j.state === "running").length;
   const waiting = jobs.filter((j) => j.state === "waiting").length;
   $("queue-info").textContent = waiting
-    ? `Downloads — ${running} running, ${waiting} waiting`
+    ? `Downloads · ${running} running, ${waiting} waiting`
     : jobs.length ? `Downloads (${jobs.length})` : "Downloads";
   // Only when it has something to clear (decision 40): failed and
   // interrupted rows stay.
@@ -3625,7 +3699,7 @@ async function updateAndRetry(job, button) {
   // Said only when it happened (decision 24), and no retry when nothing
   // changed: it would get the same answer.
   if (!result || result.state === "error" || !result.changed) {
-    if (button) { button.disabled = false; button.textContent = "Update failed — try again"; }
+    if (button) { button.disabled = false; button.textContent = "Update failed. Try again"; }
     setStatus(result ? installSentence(job.tool, result)
       : `The update of ${name} gave no answer after 30 minutes.`);
     return;
@@ -3685,7 +3759,7 @@ function douyinNote(job) {
 $("update-mode").addEventListener("change", async () => {
   updateMode = $("update-mode").value;
   await api("/api/settings", { update_mode: updateMode });
-  notify("Saved: updates — " + $("update-mode").selectedOptions[0].text + ".");
+  notify("Saved: updates · " + $("update-mode").selectedOptions[0].text + ".");
   renderUpdateBar();
 });
 
@@ -3735,7 +3809,7 @@ $("python-install").addEventListener("click", async () => {
   const result = await api("/api/python/install", {});
   $("python-help-status").textContent = result.ok
     ? "Python installed."
-    : "Not installed: " + (result.error || "unknown") + ` — you may need to restart ${APP_NAME}.`;
+    : "Not installed: " + (result.error || "unknown") + `. You may need to restart ${APP_NAME}.`;
   loadTools();
 });
 
@@ -3918,7 +3992,7 @@ $("probe-update").addEventListener("click", async () => {
   const result = await waitForInstall(id);
   $("probe-update").disabled = false;
   if (!result || result.state === "error") {
-    $("probe-update").textContent = "Update failed — try again";
+    $("probe-update").textContent = "Update failed. Try again";
     setStatus(`The update did not finish: ${(result && result.error) || "no answer after 6 minutes"}.`);
     return;
   }
@@ -4374,7 +4448,7 @@ async function readEach() {
       item.info = info.error ? null : info;
       if (!item.title && info.title) {
         item.title = info.items && info.items.length > 1
-          ? `${info.title} — ${info.items.length} videos` : info.title;
+          ? `${info.title} · ${info.items.length} videos` : info.title;
       }
       renderBatch();
     }
@@ -4394,7 +4468,10 @@ function openPlaylist(found, info, url) {
   stopWaiting();
   $("result").classList.add("hidden");
   currentUrl = "";
-  batchPlaylist = { url, title: info.title || "", count: info.items.length, found };
+  // Every title, not only the 50 the card shows: the row lists each video
+  // from the start (2026-10-31).
+  batchPlaylist = { url, title: info.title || "", count: info.items.length, found,
+                    titles: info.items.map((it) => it.title || "") };
   batchExtra = Math.max(0, info.items.length - BATCH_MAX);
   batch = info.items.slice(0, BATCH_MAX).map((it) => ({
     url: it.url, found, tool: null, title: it.title || "", duration: it.duration }));
@@ -4516,7 +4593,7 @@ function renderBatch() {
   // While reading, a real count (decision 33); then how many will come down.
   $("batch-title").textContent = reading ? `Reading the links… ${read} of ${batch.length}`
     : pendingRows ? `Reading the videos… ${ready.length - pendingRows} of ${ready.length}`
-    : list0 ? `${list0.title || "Playlist"} — ${list0.count} videos`
+    : list0 ? `${list0.title || "Playlist"} · ${list0.count} videos`
     : ready.length === 1 ? "1 link" : `${ready.length} links`;
   const sites = new Map();
   for (const item of ready) sites.set(item.found.platform, (sites.get(item.found.platform) || 0) + 1);
@@ -4664,7 +4741,8 @@ $("batch-go").addEventListener("click", async () => {
   // never one "Save as" name that became "name 1", "name 2"… (seen
   // 2026-10-24 on an Instagram post; the same rule for a playlist).
   const jobs = batchPlaylist
-    ? [{ url: batchPlaylist.url, found: batchPlaylist.found, tool: ready[0].tool, title: batchPlaylist.title }]
+    ? [{ url: batchPlaylist.url, found: batchPlaylist.found, tool: ready[0].tool, title: batchPlaylist.title,
+         items: batchPlaylist.titles }]
     : ready;
   for (const item of jobs) {
     go.textContent = `Adding ${added + refused.length + 1} of ${jobs.length}…`;
@@ -4672,6 +4750,7 @@ $("batch-go").addEventListener("click", async () => {
       url: item.url, mode: batchMode, title: item.title || "", target: "",
       quality: batchMode === "mp3" ? $("batch-quality").value : "best",
       tool: item.tool.id, platform: item.found.platform_id || "", folder,
+      ...(item.items ? { items: item.items } : {}),
     });
     if (answer.error) refused.push(`${shortLink(item.url)}: ${answer.error}`);
     else added++;
@@ -4850,7 +4929,7 @@ function renderCookies(state) {
     : state.broken ? "Not usable · import a new file or forget it"
     : `${state.total} cookies, ${state.sites.length + (state.more_sites || 0)} sites · add a log-in, import, forget`;
   if (!have) {
-    $("cookies-state-plain").textContent = "off — none saved";
+    $("cookies-state-plain").textContent = "off · none saved";
     $("cookies-summary").textContent = "";
     return;
   }
@@ -4865,7 +4944,7 @@ function renderCookies(state) {
     return;
   }
 
-  $("cookies-state").textContent = state.enabled ? "on" : "off — paused";
+  $("cookies-state").textContent = state.enabled ? "on" : "off · paused";
   // One line (the user, 2026-10-23: descriptions people get bored of). The
   // site list, the first cookie to end and the programs that use them were
   // three more lines; the sites table below already says who is logged in.
@@ -5086,15 +5165,15 @@ async function openLogin(platform) {
   }
   $("login-waiting-title").textContent = "Log in to " + platform.name;
   $("login-waiting-text").textContent =
-    "A window has opened on " + platform.name + ". Log in there the normal way — "
+    "A window has opened on " + platform.name + ". Log in there the normal way. "
     + "password, code by SMS, whatever it asks. It closes by itself once you "
-    + "are in. You can also just close it when you are done."
+    + "are in. You can also close it when you are done."
     + (result.hint ? " " + result.hint : "");
   $("login-waiting").classList.remove("hidden");
   // Said in the status line too, which every screen shows: the button on a
   // failed download opens this window without leaving the download page.
   setStatus("A window has opened on " + platform.name
-    + ". Log in there — it closes by itself once you are in."
+    + ". Log in there. It closes by itself once you are in."
     + (result.hint ? " " + result.hint : "")
     // Said only when the pop-up fix could not be put in place (see
     // login._keep_popups_inside): then "Continue with Facebook" or Google
@@ -5139,7 +5218,7 @@ async function watchLogin(name) {
 }
 
 function loginMessage(result, name) {
-  if (result.error) return "The cookies could not be taken: " + result.error;
+  if (result.error) return "Teleloadzai could not take the cookies: " + result.error;
   if (result.kept) {
     const saved = result.kept === 1 ? "1 cookie" : result.kept + " cookies";
     return (result.how === "auto" ? "Logged in to " + name + ": " : "Window closed: ")
@@ -5149,7 +5228,7 @@ function loginMessage(result, name) {
   // YouTube), or the site's own page still loading. Which one is not known
   // here, so it is not claimed (seen 2026-09-23: "before it reached
   // Kuaishou" was said of a window that WAS on kuaishou.com, still loading).
-  return "The window was closed before Teleloadzai could take anything from "
+  return "You closed the window before Teleloadzai could take anything from "
     + name + ". Nothing was saved. Try again, and close it only once you are logged in.";
 }
 
@@ -5201,7 +5280,7 @@ $("cookies-switch").addEventListener("change", async () => {
   // Pause the cookies without losing them. "Forget them" is the other
   // button and it erases; this one only stops using what is saved.
   const on = $("cookies-switch").checked;
-  $("cookies-state").textContent = on ? "on" : "off — paused";
+  $("cookies-state").textContent = on ? "on" : "off · paused";
   await api("/api/settings", { cookies_enabled: on });
   loadCookies();
 });
@@ -5235,7 +5314,7 @@ $("cookies-import").addEventListener("click", async () => {
     // Say what was thrown away, not only what was kept. It is the proof that
     // the rest of the browser export never entered the app.
     setStatus(result.ignored
-      ? `${result.imported} cookies kept. ${result.ignored} from ${result.ignored_sites} other sites were ignored.`
+      ? `${result.imported} cookies kept. Teleloadzai left out ${result.ignored} from ${result.ignored_sites} other sites.`
       : `${result.imported} cookies kept.`);
   } finally {
     $("cookies-import").disabled = false;
