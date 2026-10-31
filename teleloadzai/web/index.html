@@ -54,6 +54,10 @@
   /* The parts the browser draws by itself carry the palette too. */
   ::selection { background: color-mix(in srgb, var(--go) 55%, transparent); color: var(--ink); }
   html { scrollbar-color: color-mix(in srgb, var(--soft) 45%, transparent) transparent; accent-color: var(--accent); }
+  /* The scroll bar's room is kept on every page: in full screen a page
+     without one centred its column 8 px further right, and the title
+     moved when changing page (248 vs 256 px, measured 2026-10-31). */
+  html { scrollbar-gutter: stable; }
   .wrap { max-width: 860px; margin: 0 auto; }
   .sub { color: var(--soft); font-size: 13px; }
   .side {
@@ -288,17 +292,15 @@
   .set-row-wide #folder { width: 100%; flex: none; }
   /* Text and bold words in one flow: as column items, "150 cookies" stood
      alone on its own line (seen the same day). */
-  .ways { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
+  /* No "or" between them since 2026-10-31 (the user: "just remove it"):
+     the title already says there are two ways. */
+  .ways { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: stretch; }
   /* No border: the two ways sit inside the settings card already, and a
      box in a card is a card in a card (critique of 2026-10-31). */
   .way { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 4px 0; }
   .way button { margin-top: auto; }
   .way .set-sub { margin-bottom: 4px; }
-  .ways-or {
-    align-self: center; font-size: 12px; font-weight: 600; color: var(--soft);
-    padding: 4px 10px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 7%, var(--card));
-  }
-  @media (max-width: 700px) { .ways { grid-template-columns: minmax(0, 1fr); } .ways-or { justify-self: center; } }
+  @media (max-width: 700px) { .ways { grid-template-columns: minmax(0, 1fr); } }
   #settings .set-main#cookies-summary { display: block; line-height: 1.6; max-width: none; }
   .set-warning { margin: 0 0 14px; padding: 12px 16px; font-size: 14px; line-height: 1.5; }
   #settings .card.warn:not(.set-warning), #programs-page .card.warn { margin: 0 0 14px; }
@@ -1304,7 +1306,6 @@
                 <span class="set-sub">Recommended</span>
                 <button class="ghost tiny" id="ways-to-sites">Choose a site above</button>
               </div>
-              <span class="ways-or" aria-hidden="true">or</span>
               <div class="way">
                 <span class="opt-icon icon-file" aria-hidden="true"></span>
                 <span class="set-name">Import a cookie file</span>

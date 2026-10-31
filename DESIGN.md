@@ -246,7 +246,7 @@ Soft corners, never sharp and never bubbly. Corner sizes (rounded tokens):
 - 8px: buttons, fields and icon tiles;
 - 7px: the options inside a switch;
 - 6px: pictures;
-- pills for badges, the "or" between the two log-in ways, and the on/off switch.
+- pills for badges and the on/off switch.
 
 Lines are 1 px, and a field's border is one step stronger than a card's border.
 
