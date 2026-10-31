@@ -584,8 +584,10 @@
   .icon-terminal { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cpath d='M7 9l3 3-3 3M13 15h4'/%3E%3C/svg%3E"); }
   /* The Console page (2026-10-25, like the yutto window the user showed):
      a state line, five tools, and the programs' own words in a dark box
-     that takes the page's height -- the page itself never scrolls. */
-  .wrap[data-showing="console"] { display: flex; flex-direction: column; height: 100vh; padding-bottom: 16px; max-width: none; }
+     that takes the page's height -- the page itself never scrolls.
+     Same column as the other pages: at full width its title sat 144 px
+     left of theirs in full screen (measured 2026-10-31). */
+  .wrap[data-showing="console"] { display: flex; flex-direction: column; height: 100vh; padding-bottom: 16px; }
   #console-page { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
   .con-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .con-chip { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 99px;
