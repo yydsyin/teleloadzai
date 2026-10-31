@@ -1444,6 +1444,11 @@ const TOKEN = "__APP_TOKEN__";
 const APP_NAME = "__APP_NAME__";
 const $ = (id) => document.getElementById(id);
 
+// 403 = the server refused our token: this tab belongs to a Teleloadzai
+// that has restarted since. Said once, instead of every screen going quiet
+// (seen 2026-10-31: 176 silent errors in the Console). Once only: the
+// message itself goes to the Console through api(), and is refused too.
+let tokenRefused = false;
 async function api(path, body) {
   const options = { method: body ? "POST" : "GET", headers: { "X-App-Token": TOKEN } };
   if (body) {
@@ -1451,6 +1456,10 @@ async function api(path, body) {
     options.body = JSON.stringify(body);
   }
   const response = await fetch(path, options);
+  if (response.status === 403 && !tokenRefused) {
+    tokenRefused = true;
+    setStatus("Teleloadzai was restarted. Reload this page (F5) to continue.");
+  }
   return response.json();
 }
 
@@ -3781,6 +3790,7 @@ function consoleLine(line) {
 async function pollConsole() {
   let data;
   try { data = await api("/api/console?since=" + consoleNext); } catch { return; }
+  if (data.error) return;     // refused: api() has said it; the lines shown stay
   const box = $("con-box");
   // A line number the server no longer has (Teleloadzai restarted): start again.
   if (data.next < consoleNext) { box.textContent = ""; consoleNext = 0; return pollConsole(); }
