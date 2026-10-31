@@ -45,6 +45,7 @@ day, does not rewrite. yt-dlp does.)
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import threading
@@ -402,6 +403,29 @@ def inspect(path: Path) -> dict:
 # --------------------------------------------------------------------------
 
 @_writes
+def _write_store(lines) -> None:
+    """Our cookie file, written to a temporary file beside it first, then put
+    in place: a failed write (a full disk) left half a file, and the log-ins
+    already saved were lost (hunt of 2026-10-31). The temporary file is
+    removed if anything fails -- it holds cookies too."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    temp = COOKIE_FILE.with_name(COOKIE_FILE.name + ".tmp")
+    try:
+        temp.write_text(
+            "# Netscape HTTP Cookie File\n"
+            "# Written by Teleloadzai. Only the sites it can download from.\n"
+            + "\n".join(lines) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temp, COOKIE_FILE)
+    except OSError:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
 def import_file(chosen: Path) -> dict:
     """Check the user's file, then write our own SHORTER copy of it.
 
@@ -435,19 +459,20 @@ def import_file(chosen: Path) -> dict:
     # A cookie the file carries again (same site, path, name) is replaced.
     keeping: dict[tuple[str, str, str], str] = {}
     if have_file():
-        for _domain, _when, raw in _rows(COOKIE_FILE.read_text(encoding="utf-8").splitlines()):
+        try:
+            stored = COOKIE_FILE.read_text(encoding="utf-8")
+        except (OSError, ValueError) as problem:
+            # Said, and nothing written: the log-ins already saved stay.
+            raise CookieFileError(
+                f"Your saved log-ins could not be read ({type(problem).__name__}), so "
+                "nothing was imported. They were not changed.") from None
+        for _domain, _when, raw in _rows(stored.splitlines()):
             keeping[_key(raw)] = raw
     for raw in summary["lines"]:
         keeping[_key(raw)] = raw
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        COOKIE_FILE.write_text(
-            "# Netscape HTTP Cookie File\n"
-            "# Written by Teleloadzai. Only the sites it can download from.\n"
-            + "\n".join(keeping.values()) + "\n",
-            encoding="utf-8",
-        )
+        _write_store(keeping.values())
     except OSError as problem:
         raise CookieFileError(
             f"The cookies could not be saved: {problem.strerror}"
@@ -540,13 +565,7 @@ def merge_lines(fresh: list[str]) -> int:
     if not added:
         return 0
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    COOKIE_FILE.write_text(
-        "# Netscape HTTP Cookie File\n"
-        "# Written by Teleloadzai. Only the sites it can download from.\n"
-        + "\n".join(keeping.values()) + "\n",
-        encoding="utf-8",
-    )
+    _write_store(keeping.values())
     return added
 
 

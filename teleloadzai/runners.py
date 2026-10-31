@@ -92,6 +92,9 @@ class Request:
     # Subtitles (Phase 2 item 7): "" off, "embed", "file"; the track's code.
     subs: str = ""
     sub_lang: str = ""
+    # The row this run belongs to: written in its work folder, so the start-
+    # up sweep can tell which row a file it saves from a crash finishes.
+    job_id: str = ""
     # Set by Stop. A tool driven by its server holds no process for Stop to
     # end while it reads the post or while we fetch its file: Stop said
     # "stopped" and the whole video still arrived (silent-failure hunt,
@@ -448,6 +451,7 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
             "It may be a photo post, or a live stream that has ended.")
 
     name = _file_name(request, _clean_name(data))
+    name = _reserve(request, name)
     reason = _already_there(request.out_dir / (name + "." + request.mode), request)
     if reason:
         return RunResult([], [], skip_reason=reason)
@@ -507,6 +511,7 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
 
     name = _file_name(request, _clean_name(
         {"nickname": data.get("name", ""), "desc": data.get("caption", "")}))
+    name = _reserve(request, name)
     reason = _already_there(request.out_dir / (name + "." + request.mode), request)
     if reason:
         return RunResult([], [], skip_reason=reason)
@@ -558,6 +563,38 @@ def _to_mp3_or_clean(video: Path, target: Path, request: Request,
 def _say(on_step: Callable[[str], None] | None, step: str) -> None:
     if on_step:
         on_step(step)
+
+
+# Names the server tools (TikTokDownloader, KS-Downloader) are writing now.
+# They fetch straight into the user's folder, and two different posts of the
+# same name (same author, no caption) both passed the "already there" check
+# before either file existed, then wrote the same "name.mp4.part" -- one
+# video lost, both rows done (hunt of 2026-10-31).
+_writing: dict[str, int] = {}
+_writing_lock = threading.Lock()
+
+
+def _reserve(request: Request, name: str) -> str:
+    """`name`, or "name (2)"... -- the first one no other running job of
+    these tools is writing in this folder. Held until `_release(request)`.
+    A name chosen in "Save as" is kept: the list already refuses a second
+    download to it (server.queue_download)."""
+    def key(stem: str) -> str:
+        return os.path.normcase(os.path.abspath(request.out_dir / f"{stem}.{request.mode}"))
+
+    with _writing_lock:
+        base, number = name, 2
+        if not request.out_name:
+            while _writing.get(key(name), id(request)) != id(request):
+                name, number = f"{base} ({number})", number + 1
+        _writing[key(name)] = id(request)
+    return name
+
+
+def _release(request: Request) -> None:
+    with _writing_lock:
+        for held in [k for k, owner in _writing.items() if owner == id(request)]:
+            del _writing[held]
 
 
 def _already_there(target: Path, request: Request) -> str:
@@ -812,13 +849,20 @@ def _drop_work(work: Path) -> None:
         _note_work(work, False)
 
 
-def sweep_work_folders() -> list[str]:
+_JOB_MARK = "job.mark"       # a "*.mark": never taken for a download
+
+
+def sweep_work_folders() -> list[tuple[str, Path]]:
     """At start: the work folders a crash left. Their finished files are put
     in the user's folder, never over one of his (a free name); the rest goes.
-    Returns the names saved, so the console can say so."""
+    A file that cannot be moved keeps its folder, never deleted with it
+    (hunt of 2026-10-31): the next start tries again.
+    Returns (row id or "", file) for each file saved -- the row it finishes
+    is then no longer offered "Continue" -- and ("", folder) for each folder
+    kept back, so both can be said."""
     if not WORK_LIST.is_file():
         return []
-    saved: list[str] = []
+    saved: list[tuple[str, Path]] = []
     for line in WORK_LIST.read_text(encoding="utf-8").splitlines():
         work = Path(line)
         if not line or not work.name.startswith("teleloadzai-") or not work.is_dir():
@@ -828,16 +872,24 @@ def sweep_work_folders() -> list[str]:
         # file (the picture without its sound): nothing is rescued from it.
         # A live recording, or another tool's finished files, are.
         half = (work / "n-m3u8dl-re.tool.mark").is_file() and not (work / _LIVE_MARK).is_file()
+        try:
+            owner = (work / _JOB_MARK).read_text(encoding="utf-8").strip()
+        except OSError:
+            owner = ""
+        stuck = False
         for path in ([] if half else work.iterdir()):
             if path.is_file() and not any(path.match(x) for x in (*_PIECES, "*.db")):
                 stem, ending = path.stem, path.suffix.lstrip(".")
                 target = work.parent / (free_name(work.parent, stem, ending) + path.suffix)
                 try:
                     os.rename(path, target)
-                    saved.append(target.name)
+                    saved.append((owner, target))
                 except OSError:
-                    pass
-        _drop_work(work)
+                    stuck = True
+        if stuck:
+            saved.append(("", work))
+        else:
+            _drop_work(work)
     return saved
 
 
@@ -1179,11 +1231,14 @@ def run(
     on_line: Callable[[str], None] | None = None,
 ) -> RunResult:
     """Run one specialist tool and report what it actually wrote."""
-    if tool_id == "tiktokdownloader":
-        # No command line exists for this one; it is driven over HTTP.
-        return _tiktok(request, on_progress, on_start, on_step, on_bytes)
-    if tool_id == "ks-downloader":
-        return _kuaishou(request, on_progress, on_start, on_step, on_bytes)
+    if tool_id in ("tiktokdownloader", "ks-downloader"):
+        try:
+            if tool_id == "tiktokdownloader":
+                # No command line exists for this one; it is driven over HTTP.
+                return _tiktok(request, on_progress, on_start, on_step, on_bytes)
+            return _kuaishou(request, on_progress, on_start, on_step, on_bytes)
+        finally:
+            _release(request)
 
     recipe = RECIPES.get(tool_id)
     if recipe is None:
@@ -1206,6 +1261,11 @@ def run(
     # error. (Our own names are cut to fit: `_file_name`.)
     name_room(request.out_dir, NAME_ENDING + units("teleloadzai-00000000\\"))
     work = _work_folder(request.out_dir, tool_id)
+    if request.job_id:
+        try:
+            (work / _JOB_MARK).write_text(request.job_id, encoding="utf-8")
+        except OSError:
+            pass            # only the crash sweep reads it
     keep = False
     try:
         return _run_in(work, recipe, exe, head, tool_id, request,

@@ -150,6 +150,7 @@ _STOP = _WM_APP + 3         # the app closes: the icon goes, then the loop
 _NIN_BALLOONHIDE, _NIN_BALLOONTIMEOUT, _NIN_BALLOONUSERCLICK = 0x403, 0x404, 0x405
 _hwnd = None
 _thread: threading.Thread | None = None
+_refusal_said = False
 
 
 def _start() -> None:
@@ -163,6 +164,18 @@ def _start() -> None:
     _thread = threading.Thread(target=_loop, args=(ready,), daemon=True, name="notify")
     _thread.start()
     ready.wait(5)
+    if not _hwnd:
+        # Windows refused the hidden window the messages need. Said once,
+        # and tried again at the next end -- it used to stop every message
+        # for the whole session without a word (hunt of 2026-10-31).
+        with _lock:
+            _started = False
+        global _refusal_said
+        if not _refusal_said:
+            _refusal_said = True
+            from . import console
+            console.add("app", f"{APP_NAME}: Windows did not let {APP_NAME} show its "
+                        "message when a download ends. The list still shows every end.", "err")
 
 
 def _wake() -> None:
@@ -251,6 +264,8 @@ def _loop(ready: threading.Event) -> None:
     _hwnd = user32.CreateWindowExW(0, "TeleloadzaiNotify", APP_NAME, 0, 0, 0, 0, 0,
                                    None, None, hinst, None)
     ready.set()
+    if not _hwnd:
+        return          # said by _start
     message = w.MSG()
     try:
         while user32.GetMessageW(ctypes.byref(message), None, 0, 0) > 0:

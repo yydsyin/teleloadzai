@@ -10,6 +10,7 @@ functions raise ``ToolMissing`` and the caller decides what to tell the user.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -627,6 +628,7 @@ def download(
     subs: str = "",
     sub_lang: str = "",
     on_line: Callable[[str], None] | None = None,
+    job_id: str = "",
 ) -> DownloadResult:
     """Download one link as MP3 or MP4, reporting progress line by line.
 
@@ -640,7 +642,12 @@ def download(
     """
     tool = require_ytdlp()
     make_folder(out_dir)
-    tag = f".tlz{uuid.uuid4().hex[:6]}" if mode == "mp3" else ""
+    # One tag per download, kept by its Retry / Continue (`job_id`, the same
+    # row): a new random tag each run never found the old `.part`, so an MP3
+    # cut off by closing started from zero and left that piece behind (hunt
+    # of 2026-10-31).
+    seed = hashlib.sha1(job_id.encode()).hexdigest() if job_id else uuid.uuid4().hex
+    tag = f".tlz{seed[:6]}" if mode == "mp3" else ""
 
     command = [
         str(tool),

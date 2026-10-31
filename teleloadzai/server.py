@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,11 +28,12 @@ from urllib.parse import parse_qs, urlsplit
 from . import console, cookies, dialogs, explain, login, needs, notify, runners, toolservers, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
-from .jobs import ERROR, Queue
+from .jobs import DONE, ERROR, Queue, TargetInUse, target_clashes
 from .paths import DATA_DIR, DEFAULT_DOWNLOAD_DIR, WEB_DIR, ensure_dirs
 from .platforms import PLATFORMS, tool_name
 
 SETTINGS_FILE = DATA_DIR / "settings.json"
+_settings_lock = threading.Lock()
 TOKEN = secrets.token_urlsafe(24)
 
 MAX_PARALLEL_DEFAULT = 2
@@ -179,8 +181,14 @@ def tool_choices() -> list[dict]:
 
 
 def save_settings(settings: dict) -> None:
+    """To a temporary file first, then put in place: a reader meeting half a
+    file got the defaults, and its next save wrote them over every setting
+    (hunt of 2026-10-31)."""
     ensure_dirs()
-    SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    with _settings_lock:
+        temp = SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".tmp")
+        temp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+        os.replace(temp, SETTINGS_FILE)
 
 
 def forget_if_once() -> bool:
@@ -229,7 +237,7 @@ def _retry_folder(old) -> str:
     return str(old.folder) if old.folder and Path(old.folder).is_dir() else ""
 
 
-def _retry_target(old) -> str:
+def _retry_target(old, replace_own: bool = False) -> str:
     """The "Save as" path a Retry or "Download again" may reuse.
 
     Windows asked about replacing that name BEFORE the first attempt. If the
@@ -237,12 +245,28 @@ def _retry_target(old) -> str:
     file is not what Windows asked about: "Download again" replaced it
     without a word (round 4 of the hunt, 2026-10-18). Then the same folder,
     with the next free name ("my live (2).mp4").
+    The same when ANOTHER download wrote that name since, or will: a failed
+    "unknown.mp4", then a second untitled video saved as "unknown.mp4"
+    (Windows could not ask, the first had left nothing), then Retry on the
+    first -- the second video was replaced (hunt of 2026-10-31, round 2).
+    `replace_own`: a FINISHED row's "Download again", confirmed by its second
+    click ("Replace the file? Click again"), replaces that row's own file,
+    as it says -- it made "name (2)" while saying "Replace" (same hunt).
     """
-    if not old.target or not any(Path(f).is_file() for f in old.files):
+    if not old.target:
         return old.target
     chosen = Path(old.target)
+    taken = QUEUE.targets_in_use(besides=old.id)
+    mine = {os.path.normcase(os.path.abspath(f)) for f in old.files}
+    if replace_own and old.state == DONE and not target_clashes(old.target, taken) \
+            and os.path.normcase(os.path.abspath(chosen)) in mine:
+        return old.target
+    if not any(Path(f).is_file() for f in old.files) and not chosen.exists() \
+            and not target_clashes(old.target, taken):
+        return old.target
     ending = chosen.suffix.lstrip(".")
-    return str(chosen.with_name(dialogs.free_name(chosen.parent, chosen.stem, ending) + chosen.suffix))
+    return str(chosen.with_name(dialogs.free_name(chosen.parent, chosen.stem, ending, taken)
+                                + chosen.suffix))
 
 
 def queue_download(url: str, mode: str, quality: str, title: str, target: str,
@@ -289,14 +313,21 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
     on = load_settings()["cookies_enabled"]
     # "" when nobody could read the title: the row says so, and the file is
     # named "unknown" -- never the raw link (the user, 2026-09-26).
-    job = QUEUE.add(url, mode, quality, title, Path(folder) if folder else download_folder(),
-                    Path(target) if target else None, force=force, tool=tool,
-                    limit_minutes=record_minutes(),
-                    cookie_file=cookies.path_for(tool, on),
-                    cookie_note=cookies.unusable_reason(tool, on) or "",
-                    platform=platform,
-                    cookie_header=on and tool in cookies.HEADER_CAPABLE,
-                    replace=replace, subs=subs, sub_lang=sub_lang)
+    # A file another download in the list will write is refused (checked in
+    # the same step as the add): Windows could not ask about it (not on the
+    # disk yet), and the second would replace the first.
+    try:
+        job = QUEUE.add(url, mode, quality, title, Path(folder) if folder else download_folder(),
+                        Path(target) if target else None, force=force, tool=tool,
+                        limit_minutes=record_minutes(),
+                        cookie_file=cookies.path_for(tool, on),
+                        cookie_note=cookies.unusable_reason(tool, on) or "",
+                        platform=platform,
+                        cookie_header=on and tool in cookies.HEADER_CAPABLE,
+                        replace=replace, subs=subs, sub_lang=sub_lang)
+    except TargetInUse as taken:
+        return {"error": f"Another download in the list is already saving to “{taken}”. "
+                         "Choose another name."}, 409
     if job is None:
         return {"error": "that download is still running, or no longer exists"}, 409
     return job.as_dict(), 200
@@ -581,6 +612,7 @@ class Handler(BaseHTTPRequestHandler):
     # -- helpers -----------------------------------------------------------
 
     def _send(self, body: bytes, content_type: str, status: int = 200) -> None:
+        self._answered = True
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -702,6 +734,23 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
     def do_POST(self) -> None:
+        """Every request gets an answer. An unexpected error used to close
+        the connection with none, and the button pressed did nothing, with
+        no word (decision 34; hunt of 2026-10-31: a damaged cookie store
+        under "Import")."""
+        self._answered = False
+        try:
+            self._do_post()
+        except (BrokenPipeError, ConnectionError):
+            pass                # the page went away: nobody to tell
+        except Exception as problem:
+            traceback.print_exc()
+            if not self._answered:
+                words = cookies.redact(str(problem))[:300]
+                self._json({"error": f"Teleloadzai hit an unexpected problem "
+                                     f"({type(problem).__name__}: {words})."}, 500)
+
+    def _do_post(self) -> None:
         path = urlsplit(self.path).path
         if not path.startswith("/api/") or not self._authorised():
             self._json({"error": "not allowed"}, 403)
@@ -809,7 +858,8 @@ class Handler(BaseHTTPRequestHandler):
             # it starts, so a queue left alone never blocks on a dialog.
             mode = body.get("mode") or "mp4"
             try:
-                chosen = dialogs.save_file(body.get("suggested") or "", mode, download_folder())
+                chosen = dialogs.save_file(body.get("suggested") or "", mode, download_folder(),
+                                           taken=QUEUE.targets_in_use())
             except dialogs.DialogError as problem:
                 # Not a cancel. Until 2026-09-22 these looked identical.
                 self._json({"error": str(problem)}, 500)
@@ -967,7 +1017,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             answer, status = queue_download(
                 url=old.url, mode=old.mode, quality=old.quality, title=old.title,
-                target=_retry_target(old), tool=old.tool, platform=old.platform,
+                target=_retry_target(old, replace_own=bool(body.get("force"))),
+                tool=old.tool, platform=old.platform,
                 force=bool(body.get("force")), replace=old.id, folder=_retry_folder(old),
                 subs=old.subs, sub_lang=old.sub_lang,
             )

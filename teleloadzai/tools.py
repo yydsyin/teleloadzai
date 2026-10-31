@@ -24,6 +24,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -36,6 +37,7 @@ from typing import Callable
 from .paths import BIN_DIR, DATA_DIR, ensure_dirs
 
 CACHE_FILE = DATA_DIR / "tools.json"
+_cache_lock = threading.RLock()
 # Decision 18, changed by the user 2026-10-21: every 6 hours, not 24. A site
 # that breaks gets its fix in yt-dlp within hours, and the app knew of it a
 # day later. 8 tools x 4 checks = 32 requests a day; GitHub allows 60 an hour.
@@ -321,9 +323,8 @@ def installed_version(tool_id: str) -> str:
     # never offered (data/tools.json, 2026-10-18). A tool that has no version
     # to read (`version_args=()`) is never asked anyway.
     if version or nothing_to_ask:
-        cache = _load_cache()               # another thread may have written
-        cache.setdefault(tool_id, {})["installed"] = {"stamp": stamp, "version": version}
-        _save_cache(cache)
+        _change_cache(lambda cache: cache.setdefault(tool_id, {}).__setitem__(
+            "installed", {"stamp": stamp, "version": version}))
     return version
 
 
@@ -392,8 +393,23 @@ def _load_cache() -> dict:
 
 
 def _save_cache(cache: dict) -> None:
+    """To a temporary file first, then put in place: a reader never meets
+    half a file (it read {} and the next save wrote over every record --
+    `installed_from` is the only version TikTokDownloader and KS-Downloader
+    have; hunt of 2026-10-31)."""
     ensure_dirs()
-    CACHE_FILE.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+    temp = CACHE_FILE.with_name(f"{CACHE_FILE.name}.{threading.get_ident()}.tmp")
+    temp.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+    os.replace(temp, CACHE_FILE)
+
+
+def _change_cache(change: Callable[[dict], None]) -> None:
+    """Read, change and write the cache as one step: "Update all" installs
+    in parallel, and two of them could each write over the other's record."""
+    with _cache_lock:
+        cache = _load_cache()
+        change(cache)
+        _save_cache(cache)
 
 
 def _is_fresh(entry: dict, hours: float = CACHE_HOURS) -> bool:
@@ -445,9 +461,8 @@ def latest_release(tool_id: str, force: bool = False,
         # link asked GitHub again for each tool it offered -- up to 20 s each
         # when GitHub hangs, and more requests spent when it refuses
         # (decision 18). Install and Update pass `force` and still ask.
-        cache = _load_cache()
-        cache.setdefault(key, {})["failed_at"] = datetime.now(timezone.utc).isoformat()
-        _save_cache(cache)
+        _change_cache(lambda cache: cache.setdefault(key, {}).__setitem__(
+            "failed_at", datetime.now(timezone.utc).isoformat()))
         # Keep an old answer rather than nothing.
         if remembered:
             return {k: entry.get(k, "") for k in ("version", "url", "size")} | {"error": ""}
@@ -463,10 +478,10 @@ def latest_release(tool_id: str, force: bool = False,
     # The entry is merged, not replaced: replacing it dropped the cached
     # installed version, so every check made the Tools page start each
     # program again to read it.
-    cache = _load_cache()
-    kept = {k: v for k, v in cache.get(key, {}).items() if k != "failed_at"}
-    cache[key] = kept | found | {"checked_at": datetime.now(timezone.utc).isoformat()}
-    _save_cache(cache)
+    def merge(cache: dict) -> None:
+        kept = {k: v for k, v in cache.get(key, {}).items() if k != "failed_at"}
+        cache[key] = kept | found | {"checked_at": datetime.now(timezone.utc).isoformat()}
+    _change_cache(merge)
     return found | {"error": ""}
 
 
@@ -580,10 +595,8 @@ def install(tool_id: str, on_progress: ProgressFn | None = None) -> str:
     # Which release and channel is now here. TikTokDownloader and
     # KS-Downloader print no version, so this is the only way to know an
     # update worked -- and whether yt-dlp is the stable or the preview build.
-    cache = _load_cache()
-    cache.setdefault(tool_id, {})["installed_from"] = {
-        "channel": channel(tool_id), "release": release.get("version", "")}
-    _save_cache(cache)
+    _change_cache(lambda cache: cache.setdefault(tool_id, {}).__setitem__(
+        "installed_from", {"channel": channel(tool_id), "release": release.get("version", "")}))
 
     if on_progress:
         on_progress("done", 100)

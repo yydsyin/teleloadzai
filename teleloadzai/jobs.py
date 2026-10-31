@@ -26,6 +26,24 @@ from . import children, console, cookies, explain, login, needs, notify, runners
 WAITING, RUNNING, DONE, ERROR, CANCELLED = "waiting", "running", "done", "error", "cancelled"
 ACTIVE_STATES = (WAITING, RUNNING)
 
+
+def _same_path(path: str) -> str:
+    """One spelling per file: Windows names are not case-sensitive."""
+    return os.path.normcase(os.path.abspath(path))
+
+
+class TargetInUse(Exception):
+    """A "Save as" file another download in the list will write."""
+
+
+def target_clashes(target: str, taken: set[str]) -> bool:
+    """Is `target` one of `taken`, or a numbered item of one ("name 2.mp4"
+    of a post saved as "name.mp4", decision 24)?"""
+    path = Path(target)
+    numbered = re.fullmatch(r"(.+) \d+", path.stem)
+    return _same_path(target) in taken or bool(
+        numbered and _same_path(str(path.with_name(numbered.group(1) + path.suffix))) in taken)
+
 # The list survives closing (Phase 2 item 2, 2026-10-24): these fields of
 # each row are kept in data/jobs.json. Never a cookie: not the cookie file's
 # path, not its note -- the error words are already washed (decision 37).
@@ -267,6 +285,7 @@ class Queue:
         self._save_lock = threading.Lock()
         # Said once on the page when the kept list could not be read.
         self.load_problem = ""
+        self._store_blocked = False    # a bad list that could not be set aside
 
     # -- the list kept between two runs ---------------------------------------
 
@@ -288,11 +307,21 @@ class Queue:
         except (OSError, ValueError, KeyError, TypeError) as problem:
             # Never a silent empty list (decision 34): the file is kept aside
             # under another name, and the page says so once.
-            aside = self._store.with_name("jobs (unreadable).json")
+            # A name of its own each time: a second bad file never replaces
+            # the first one kept (hunt of 2026-10-31).
+            aside, number = self._store.with_name("jobs (unreadable).json"), 2
+            while aside.exists():
+                aside, number = self._store.with_name(f"jobs (unreadable {number}).json"), number + 1
             try:
                 os.replace(self._store, aside)
-            except OSError:
-                pass
+            except OSError as moved:
+                # Not set aside: then it must not be written over either.
+                self._store_blocked = True
+                self.load_problem = (f"The list of your last downloads could not be read "
+                                     f"({type(problem).__name__}), nor set aside ({moved.strerror}). "
+                                     f"It is left as it is in {self._store.parent}, and this "
+                                     f"session's downloads are not kept in it.")
+                return
             self.load_problem = (f"The list of your last downloads could not be read "
                                  f"({type(problem).__name__}). It was kept as {aside.name}.")
             return
@@ -305,17 +334,20 @@ class Queue:
         """Write the list, newest HISTORY_LIMIT rows, to a temporary file
         first, then put it in place: a crash mid-write never leaves half a
         list (CLAUDE.md §2.2)."""
-        if self._store is None:
+        if self._store is None or self._store_blocked:
             return
-        with self._lock:
-            # The oldest finished rows go first; a row in progress never does.
-            extra = len(self._order) - HISTORY_LIMIT
-            for job_id in [i for i in self._order if self._jobs[i].state not in ACTIVE_STATES][:max(0, extra)]:
-                del self._jobs[job_id]
-                self._order.remove(job_id)
-            rows = [{k: getattr(self._jobs[i], k) for k in _KEPT} for i in self._order]
-        text = json.dumps({"version": 1, "jobs": rows}, ensure_ascii=False, indent=1)
+        # The list is taken INSIDE the save lock: taken outside, two downloads
+        # ending together could write the older list last, and after a crash
+        # a finished row came back "interrupted" (hunt of 2026-10-31).
         with self._save_lock:
+            with self._lock:
+                # The oldest finished rows go first; a row in progress never does.
+                extra = len(self._order) - HISTORY_LIMIT
+                for job_id in [i for i in self._order if self._jobs[i].state not in ACTIVE_STATES][:max(0, extra)]:
+                    del self._jobs[job_id]
+                    self._order.remove(job_id)
+                rows = [{k: getattr(self._jobs[i], k) for k in _KEPT} for i in self._order]
+            text = json.dumps({"version": 1, "jobs": rows}, ensure_ascii=False, indent=1)
             temp = self._store.with_name(self._store.name + ".tmp")
             try:
                 self._store.parent.mkdir(parents=True, exist_ok=True)
@@ -325,10 +357,49 @@ class Queue:
                 # The downloads go on; only the memory of them is not kept.
                 print(f"Could not keep the list of downloads: {problem}")
 
+    def rescued(self, saved: list[tuple[str, Path]]) -> None:
+        """Rows whose file the start-up sweep saved from a crash: done, with
+        that file -- "Continue" made a second copy, "name (2)" (hunt of
+        2026-10-31)."""
+        with self._lock:
+            for job_id, path in saved:
+                job = self._jobs.get(job_id) if job_id else None
+                if job is None or not job.interrupted or not path.is_file():
+                    continue
+                if str(path) not in job.files:
+                    job.files.append(str(path))
+                job.state, job.interrupted = DONE, False
+                job.note = "Saved from the download cut off last time."
+        self.save()
+
     def unfinished(self) -> int:
         """Downloads waiting or running now: asked before the window closes."""
         with self._lock:
             return sum(1 for j in self._jobs.values() if j.state in ACTIVE_STATES)
+
+    def targets_in_use(self, besides: str = "") -> set[str]:
+        """The files that waiting or running jobs will write. Windows only
+        asks about a file already on the disk: two untitled videos of
+        "Choose for each" both got "unknown.mp4", and the second replaced the
+        first while both rows said done (hunt of 2026-10-31). A job with no
+        "Save as" name counts by its title, the name its program will most
+        likely give: a later "Save as" of the same title replaced it."""
+        with self._lock:
+            return self._taken(besides)
+
+    def _taken(self, besides: str) -> set[str]:
+        from .dialogs import safe_filename, without_media_ending
+        taken = set()
+        for job_id, job in self._jobs.items():
+            if job.state not in ACTIVE_STATES or job_id == besides:
+                continue
+            if job.target:
+                taken.add(_same_path(job.target))
+            elif job.title:
+                stem = safe_filename(without_media_ending(job.title), fallback="")
+                if stem:
+                    taken.add(_same_path(str(Path(job.folder) / f"{stem}.{job.mode}")))
+        return taken
 
     # -- public ------------------------------------------------------------
 
@@ -352,6 +423,10 @@ class Queue:
             cookie_header=cookie_header, subs=subs, sub_lang=sub_lang,
         )
         with self._lock:
+            # Checked and added in one step: two requests at once cannot both
+            # pass with the same file.
+            if target and target_clashes(str(target), self._taken(replace)):
+                raise TargetInUse(Path(target).name)
             if replace:
                 old = self._jobs.get(replace)
                 if old is None or old.state in ACTIVE_STATES:
@@ -603,7 +678,7 @@ class Queue:
                     out_path=Path(job.target) if job.target else None,
                     force=job.force, cookie_file=cookie_file, on_step=on_step,
                     on_destination=on_destination, on_writing=on_writing,
-                    on_live=on_live, on_title=on_title,
+                    on_live=on_live, on_title=on_title, job_id=job.id,
                     subs=job.subs, sub_lang=job.sub_lang, on_line=on_line,
                 )
             else:
@@ -626,7 +701,7 @@ class Queue:
                         # ask for one.
                         cookie_header=job.cookie_header,
                         stop=job.stop,
-                        subs=job.subs, sub_lang=job.sub_lang,
+                        subs=job.subs, sub_lang=job.sub_lang, job_id=job.id,
                     ),
                     on_progress=on_percent, on_start=on_start, on_step=on_step,
                     on_bytes=on_bytes, on_line=on_line,
@@ -734,8 +809,9 @@ class Queue:
                         pass            # still held: a leftover, never a crash
             # A failure keeps its pieces -- yt-dlp picks them up on Retry --
             # and remembers them, so the row can say where they are. The same
-            # narrow list as a Stop's: only names announced for THIS job.
-            if failed and not live:
+            # narrow list as a Stop's: only names announced for THIS job. An
+            # interrupted row too: removing it must still say they are there.
+            if (failed or (stopped and interrupted)) and not live:
                 pieces = [str(p) for p in _leftovers(destinations, job.started - 2, writing)]
                 with self._lock:
                     job.pieces = pieces
@@ -771,11 +847,14 @@ class Queue:
                 # Never the link: a message on the screen says a name only
                 # ("A download failed" when there is none).
                 named = job.title or saved
-            if state == DONE and count > 1:
+            if state == DONE and count > 1 and not skipped:
                 # A playlist in one row: its title and how many files.
                 notify.ended(named, "done", count)
             elif state == DONE:
-                notify.ended(saved or named, "already" if skipped else "done")
+                # A playlist already there is "already", never "finished"
+                # (hunt of 2026-10-31), and named by its title.
+                notify.ended(named if count > 1 else saved or named,
+                             "already" if skipped else "done")
             elif state == ERROR:
                 notify.ended(named, "failed")
             else:

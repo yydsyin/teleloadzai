@@ -9,6 +9,7 @@ Windows only, which matches v1 (CLAUDE.md, decision 2).
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -143,15 +144,22 @@ def fit_name(folder: Path, base: str, ending: int = NAME_ENDING) -> str:
     return base.rstrip(" .") or UNKNOWN
 
 
-def free_name(folder: Path, base: str, extension: str) -> str:
-    """`base`, or `base (2)`, `base (3)`... -- the first one not in `folder`.
+def free_name(folder: Path, base: str, extension: str,
+              taken: set[str] = frozenset(), disk: bool = True) -> str:
+    """`base`, or `base (2)`, `base (3)`... -- the first one not in `folder`,
+    nor in `taken` (files that downloads in the list will write, as
+    `os.path.normcase` full paths). `disk=False` looks at `taken` only.
 
     Two different videos without a title must not share "unknown.mp4": the
     second would be refused as "already there" (decision 24), or replace the
     first. Windows names its copies the same way.
     """
+    def used(name: str) -> bool:
+        path = folder / f"{name}.{extension}"
+        return (disk and path.exists()) or os.path.normcase(os.path.abspath(path)) in taken
+
     candidate, number = base, 2
-    while (folder / f"{candidate}.{extension}").exists():
+    while used(candidate):
         candidate, number = f"{base} ({number})", number + 1
     return candidate
 
@@ -234,15 +242,19 @@ def pick_folder(start: Path) -> Path | None:
     return Path(chosen) if chosen else None
 
 
-def save_file(suggested_name: str, mode: str, start: Path) -> Path | None:
+def save_file(suggested_name: str, mode: str, start: Path,
+              taken: set[str] = frozenset()) -> Path | None:
     """Open the Windows "Save as" dialog. Returns None if the user cancels.
 
     Windows asks about replacing an existing file by itself, so when a path
-    comes back the user has already agreed to overwrite it.
+    comes back the user has already agreed to overwrite it. It cannot ask
+    about a file that a download in the list has not written yet (`taken`):
+    that name is never suggested.
     """
     extension = mode if mode in ("mp3", "txt") else "mp4"
     base = safe_filename(without_media_ending(suggested_name), fallback="")
-    name = f"{base or free_name(start, UNKNOWN, extension)}.{extension}"
+    name = (free_name(start, base, extension, taken, disk=False) if base
+            else free_name(start, UNKNOWN, extension, taken)) + f".{extension}"
     script = _SAVE_FILE.format(
         start=_quote(start),
         name=_quote(name),

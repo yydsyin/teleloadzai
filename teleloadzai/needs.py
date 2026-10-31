@@ -43,11 +43,42 @@ SEEN_BEFORE = {
 _lock = threading.Lock()
 
 
-def _read() -> dict:
+def _say(text: str) -> None:
+    """A problem with this file, said in the Console (decision 34)."""
+    from . import console
+    console.add("app", f"Teleloadzai: {text}", "err")
+
+
+def _read(strict: bool = False) -> dict | None:
+    """The file's lines; {} when there is none. With `strict`: a damaged file
+    is set aside under a name of its own and said, then {} (learning goes
+    on); a file another program holds gives None (this line waits)."""
     try:
         data = json.loads(FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        if not isinstance(data, dict):
+            raise ValueError("not a table")
+    except FileNotFoundError:
         return {}
+    except ValueError:
+        if not strict:
+            return {}
+        aside, number = FILE.with_name("needs (unreadable).json"), 2
+        while aside.exists():
+            aside, number = FILE.with_name(f"needs (unreadable {number}).json"), number + 1
+        try:
+            os.replace(FILE, aside)
+        except OSError:
+            _say(f"{FILE.name} is damaged and could not be set aside: what each site "
+                 "needs is not updated.")
+            return None
+        _say(f"{FILE.name} was damaged. It was kept as {aside.name}; the Sites page "
+             "starts again from what Teleloadzai knew before.")
+        return {}
+    except OSError as problem:
+        if strict:
+            _say(f"{FILE.name} could not be read ({problem.strerror}): this download's "
+                 "result is not kept on the Sites page.")
+        return None if strict else {}
     return {k: v for k, v in data.items()
             if isinstance(v, dict) and v.get("need") in KINDS and isinstance(v.get("seen"), str)}
 
@@ -65,11 +96,23 @@ def record(site: str, program: str, need: str) -> None:
     if not site or not program or need not in KINDS:
         return
     with _lock:
-        data = _read()
+        data = _read(strict=True)
+        # A file there but unreadable is never written over with this one
+        # line: everything learned before was lost that way (hunt of
+        # 2026-10-31). This line is dropped instead, and said.
+        if data is None:
+            return
         data[f"{site}|{program}"] = {"need": need, "seen": time.strftime("%Y-%m-%d")}
         temp = FILE.with_name(FILE.name + ".tmp")
         try:
             temp.write_text(json.dumps(data, indent=1), encoding="utf-8")
             os.replace(temp, FILE)
-        except OSError:
-            pass                # a line not updated, never a crash of the job
+        except OSError as problem:
+            # A line not updated, never a crash of the job -- but said, and
+            # no half-written .tmp left behind.
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            _say(f"{FILE.name} could not be written ({problem.strerror}): this "
+                 "download's result is not kept on the Sites page.")

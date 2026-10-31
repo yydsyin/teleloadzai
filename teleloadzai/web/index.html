@@ -2885,7 +2885,7 @@ function jobRow(job) {
 
   const force = row.querySelector("[data-force]");
   if (force) force.addEventListener("click", async () => {
-    await api("/api/job/" + force.dataset.force + "/retry", { force: true });
+    await retryRow(force.dataset.force, { force: true });
     refresh();
   });
   const reread = row.querySelector("[data-reread]");
@@ -2904,7 +2904,7 @@ function jobRow(job) {
   if (again) again.addEventListener("click", (event) => {
     if (again.dataset.armed !== "yes") event.stopPropagation();
     twoClicks(again, "Replace the file? Click again", async () => {
-      await api("/api/job/" + again.dataset.again + "/retry", { force: true });
+      await retryRow(again.dataset.again, { force: true });
       closeMenus(null);
       refresh();
     });
@@ -2912,13 +2912,17 @@ function jobRow(job) {
 
   const retry = row.querySelector("[data-retry]");
   if (retry) retry.addEventListener("click", async () => {
-    await api("/api/job/" + retry.dataset.retry + "/retry", {});
+    await retryRow(retry.dataset.retry);
     refresh();
   });
 
   const dismiss = row.querySelector("[data-dismiss]");
   if (dismiss) dismiss.addEventListener("click", async () => {
-    await api("/api/job/" + dismiss.dataset.dismiss + "/remove", {});
+    const answer = await api("/api/job/" + dismiss.dataset.dismiss + "/remove", {});
+    if (answer.error) setStatus("Error: " + answer.error);
+    // The row was the only pointer to its unfinished pieces: said once, so
+    // they are not forgotten in the folder (hunt of 2026-10-31).
+    else if (job.pieces_on_disk) setStatus(piecesLeft(job.pieces_on_disk, job.folder));
     refresh();
   });
 
@@ -3138,19 +3142,42 @@ function paintListTools(jobs) {
 
 let loadProblemSaid = false;
 
+/** Unfinished pieces a removed row leaves behind, said in words. */
+function piecesLeft(count, folder) {
+  return `Removed from the list. ${count === 1 ? "1 unfinished piece of it stays"
+    : `${count} unfinished pieces stay`} in ${folder ? folder : "your folders"}: you can delete ${count === 1 ? "it" : "them"} there.`;
+}
+
+/** Retry, Continue, "Download again": the server's refusal is said, never a
+ *  click that does nothing (hunt of 2026-10-31). Returns the error, or "". */
+async function retryRow(id, body = {}) {
+  const answer = await api("/api/job/" + id + "/retry", body);
+  if (answer.error) setStatus("Error: " + answer.error);
+  return answer.error || "";
+}
+
+/** Several rows, one after another: each refusal with its own words, never
+ *  one guessed reason for all ("no longer in the list" was said even for
+ *  a folder gone or a name in use). */
+async function retryRows(rows) {
+  const refused = [];
+  for (const job of rows) {
+    const answer = await api("/api/job/" + job.id + "/retry", {});
+    if (answer.error) refused.push(`${job.title || shortLink(job.url)}: ${answer.error}`);
+  }
+  return refused;
+}
+
 $("resume-all").addEventListener("click", async () => {
   const rows = lastJobs.filter((j) => j.state === "cancelled" && j.interrupted);
   const button = $("resume-all");
   button.disabled = true;
-  let again = 0;
-  for (const job of rows) {
-    const answer = await api("/api/job/" + job.id + "/retry", {});
-    if (!answer.error) again++;
-  }
+  const refused = await retryRows(rows);
+  const again = rows.length - refused.length;
   button.disabled = false;
   await refresh();
-  notify(again === rows.length ? (again === 1 ? "1 download continues." : `${again} downloads continue.`)
-    : `${again} of ${rows.length} downloads continue; the others are no longer in the list.`);
+  if (!refused.length) notify(again === 1 ? "1 download continues." : `${again} downloads continue.`);
+  else setStatus(`${again} of ${rows.length} downloads continue. Not started: ${refused.join(" · ")}`);
 });
 
 retryFailedButton.addEventListener("click", async () => {
@@ -3163,15 +3190,12 @@ retryFailedButton.addEventListener("click", async () => {
     return;
   }
   button.disabled = true;
-  let again = 0;
-  for (const job of rows) {
-    const answer = await api("/api/job/" + job.id + "/retry", {});
-    if (!answer.error) again++;
-  }
+  const refused = await retryRows(rows);
+  const again = rows.length - refused.length;
   button.disabled = false;
   await refresh();
-  notify(again === rows.length ? `${again} downloads started again.`
-    : `${again} of ${rows.length} downloads started again; the others are no longer in the list.`);
+  if (!refused.length) notify(`${again} downloads started again.`);
+  else setStatus(`${again} of ${rows.length} downloads started again. Not started: ${refused.join(" · ")}`);
 });
 
 async function tick() {
@@ -3430,8 +3454,19 @@ function reportFinished(before, now) {
 
 async function updateAll() {
   updateBarLater = false;
-  for (const tool of pendingUpdates()) await api("/api/tools/install", { id: tool.id });
+  const started = {};
+  const refused = [];
+  for (const tool of pendingUpdates()) {
+    const answer = await api("/api/tools/install", { id: tool.id });
+    if (answer.error) refused.push(`${tool.name || toolName(tool.id)}: ${answer.error}`);
+    else started[tool.id] = { state: "running" };
+  }
   await loadTools();
+  // An update that ended before the first look (offline: at once) was never
+  // seen running, so the poll never said it -- only the Programs row did
+  // (hunt of 2026-10-31). Said here, like the others.
+  reportFinished(started, toolsData.progress);
+  if (refused.length) setStatus(`Not updated: ${refused.join(" · ")}`);
 }
 
 /** A failed row's tool: update it, then retry the row -- once. */
@@ -3452,7 +3487,7 @@ async function updateAndRetry(job, button) {
     return;
   }
   notify(installSentence(job.tool, result) + " Retrying…");
-  await api("/api/job/" + job.id + "/retry", {});
+  await retryRow(job.id);
   refresh();
 }
 
@@ -4498,7 +4533,11 @@ $("clear").addEventListener("click", async () => { await api("/api/jobs/clear", 
 $("clear-all").addEventListener("click", () => {
   const ended = lastJobs.filter((j) => ["done", "cancelled", "error"].includes(j.state) && !j.interrupted).length;
   twoClicks($("clear-all"), `Remove ${ended}? Click again`, async () => {
-    await api("/api/jobs/clear-all", {});
+    const left = lastJobs.filter((j) => ["done", "cancelled", "error"].includes(j.state) && !j.interrupted)
+      .reduce((sum, j) => sum + (j.pieces_on_disk || 0), 0);
+    const answer = await api("/api/jobs/clear-all", {});
+    if (answer.error) setStatus("Error: " + answer.error);
+    else if (left) setStatus(piecesLeft(left, ""));
     refresh();
   });
 });

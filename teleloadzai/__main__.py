@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import cookies, login, notify, runners, toolservers
+from . import console, cookies, login, notify, runners, toolservers
 from .config import APP_NAME, APP_VERSION
 from .server import QUEUE, claim, forget_if_once, holder_is_us, serve, start_background
 
@@ -193,9 +193,21 @@ def main() -> int:
     # finished goes to the user's folder, the rest is deleted.
     try:
         rescued = runners.sweep_work_folders()
-        if rescued:
-            print(f"Kept from downloads cut off last time: {', '.join(rescued)}")
+        files = [path.name for owner, path in rescued if path.is_file()]
+        stuck = [str(path) for owner, path in rescued if path.is_dir()]
+        # Said in the Console too: the console window is hidden from the user.
+        if files:
+            text = f"Kept from downloads cut off last time: {', '.join(files)}"
+            print(text)
+            console.add("app", f"Teleloadzai: {text}", "note")
+        if stuck:
+            text = ("Some files of downloads cut off last time could not be moved "
+                    f"(still in use?). They stay in {', '.join(stuck)}; Teleloadzai tries "
+                    "again at the next start.")
+            print(text)
+            console.add("app", f"Teleloadzai: {text}", "err")
     except Exception as problem:
+        rescued = []
         print(f"Could not tidy the unfinished downloads of last time: {problem}")
     # A site refused since (Netflix) must not keep the cookies it had.
     try:
@@ -207,6 +219,7 @@ def main() -> int:
     # The list of the last run, after the sweep above has moved what cut-off
     # downloads finished: only now is the port ours (decision 21).
     QUEUE.load()
+    QUEUE.rescued([(owner, path) for owner, path in rescued if owner])
 
     if args.no_browser:
         serve(port=args.port, open_browser=False, httpd=httpd)
