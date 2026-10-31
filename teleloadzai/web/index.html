@@ -140,6 +140,9 @@
      or the main screen scrolled (measured at 860x814, 2026-10-24). The
      empty list's drawing goes; a list with rows keeps two in sight. */
   .wrap:has(#batch:not(.hidden)) > #jobs-card { min-height: 96px; }
+  /* "Choose for each" with its Subtitles row and "Not added": 834 px in an
+     814 px window. The list behind gives the room (critique of 2026-10-31). */
+  .wrap:has(#batch.each:not(.hidden)) > #jobs-card { min-height: 72px; }
   .wrap:has(#batch:not(.hidden)) #jobs-empty { display: none; }
   .batch-links li { display: flex; gap: 12px; justify-content: space-between; padding: 4px 0; }
   .batch-links .link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -147,7 +150,9 @@
   #batch-row-mode { margin-top: 10px; }
   /* "Choose for each": a row of choices per video, so the list gets more
      room; Format and Quality for all are not drawn (each row has its own). */
-  #batch.each .batch-links { max-height: min(300px, 30vh); }
+  /* 26vh, not 30: with the card's Subtitles row and "Not added", the page
+     scrolled 6-20 px (critique of 2026-10-31; the page never scrolls). */
+  #batch.each .batch-links { max-height: min(300px, 26vh); }
   #batch.each #batch-row-format, #batch.each #batch-row-quality { display: none; }
   /* The title on its own line, the controls under it in the same columns
      on every row: a long title pushed its controls to a second line, left,
@@ -2139,6 +2144,14 @@ function linkIn(text) {
   return /^[^\s\/]+\.[a-z]{2,}(\/\S*)?$/i.test(text) ? text : "";
 }
 
+/** One key per video where the site has several addresses for it:
+ *  YouTube's watch?v=, youtu.be/ and shorts/ gave two rows and "Download 2"
+ *  for one video (critique of 2026-10-31). Other links: the link itself. */
+function videoKey(url) {
+  const m = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/i);
+  return m ? "youtube:" + m[1] : url;
+}
+
 /** Every link in a text, in order, each once. */
 function linksIn(text) {
   const found = text.match(/https?:\/\/[^\s"'<>，。！？、]+/gi) || [];
@@ -2717,7 +2730,11 @@ function paintTrack(row, job, percent) {
  *  gone for done / failed / stopped / waiting -- a blind user heard
  *  "Bilibili trip.mp4, Open" and no state (loop round 2, 2026-10-23). */
 function sayState(row, job) {
-  const said = job.state === "done" ? (job.skipped ? "" : "Done, in your folder.")
+  // A file moved or deleted since: "Done, in your folder." was a false
+  // success read aloud under a "Gone" on screen (critique of 2026-10-31).
+  const gone = job.state === "done" && !job.skipped && (job.files || []).length && !job.on_disk;
+  const said = gone ? "Gone: the file was moved or deleted since it was saved."
+    : job.state === "done" ? (job.skipped ? "" : "Done, in your folder.")
     : job.state === "error" ? "Failed."
     : job.state === "cancelled" ? (job.interrupted ? "Interrupted when Teleloadzai closed." : "Stopped.")
     : job.state === "waiting" ? "Waiting." : "";
@@ -2786,7 +2803,7 @@ function jobRow(job) {
     <div class="job-top">
       ${mark}<span class="job-name"></span><span class="sr-only job-state"></span>
       <span class="job-right">
-        ${compact && !job.on_disk ? '<span class="done-at gone">Gone</span>' : ""}
+        ${compact && !job.on_disk ? '<span class="done-at gone" aria-hidden="true">Gone · moved or deleted</span>' : ""}
         <span class="small"></span>
         ${failed ? fails.primary : ""}
         ${compact && job.on_disk ? `<button class="ghost tiny" data-open="${job.id}">Open</button>` : ""}
@@ -3076,7 +3093,15 @@ function closeMenus(except) {
 }
 document.addEventListener("click", (event) => {
   const button = event.target.closest(".more-btn");
-  if (!button) { closeMenus(null); return; }
+  if (!button) {
+    // An item that closes its menu ("Hide details") gives the keyboard back
+    // to that row's "⋯": it fell to the page's start (critique of 2026-10-31).
+    const from = event.target.closest(".more-menu");
+    closeMenus(null);
+    if (from && from.isConnected && (!document.activeElement || document.activeElement === document.body
+        || from.contains(document.activeElement))) from.previousElementSibling.focus();
+    return;
+  }
   const menu = button.nextElementSibling;
   closeMenus(menu);
   const open = menu.classList.toggle("hidden") === false;
@@ -3084,8 +3109,18 @@ document.addEventListener("click", (event) => {
   if (open) menu.querySelector("button")?.focus();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
   const open = document.querySelector(".more-menu:not(.hidden)");
+  // A menu, as its role says: the arrow keys move between its items.
+  if (open && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+    const items = [...open.querySelectorAll("button")];
+    const at = items.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+      : (at + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+    event.preventDefault();
+    return;
+  }
+  if (event.key !== "Escape") return;
   if (!open) return;
   closeMenus(null);
   open.previousElementSibling.focus();
@@ -4111,6 +4146,7 @@ let batchExtra = 0;         // links past BATCH_MAX, said on the card
 let strayLines = [];
 let strayFor = "";
 let batchStray = [];
+let batchDupes = [];
 // "Choose for each": the card's one subtitle choice ("", "embed", "file");
 // null until pressed, then the one-link card's remembered choice is used.
 let eachSubs = null;
@@ -4387,6 +4423,16 @@ async function readMany(links) {
   batchExtra = Math.max(0, links.length - BATCH_MAX);
   batchPlaylist = null;
   eachRead++;                 // an older card's reads must not come back
+  // The same video twice is said under "Not added", never downloaded twice.
+  const seen = new Map();
+  batchDupes = [];
+  links = links.filter((url, n) => {
+    const key = videoKey(url);
+    if (!seen.has(key)) { seen.set(key, n + 1); return true; }
+    batchDupes.push(`${shortLink(url)}: the same video as link ${seen.get(key)}.`);
+    return false;
+  });
+  batchExtra = Math.max(0, links.length - BATCH_MAX);
   batch = links.slice(0, BATCH_MAX).map((url) => ({ url, found: null, tool: null }));
   batchStray = $("url").value === strayFor ? strayLines : [];
   eachSubs = null;
@@ -4507,6 +4553,7 @@ function renderBatch() {
     b.setAttribute("aria-pressed", String(b.dataset.bsubs === eachSubsNow()));
   }
 
+  skipped.push(...batchDupes);
   for (const line of batchStray) skipped.push(`“${line.length > 40 ? line.slice(0, 40) + "…" : line}”: not a link.`);
   if (noFfmpeg) skipped.unshift("FFmpeg is not installed, and every download needs it. Paste one link alone: its card installs it.");
   const box = $("batch-skipped");
@@ -4979,7 +5026,13 @@ function renderSites() {
     toggle.setAttribute("aria-expanded", String(sitesUnfolded));
     toggle.textContent = sitesUnfolded ? "Fewer sites"
       : `${quiet.length} more site${quiet.length === 1 ? "" : "s"} with nothing to set`;
-    toggle.addEventListener("click", () => { sitesUnfolded = !sitesUnfolded; renderSites(); });
+    toggle.addEventListener("click", () => {
+      sitesUnfolded = !sitesUnfolded;
+      renderSites();
+      // The table is drawn again: the keyboard stays on this button.
+      const again = document.querySelector("#sites-table .site-more button");
+      if (again) again.focus();
+    });
     holder.appendChild(toggle);
     more.appendChild(holder);
     table.appendChild(more);
