@@ -355,15 +355,21 @@
      under one line: 23 rows of equal weight, used or not (same critique). */
   #sites-table .site-more > * { grid-column: 1 / -1; min-height: 0; }
   #sites-table .site-more button { margin-left: -8px; }
-  .cookie-fold { margin: 0 0 14px; }
-  details.more.cookie-fold > summary {
-    font-size: 15px; color: var(--ink); background: var(--card); margin: 0;
-    border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px;
+  /* The cookie fold is ONE Settings card, a Windows 11 expander: its row
+     (icon, name, what is inside, an arrow) opens the card downward. It was
+     a bare line with the browser's black triangle, and opened a second
+     card under it -- "not noticeable" and "weird" (the user, 2026-10-31). */
+  .cookie-fold > summary { cursor: pointer; list-style: none; }
+  .cookie-fold > summary::-webkit-details-marker { display: none; }
+  .cookie-fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 12px; }
+  .fold-arrow {
+    width: 9px; height: 9px; flex: none; margin-right: 4px;
+    border: solid var(--soft); border-width: 0 2px 2px 0;
+    transform: translateY(-2px) rotate(45deg); transition: transform .15s;
   }
-  #cookie-fold-sum { margin-left: 8px; }
+  .cookie-fold[open] .fold-arrow { transform: translateY(2px) rotate(-135deg); }
   /* Help lines ran about 88 characters in the opened fold (round 2). */
   #cookie-fold .hint { max-width: 72ch; }
-  details.more.cookie-fold[open] > summary { margin-bottom: 8px; }
   /* Log-ins paused (the switch off; the user's choice, 2026-10-23): the
      whole Sites page goes grey and cannot be touched, except the switch
      itself. One cookie store feeds everything here -- the log-ins AND an
@@ -1274,9 +1280,15 @@
            of them stood before the first site in the small window (critique
            of 2026-10-31, model 5 chosen by the user). The warning of hard rule
            5 stays in sight, above. -->
-      <details class="more cookie-fold" id="cookie-fold">
-        <summary>Your log-ins and cookie file<span class="hint" id="cookie-fold-sum"></span></summary>
-        <div class="set-group">
+      <details class="set-group cookie-fold" id="cookie-fold">
+        <summary class="set-row">
+          <span class="opt-icon icon-key" aria-hidden="true"></span>
+          <span class="set-main">
+            <span class="set-name">Your log-ins and cookie file</span>
+            <span class="set-sub" id="cookie-fold-sum"></span>
+          </span>
+          <span class="fold-arrow" aria-hidden="true"></span>
+        </summary>
         <div class="set-row set-row-plain">
           <div class="set-main">
             <details class="more" style="margin:0">
@@ -1301,13 +1313,11 @@
             <span class="set-name">Two ways to add a log-in</span>
             <div class="ways">
               <div class="way">
-                <span class="opt-icon icon-key" aria-hidden="true"></span>
                 <span class="set-name">Log in on the site</span>
                 <span class="set-sub">Recommended</span>
                 <button class="ghost tiny" id="ways-to-sites">Choose a site above</button>
               </div>
               <div class="way">
-                <span class="opt-icon icon-file" aria-hidden="true"></span>
                 <span class="set-name">Import a cookie file</span>
                 <span class="set-sub">A cookies.txt from your browser</span>
                 <button class="ghost tiny" id="cookies-import">Choose my cookies.txt…</button>
@@ -1334,7 +1344,6 @@
         <div class="set-row set-row-plain">
           <div class="set-main hint" id="cookies-summary"></div>
           <span class="set-control"><button class="ghost tiny hidden" id="cookies-forget">Forget them</button></span>
-        </div>
         </div>
       </details>
 
@@ -4835,9 +4844,11 @@ function renderCookies(state) {
   }
   $("cookies-paused").classList.toggle("hidden", !paused);
 
-  // The fold's own line says what is inside, folded or not.
-  $("cookie-fold-sum").textContent = !have ? " · none saved"
-    : state.broken ? " · not usable" : ` · ${state.total} cookies, ${state.sites.length + (state.more_sites || 0)} sites`;
+  // The fold's own line says what is inside, folded or not: the state, then
+  // what can be done there (closed, it gave only a count -- 2026-10-31).
+  $("cookie-fold-sum").textContent = !have ? "None saved · add a log-in or import a file"
+    : state.broken ? "Not usable · import a new file or forget it"
+    : `${state.total} cookies, ${state.sites.length + (state.more_sites || 0)} sites · add a log-in, import, forget`;
   if (!have) {
     $("cookies-state-plain").textContent = "off — none saved";
     $("cookies-summary").textContent = "";
