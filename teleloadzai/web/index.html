@@ -289,10 +289,9 @@
   /* Text and bold words in one flow: as column items, "150 cookies" stood
      alone on its own line (seen the same day). */
   .ways { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
-  .way {
-    display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
-    padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft, transparent);
-  }
+  /* No border: the two ways sit inside the settings card already, and a
+     box in a card is a card in a card (critique of 2026-10-31). */
+  .way { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 4px 0; }
   .way button { margin-top: auto; }
   .way .set-sub { margin-bottom: 4px; }
   .ways-or {
