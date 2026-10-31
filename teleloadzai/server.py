@@ -753,6 +753,10 @@ class Handler(BaseHTTPRequestHandler):
     def _do_post(self) -> None:
         path = urlsplit(self.path).path
         if not path.startswith("/api/") or not self._authorised():
+            # Its body is never read: the connection is closed, or those bytes
+            # began the next request on it ('{"asked":false}GET' -> 501), and
+            # a tab holding an old token showed an empty list (2026-10-31).
+            self.close_connection = True
             self._json({"error": "not allowed"}, 403)
             return
 

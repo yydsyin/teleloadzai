@@ -149,14 +149,21 @@
      room; Format and Quality for all are not drawn (each row has its own). */
   #batch.each .batch-links { max-height: min(300px, 30vh); }
   #batch.each #batch-row-format, #batch.each #batch-row-quality { display: none; }
+  /* The title on its own line, the controls under it in the same columns
+     on every row: a long title pushed its controls to a second line, left,
+     and a short one kept them on the right (critique of 2026-10-31). */
   .batch-links li.each {
-    flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 0;
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px 0;
     border-bottom: 1px solid var(--line);
   }
   .batch-links li.each:last-child { border-bottom: 0; }
-  .each-title { flex: 1 1 220px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .each-title { min-width: 0; overflow-wrap: anywhere; }
   .each-title.reading { color: var(--soft); }
-  .each-choices { display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: wrap; }
+  .each-choices {
+    display: grid; align-items: center; gap: 8px 12px; justify-content: start;
+    grid-template-columns: 7.5rem 6.5rem minmax(0, 12rem) auto;
+  }
+  .each-choices > .each-best, .each-choices > .each-none { font-size: 13px; color: var(--soft); }
   .each-choices .seg-track button { min-height: 28px; padding: 0 10px; font-size: 13px; }
   .each-choices select { font-size: 13px; }
   .each-choices .prog { color: var(--soft); }
@@ -295,17 +302,21 @@
   .set-group #tools-list .tool:first-child { border-top: 1px solid var(--line); }
   /* Windows' own on/off switch, drawn on the checkbox itself (the box and
      its .checked stay what the code reads). */
+  /* Off is Windows 11's own: an outline and a soft-ink knob. The old pale
+     fill with a card-coloured knob was 1.4:1 on the card (critique of
+     2026-10-31): "on" and "off" looked alike. */
   input.toggle {
     appearance: none; -webkit-appearance: none; margin: 0; flex: none; cursor: pointer;
-    width: 42px; height: 22px; border-radius: 99px; position: relative;
-    background: color-mix(in srgb, var(--ink) 18%, var(--card)); transition: background-color .15s ease-out;
+    width: 42px; height: 22px; border-radius: 99px; position: relative; box-sizing: border-box;
+    background: transparent; border: 1px solid var(--soft);
+    transition: background-color .15s ease-out, border-color .15s ease-out;
   }
   input.toggle::before {
-    content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%;
-    background: var(--card); box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .15s ease-out;
+    content: ""; position: absolute; top: 4px; left: 4px; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--soft); transition: transform .15s ease-out, background-color .15s ease-out;
   }
-  input.toggle:checked { background: var(--accent-fill); }
-  input.toggle:checked::before { transform: translateX(20px); }
+  input.toggle:checked { background: var(--accent-fill); border-color: var(--accent-fill); }
+  input.toggle:checked::before { transform: translateX(20px); background: var(--card); }
   .nav-icon { width: 18px; height: 18px; flex: none; background: currentColor;
     -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
   /* The sites: one row per site, its name, its program, its log-in. */
@@ -328,6 +339,25 @@
   #sites-table .program-pick { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }
   #sites-table .program-why { font-size: 13px; }
   #sites-table .login { justify-content: flex-end; }
+  /* The column names stay in sight while 23 sites scroll under them; they
+     scrolled away (critique of 2026-10-31). */
+  #sites-table .site-head > * { position: sticky; top: 0; z-index: 1; background: var(--card); box-shadow: 0 1px 0 var(--line); }
+  /* "hidden" made the card a scroll box, and the names did not stick;
+     "clip" keeps the round corners without that. */
+  .set-group:has(> #sites-table) { overflow: clip; }
+  /* Sites with nothing to set (one program, no log-in, nothing seen) fold
+     under one line: 23 rows of equal weight, used or not (same critique). */
+  #sites-table .site-more > * { grid-column: 1 / -1; min-height: 0; }
+  #sites-table .site-more button { margin-left: -8px; }
+  .cookie-fold { margin: 0 0 14px; }
+  details.more.cookie-fold > summary {
+    font-size: 15px; color: var(--ink); background: var(--card); margin: 0;
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px;
+  }
+  #cookie-fold-sum { margin-left: 8px; }
+  /* Help lines ran about 88 characters in the opened fold (round 2). */
+  #cookie-fold .hint { max-width: 72ch; }
+  details.more.cookie-fold[open] > summary { margin-bottom: 8px; }
   /* Log-ins paused (the switch off; the user's choice, 2026-10-23): the
      whole Sites page goes grey and cannot be touched, except the switch
      itself. One cookie store feeds everything here -- the log-ins AND an
@@ -566,7 +596,8 @@
   }
   .con-box.wrap-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
   .con-box:empty::before { content: "Nothing yet. Title reads, downloads and updates write here while they work."; color: #868c96; }
-  .con-box .t { color: #7d838e; margin-right: 12px; }
+  /* 4.87:1 on the box; #7d838e was 4.33 (critique of 2026-10-31). */
+  .con-box .t { color: #868c96; margin-right: 12px; }
   /* "hd", not "head": .head is the page's row that spreads to both ends. */
   .con-box .hd { color: #f5c400; margin-top: 8px; }
   .con-box .hd:first-child { margin-top: 0; }
@@ -684,6 +715,7 @@
   .fail-more { margin-top: 8px; padding: 10px 12px; border-radius: 8px;
                background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
   .fail-more .err { margin: 0 0 8px; }
+  .fail-more .tool-words > summary { margin-top: 0; }
   .fail-more .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   /* Model D (chosen by the user 2026-10-25, the list was "so busy"): a mark
      at the start of each ended row, ONE button, the rest behind "⋯"; the
@@ -881,6 +913,7 @@
           <span id="tool-need-text"></span>
           <div style="margin-top:6px"><button class="tiny" id="tool-need-login"></button></div>
         </div>
+        <div class="hint warn hidden" id="reread-note" style="margin-top:8px;padding:6px 10px;border-width:1px;border-style:solid;border-radius:8px"></div>
         <div class="hint hidden" id="blocked-tools" style="margin-top:6px"></div>
         <div class="hint hidden" id="probe-note" style="margin-top:6px"></div>
         <details class="more hidden" id="probe-words" style="margin-top:6px">
@@ -978,6 +1011,18 @@
       <span class="opt-control seg-track" role="group" aria-label="Choices for these videos">
         <button class="smode" data-smode="same" aria-pressed="true">Same for all</button>
         <button class="smode" data-smode="each" aria-pressed="false">Choose for each</button>
+      </span>
+    </div>
+    <!-- "Choose for each": the subtitle choice is the card's, once; each row
+         keeps only its language (critique of 2026-10-31: one row's list
+         mixed both, 13 options). -->
+    <div class="opt-row hidden" id="batch-row-subs">
+      <span class="opt-icon icon-cc" aria-hidden="true"></span>
+      <span class="opt-name">Subtitles</span>
+      <span class="opt-control seg-track" role="group" aria-label="Subtitles for these videos">
+        <button type="button" class="bsubs" data-bsubs="" aria-pressed="true">Off</button>
+        <button type="button" class="bsubs" data-bsubs="embed" aria-pressed="false">In the video</button>
+        <button type="button" class="bsubs" data-bsubs="file" aria-pressed="false">Separate file</button>
       </span>
     </div>
     <ul class="batch-links" id="batch-links"></ul>
@@ -1202,6 +1247,28 @@
             <span class="hint" id="cookies-state-plain">off</span>
           </span>
         </div>
+      </div>
+
+      <!-- Decision 13's first level (the program per site) and decision 36's
+           log-in, on one row per site. A switch only where there is a real
+           choice; elsewhere the program's name. -->
+      <div class="hint warn-text hidden" id="login-blocked" style="margin:0 0 8px"></div>
+      <div class="set-group">
+        <div id="sites-table" role="table" aria-label="Your sites">Loading…</div>
+      </div>
+
+      <div class="card warn set-warning">
+        Downloading a lot while logged in can get that account suspended.
+        Use a second account.
+      </div>
+
+      <!-- The sites first, the cookie mechanics folded under them: about 560 px
+           of them stood before the first site in the small window (critique
+           of 2026-10-31, model 5 chosen by the user). The warning of hard rule
+           5 stays in sight, above. -->
+      <details class="more cookie-fold" id="cookie-fold">
+        <summary>Your log-ins and cookie file<span class="hint" id="cookie-fold-sum"></span></summary>
+        <div class="set-group">
         <div class="set-row set-row-plain">
           <div class="set-main">
             <details class="more" style="margin:0">
@@ -1229,7 +1296,7 @@
                 <span class="opt-icon icon-key" aria-hidden="true"></span>
                 <span class="set-name">Log in on the site</span>
                 <span class="set-sub">Recommended</span>
-                <button class="ghost tiny" id="ways-to-sites">Choose a site below</button>
+                <button class="ghost tiny" id="ways-to-sites">Choose a site above</button>
               </div>
               <span class="ways-or" aria-hidden="true">or</span>
               <div class="way">
@@ -1261,20 +1328,8 @@
           <div class="set-main hint" id="cookies-summary"></div>
           <span class="set-control"><button class="ghost tiny hidden" id="cookies-forget">Forget them</button></span>
         </div>
-      </div>
-
-      <div class="card warn set-warning">
-        Downloading a lot while logged in can get that account suspended.
-        Use a second account.
-      </div>
-
-      <!-- Decision 13's first level (the program per site) and decision 36's
-           log-in, on one row per site. A switch only where there is a real
-           choice; elsewhere the program's name. -->
-      <div class="hint warn-text hidden" id="login-blocked" style="margin:0 0 8px"></div>
-      <div class="set-group">
-        <div id="sites-table" role="table" aria-label="Your sites">Loading…</div>
-      </div>
+        </div>
+      </details>
 
       <div class="card warn hidden" id="login-waiting">
         <div class="title" id="login-waiting-title">Waiting for you</div>
@@ -1478,11 +1533,21 @@ function updateGoLabel() {
   // Grey next to a pink box too: the box said "this will be refused" while
   // Download stayed the bright button (review of 2026-10-05).
   const refusedBox = !$("tool-need").classList.contains("hidden") && $("tool-need").classList.contains("warn");
-  $("go").classList.toggle("ghost", doubtful || refusedBox);
+  // Opened by "Read the link again": the same link on the same program
+  // failed a moment ago. The card said nothing of it, under a bright
+  // Download that would fail the same way (critique of 2026-10-31). Another
+  // program on the switch is another try: no note then.
+  const failedRow = rereadFor && rereadFor.url === currentUrl
+    ? lastJobs.find((j) => j.id === rereadFor.id && j.state === "error") : null;
+  const failedAgain = Boolean(failedRow && chosen && chosen.id === failedRow.tool && !probeProblem);
+  $("reread-note").classList.toggle("hidden", !failedAgain);
+  $("reread-note").innerHTML = failedAgain
+    ? `This link failed last time with ${failedRow.tool_name || failedRow.tool}. ${errorExplanation(failedRow)}` : "";
+  $("go").classList.toggle("ghost", doubtful || refusedBox || failedAgain);
   // The button names what happens: "Add…" did not say "download"
   // (critique, 2026-09-25). The "…" is kept only when a Windows "Save as"
   // window will open first.
-  $("go").textContent = doubtful ? "Try anyway" : askWhere ? "Download…" : "Download";
+  $("go").textContent = doubtful || failedAgain ? "Try anyway" : askWhere ? "Download…" : "Download";
   // Not when the reader is already the newest version: the same answer
   // would come back (upToDate) -- said instead, below.
   const newest = doubtful && !probeKnown && !probeNoAnswer && upToDate(reader.id);
@@ -1825,9 +1890,13 @@ function showChosenTool() {
   // goes. For a site with one tool the reason read "yt-dlp — the only
   // serious option for this site", jargon that answered a question nobody
   // asked (critique, 2026-09-25).
+  // Since 2026-10-31 no tag for one tool either: a name the user cannot
+  // change ("YouTube · yt-dlp" on every card) was a word to learn for
+  // nothing (critique, the user's choice). It is said where it matters: an
+  // install to make, an error it gave, the switch where there are two.
   const several = currentTools.length > 1;
-  $("tool").textContent = chosen && !several ? chosen.name : "";
-  $("tool").classList.toggle("hidden", several || !chosen);
+  $("tool").textContent = "";
+  $("tool").classList.add("hidden");
   for (const button of $("tool-pick").children) {
     button.setAttribute("aria-pressed", String(chosen && button.dataset.tool === chosen.id));
   }
@@ -2465,11 +2534,18 @@ function failButtons(job) {
   // others go in the row's "⋯" menu.
   // When nothing is pushed (primary ""), the row does not push Retry either:
   // its words say "try again in a few days". yt-dlp's preview version, when
-  // offered, is the one way out worth a button; else Retry waits in "⋯"
-  // (review of 2026-10-25).
-  const first = all.find(([name]) => name === primary)
-    || all.find(([name]) => name === (primary === "" ? "preview" : "retry"));
-  return { primary: first ? `<button class="ghost tiny" ${first[1]}</button>` : "",
+  // offered, is the one way out worth a button; else "Read the link again"
+  // -- a fresh card that says this failure and lets the format or program
+  // change. The row had nothing to press ("a dead end"), then a Retry under
+  // words saying it would not help (critique of 2026-10-31, rounds 1 and 2;
+  // the user's choice). Retry waits in "⋯".
+  const reread = primary === "" && !all.some(([name]) => name === "preview") && job.url;
+  const first = reread ? null : all.find(([name]) => name === primary)
+    || (primary === "" && all.find(([name]) => name === "preview"))
+    || all.find(([name]) => name === "retry");
+  return { primary: reread ? `<button class="ghost tiny" data-reread="${job.id}">Read the link again</button>`
+             : first ? `<button class="ghost tiny" ${first[1]}</button>` : "",
+           reread: Boolean(reread),
            rest: all.filter((b) => b !== first).map(([, inner]) => `<button type="button" role="menuitem" ${inner}</button>`) };
 }
 
@@ -2691,7 +2767,7 @@ function jobRow(job) {
       // A fresh card for this link: the program and choices chosen NOW
       // (a log-in since, another format); its Download takes this row's
       // place (the user, 2026-10-26). Retry stays the same try, at once.
-      job.url && `<button type="button" role="menuitem" data-reread="${job.id}">Read the link again</button>`,
+      job.url && !fails.reread && `<button type="button" role="menuitem" data-reread="${job.id}">Read the link again</button>`,
       `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`])
     // A finished row had no Remove of its own -- only "Clear finished", all
     // at once (the user, 2026-10-25). "from list": the file stays.
@@ -2756,7 +2832,10 @@ function jobRow(job) {
       </div>` : ""}
     ${failed ? `<div class="fail-why">${errorExplanation(job)}</div>
       ${hasDetails ? `<div class="fail-more hidden">
-        ${toolSaid ? '<div class="err"></div>' : ""}
+        ${toolSaid ? `<details class="more tool-words">
+            <summary>Show ${job.tool_name || job.tool}'s exact words, for a bug report</summary>
+            <div class="err"></div>
+          </details>` : ""}
         ${douyinNote(job)}
         ${pieces ? `<div class="hint" style="margin-bottom:8px">${pieces === 1
           ? "1 unfinished piece of this download is still in your folder."
@@ -2824,7 +2903,12 @@ function jobRow(job) {
   paintTrack(row, job, percent);
   sayState(row, job);
   const errorText = row.querySelector(".err");
-  if (errorText) errorText.textContent = (toolSaid ? `${job.tool_name || job.tool} said: ` : "") + (job.error || "");
+  // Its own words, raw English with its own advice ("…using yt-dlp -U"):
+  // said as such, so they are not read as Teleloadzai's advice (critique of
+  // 2026-10-31: they contradicted "already the newest version").
+  // Since round 2 they sit in their own fold under Details, its line saying
+  // what they are for: raw English read first looked like the advice.
+  if (errorText) errorText.textContent = job.error || "";
   const details = row.querySelector("[data-details]");
   if (details) {
     const more = row.querySelector(".fail-more");
@@ -2855,11 +2939,16 @@ function jobRow(job) {
     : `Saved before it failed: ${files.length} files, ${fileName(files[0])} first.`;
   // Three rows gave three buttons all called "Retry" or "Stop" to a screen
   // reader: each says which download it acts on (review of 2026-09-27).
+  // The name the row SHOWS: a playlist row showed "test" while its buttons
+  // were "Download again: SYML - Where's My Love (Lyrics) 1.mp4 and 3 more"
+  // -- two names for one row (critique of 2026-10-31, WCAG 2.5.3).
+  const nameNode = row.querySelector(".job-name").lastChild;
+  const spoken = (nameNode && nameNode.textContent.trim()) || shown;
   for (const button of row.querySelectorAll("button")) {
-    button.setAttribute("aria-label", `${button.textContent.trim()}: ${shown}`);
+    button.setAttribute("aria-label", `${button.textContent.trim()}: ${spoken}`);
   }
   const moreButton = row.querySelector(".more-btn");
-  if (moreButton) moreButton.setAttribute("aria-label", `More: ${shown}`);
+  if (moreButton) moreButton.setAttribute("aria-label", `More: ${spoken}`);
   const update = row.querySelector("[data-update]");
   if (update) update.addEventListener("click", () => updateAndRetry(job, update));
   const preview = row.querySelector("[data-preview]");
@@ -3811,7 +3900,14 @@ function setReadLabel() {
   if ($("read").disabled) return;
   $("read").textContent = $("url").value.trim() ? "Read" : "Paste";
 }
-$("url").addEventListener("input", setReadLabel);
+$("url").addEventListener("input", () => {
+  setReadLabel();
+  // The error was about the text that was there: "That is not a link"
+  // stayed under an emptied box, then under a new, good link (critique of
+  // 2026-10-31, rounds 1 and 2). Read says it again if it still applies.
+  $("url-error").classList.add("hidden");
+  $("url").removeAttribute("aria-invalid");
+});
 
 // The links last offered: cleared by hand, they do not come back.
 let lastOffered = "";
@@ -3885,6 +3981,11 @@ $("url").addEventListener("paste", (event) => {
   if (several.length > 1) {
     event.preventDefault();
     $("url").value = several.join(" ");
+    // A line with a link in it is a share text, cut to its link; a line
+    // with none was dropped in silence.
+    strayLines = pasted.split(/\r?\n/).map((line) => line.trim())
+      .filter((line) => line && !linksIn(line).length);
+    strayFor = $("url").value;
     if (autoRead) readMany(several); else setReadLabel();
     return;
   }
@@ -4004,6 +4105,16 @@ $("go").addEventListener("click", async () => {
 const BATCH_MAX = 50;
 let batch = [];             // [{url, found, tool}] in the order pasted
 let batchExtra = 0;         // links past BATCH_MAX, said on the card
+// Lines of a paste of several links that hold no link ("hello"): said under
+// "Not added", never dropped without a word (critique of 2026-10-31). Kept
+// with the box text they came with: Read may come later (the paste waits).
+let strayLines = [];
+let strayFor = "";
+let batchStray = [];
+// "Choose for each": the card's one subtitle choice ("", "embed", "file");
+// null until pressed, then the one-link card's remembered choice is used.
+let eachSubs = null;
+const eachSubsNow = () => (eachSubs === null ? subsMode : eachSubs);
 let batchMode = "mp4";
 // "same": one Format / Quality / folder for all. "each": a row of choices per
 // video -- the user's own pick, kept in Settings (asked 2026-10-24).
@@ -4042,6 +4153,12 @@ function startRow(item) {
   item.fmt = batchMode;
   item.toolId = item.tool ? item.tool.id : "";
   item.quality = batchMode === "mp3" ? $("batch-quality").value || "best" : "best";
+}
+
+/** Does this row's video have subtitles a program of its site can make? */
+function rowHasSubs(item) {
+  return item.fmt === "mp4" && ((item.info && item.info.subtitles) || []).length > 0
+    && rowTools(item).some(makesSubs);
 }
 
 /** One video's row of choices ("Choose for each"). Text only, never HTML:
@@ -4103,9 +4220,58 @@ function eachRow(item) {
     box.appendChild(q);
   } else {
     item.quality = "best";
+    const best = document.createElement("span");
+    best.className = "each-best";
+    best.textContent = "Best";        // the word the lists use
+    box.appendChild(best);
   }
 
-  // Program: a list where the site has several installed, else its name.
+  // Subtitles (item 7, part 2): the choice is the card's ("Subtitles: Off ·
+  // In the video · Separate file", once); the row keeps only its language
+  // -- one list mixed both, 13 options (critique of 2026-10-31). Only in
+  // MP4, only once this video's read found subtitles, only where a program
+  // of its site makes them; otherwise not a word (decided 2026-10-25).
+  const how = eachSubsNow();
+  const tracks = (item.info && item.info.subtitles) || [];
+  if (rowHasSubs(item)) {
+    if (item.subLang === undefined) {
+      // Its start: your language, else the video's own -- else none.
+      item.subLang = startSubLangOf(tracks, item.info.language);
+    }
+    item.subs = how && item.subLang ? how : "";
+    if (how) {
+      const s = document.createElement("select");
+      s.className = "each-subs";
+      s.setAttribute("aria-label", "Subtitle language for " + label);
+      // The card said "In the video" and the row "No subtitles": the row's
+      // own way out says whose choice it is (round 2 of the critique).
+      s.add(new Option("Not this video", ""));
+      for (const t of tracks) s.add(new Option(`${t.name}${t.auto ? " (automatic)" : ""}`, t.code));
+      s.value = item.subLang || "";
+      s.addEventListener("change", () => {
+        item.subLang = s.value;
+        item.subs = item.subLang ? eachSubsNow() : "";
+        // On a program that makes none, the row moves to one that does, as MP3.
+        if (item.subs && !makesSubs(rowTool(item))) {
+          item.toolId = rowTools(item).find(makesSubs).id;
+          redrawRow(item);
+        }
+      });
+      box.appendChild(s);
+    } else {
+      box.appendChild(document.createElement("span"));    // its column stays
+    }
+  } else {
+    item.subs = "";
+    const none = document.createElement("span");
+    none.className = "each-none";
+    // Said only while subtitles are asked for: otherwise not a word.
+    if (how && item.fmt === "mp4" && item.info !== undefined) none.textContent = "no subtitles";
+    box.appendChild(none);
+  }
+
+  // Program: a list only where the row can change it. Its bare name on
+  // every row repeated "yt-dlp" for nothing (critique of 2026-10-31).
   const tools = rowTools(item).filter((t) => item.fmt !== "mp3" || "mp3" in (t.choices || {}));
   if (tools.length > 1) {
     const p = document.createElement("select");
@@ -4115,46 +4281,6 @@ function eachRow(item) {
     p.value = tool ? tool.id : tools[0].id;
     p.addEventListener("change", () => { item.toolId = p.value; redrawRow(item); });
     box.appendChild(p);
-  } else {
-    const p = document.createElement("span");
-    p.className = "prog";
-    p.textContent = tool ? tool.name : "…";
-    box.appendChild(p);
-  }
-
-  // Subtitles (item 7, part 2): ONE list -- the choice and the language
-  // together, a row has no room for a switch and a list. Only in MP4, only
-  // once this video's read found subtitles, only where a program of its
-  // site makes them; otherwise not a word (drawn and chosen 2026-10-25).
-  const tracks = (item.info && item.info.subtitles) || [];
-  if (item.fmt === "mp4" && tracks.length && rowTools(item).some(makesSubs)) {
-    if (item.subs === undefined) {
-      // Its start: the last choice of the one-link card, in your language,
-      // else the video's own -- else Off.
-      item.subLang = startSubLangOf(tracks, item.info.language);
-      item.subs = item.subLang ? subsMode : "";
-    }
-    const s = document.createElement("select");
-    s.className = "each-subs";
-    s.setAttribute("aria-label", "Subtitles for " + label);
-    s.add(new Option("Subtitles: off", ""));
-    for (const [how, words] of [["embed", "In the video"], ["file", "Separate file"]]) {
-      for (const t of tracks) {
-        s.add(new Option(`${words} · ${t.name}${t.auto ? " (automatic)" : ""}`, `${how}|${t.code}`));
-      }
-    }
-    s.value = item.subs && makesSubs(tool) ? `${item.subs}|${item.subLang}` : "";
-    s.addEventListener("change", () => {
-      const [how, code] = s.value.split("|");
-      item.subs = how || "";
-      if (code) item.subLang = code;
-      // On a program that makes none, the row moves to one that does, as MP3.
-      if (item.subs && !makesSubs(rowTool(item))) {
-        item.toolId = rowTools(item).find(makesSubs).id;
-        redrawRow(item);
-      }
-    });
-    box.appendChild(s);
   }
   li.append(name, box);
   li._item = item;
@@ -4262,6 +4388,8 @@ async function readMany(links) {
   batchPlaylist = null;
   eachRead++;                 // an older card's reads must not come back
   batch = links.slice(0, BATCH_MAX).map((url) => ({ url, found: null, tool: null }));
+  batchStray = $("url").value === strayFor ? strayLines : [];
+  eachSubs = null;
   batchMode = mode;           // MP3 stays from one paste to the next, as on the card
   $("batch").classList.remove("hidden");
   $("read").disabled = true;
@@ -4373,7 +4501,13 @@ function renderBatch() {
   for (const b of document.querySelectorAll(".smode")) {
     b.setAttribute("aria-pressed", String(b.dataset.smode === severalMode));
   }
+  // The card's subtitle choice: only when a row's video has subtitles.
+  $("batch-row-subs").classList.toggle("hidden", !(each && batch.some((i) => i.tool && rowHasSubs(i))));
+  for (const b of document.querySelectorAll(".bsubs")) {
+    b.setAttribute("aria-pressed", String(b.dataset.bsubs === eachSubsNow()));
+  }
 
+  for (const line of batchStray) skipped.push(`“${line.length > 40 ? line.slice(0, 40) + "…" : line}”: not a link.`);
   if (noFfmpeg) skipped.unshift("FFmpeg is not installed, and every download needs it. Paste one link alone: its card installs it.");
   const box = $("batch-skipped");
   box.textContent = "";
@@ -4414,6 +4548,13 @@ function renderBatch() {
   go.textContent = count ? `Download ${count}` : "Download";
   go.classList.toggle("hidden", !reading && !ready.length);
   go.disabled = reading || noFfmpeg;
+}
+
+for (const b of document.querySelectorAll(".bsubs")) {
+  b.addEventListener("click", () => {
+    eachSubs = b.dataset.bsubs;
+    renderBatch();          // each row: its language list, or nothing
+  });
 }
 
 for (const b of document.querySelectorAll(".smode")) {
@@ -4635,6 +4776,9 @@ function renderCookies(state) {
   }
   $("cookies-paused").classList.toggle("hidden", !paused);
 
+  // The fold's own line says what is inside, folded or not.
+  $("cookie-fold-sum").textContent = !have ? " · none saved"
+    : state.broken ? " · not usable" : ` · ${state.total} cookies, ${state.sites.length + (state.more_sites || 0)} sites`;
   if (!have) {
     $("cookies-state-plain").textContent = "off — none saved";
     $("cookies-summary").textContent = "";
@@ -4671,6 +4815,7 @@ function renderCookies(state) {
 // own; the table is drawn again when either does.
 let loginPlatforms = [];
 let siteTools = null;
+let sitesUnfolded = false;      // "N more sites with nothing to set" opened
 
 function renderLogin(platforms, blocked) {
   // Remembered so a FAILED job can offer the right log-in without asking
@@ -4723,6 +4868,7 @@ function renderSites() {
   // The log-in sites in their order, then the sites with a program and no
   // log-in in Teleloadzai.
   const toolsOf = new Map(siteTools.map((s) => [s.id, s]));
+  const quiet = [];
   const rows = loginPlatforms.map((p) => ({ id: p.id, name: p.name, login: p, tools: toolsOf.get(p.id) }))
     .concat(siteTools.filter((s) => !loginablePlatforms[s.id])
       .map((s) => ({ id: s.id, name: s.name, login: null, tools: s })));
@@ -4787,9 +4933,10 @@ function renderSites() {
       why.id = "why-" + site.id;
       program.classList.add("program-pick");
       program.append(pick, why);
-    } else if (tools.length === 1) {
-      program.textContent = tools[0].name;
     }
+    // One program: no name. A choice the user cannot make was a word to
+    // learn on 23 rows (critique of 2026-10-31, the user's choice); the
+    // Programs page lists them all.
 
     if (site.login && !loginIsBlocked) {
       const state = site.login.state || "none";
@@ -4813,7 +4960,30 @@ function renderSites() {
       login.appendChild(button);
     }
     row.append(name, program, login);
+    // Nothing to set: one program, no log-in state, nothing seen. Folded
+    // under "N more sites" (critique of 2026-10-31).
+    const state = site.login ? site.login.state || "none" : "none";
+    if (tools.length <= 1 && state === "none" && needLine.classList.contains("hidden")) {
+      quiet.push(row);
+      continue;
+    }
     table.appendChild(row);
+  }
+  if (quiet.length) {
+    const more = cell("div", "site-more");
+    more.setAttribute("role", "row");
+    const holder = cell("span");
+    holder.setAttribute("role", "cell");
+    const toggle = cell("button", "ghost tiny");
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", String(sitesUnfolded));
+    toggle.textContent = sitesUnfolded ? "Fewer sites"
+      : `${quiet.length} more site${quiet.length === 1 ? "" : "s"} with nothing to set`;
+    toggle.addEventListener("click", () => { sitesUnfolded = !sitesUnfolded; renderSites(); });
+    holder.appendChild(toggle);
+    more.appendChild(holder);
+    table.appendChild(more);
+    if (sitesUnfolded) for (const row of quiet) table.appendChild(row);
   }
   // No colour key under the list: each sign carries its words (loop round 1).
 }
