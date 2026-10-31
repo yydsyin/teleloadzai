@@ -25,6 +25,16 @@ colors:
   ochre-dark: "#e3bb4f"
   ok-green-dark: "#5cc28a"
   bad-red-dark: "#f07a6a"
+  ink-fill-dark: "#ede8dd"
+  on-fill-dark: "#1b1a17"
+  visit-blue: "#2f5f9e"
+  visit-blue-dark: "#8fb3e8"
+  console-box: "#1d1f24"
+  console-text: "#d8d4cb"
+  console-time: "#868c96"
+  console-link: "#84b6ff"
+  console-error: "#ff8f80"
+  console-end: "#a3a9b3"
 typography:
   pane-title:
     fontFamily: "Segoe UI Variable Text, Segoe UI, system-ui, sans-serif"
@@ -173,6 +183,14 @@ Warm, low-chroma paper and ink, with one saturated yellow kept for the single ac
 - **Soft Ink** (soft-ink): help lines, program names, finished rows, inactive menu items, placeholders.
 - **Line / Line strong** (line, line-strong): row dividers and card borders / field borders and the Settings button's border.
 - **OK Green / Bad Red** (ok-green, bad-red): only for states: a step passed, "done", a log-in sign / a failure, a warning. A warning is a card tinted 7 % red, never a thick coloured bar on its side. *(The failed group's 3 px red line is not a card: it marks a group of rows, model D — the one place a side line is used.)*
+- **Visited Blue** (visit-blue): only the Sites page's **Visited** sign — the site's cookies, no account (6.36:1 on a card, 7.31:1 dark, measured 2026-10-25).
+
+### Console (dark in both modes)
+The Console's box is the one dark surface of the light theme, so its colours have no light / dark pair. Contrast on console-box, measured 2026-10-31:
+- **console-text** — the programs' words, 11.15:1.
+- **console-time** — each line's time, the empty line, 4.87:1 (the earlier #7d838e was 4.33:1, under 4.5).
+- **go-yellow** — a download's title line, 10.03:1. Yellow text on a title line — it fills no button here.
+- **console-link** — links, 7.94:1. **console-error** — errors and "Failed: …", 7.45:1. **console-end** — "Done.", "Stopped.", Teleloadzai's own messages, 6.97:1.
 
 ### Named Rules
 **The One Yellow Rule.** Only Download is filled yellow. A doubtful card turns Download into an outline ("Try anyway"), and then it is grey.
