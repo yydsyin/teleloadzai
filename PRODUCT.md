@@ -6,7 +6,7 @@
 
 web
 
-(One HTML page, `teleloadzai/web/index.html`, shown in a pywebview window with WebView2 on Windows 10/11. Not a browser tab for the user. Minimum window 520×560, opens at 860×900 when it fits, else at the free space above the taskbar (860×846 on the user's PC, 175 % scaling), can go full screen.)
+(One HTML page, `teleloadzai/web/index.html`, shown in a pywebview window with WebView2 on Windows 10/11. Not a browser tab for the user. Minimum window 520×560, opens maximized (since 2026-10-25); un-maximized, 860×900 when it fits, else at the free space above the taskbar (860×846 on the user's PC, 175 % scaling), can go full screen.)
 
 ## Users
 
