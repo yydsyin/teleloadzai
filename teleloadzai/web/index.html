@@ -4066,7 +4066,16 @@ async function useClipboard(asked) {
   if (document.querySelector(".wrap").dataset.showing !== "main") return;
   const busy = !$("result").classList.contains("hidden") || !$("batch").classList.contains("hidden");
   if (!asked && ($("url").value.trim() || busy)) return;
-  const answer = await api("/api/clipboard", { asked });
+  // No answer from our server: Paste did nothing at all, and each return to
+  // the window left an error in the developer console (review of
+  // 2026-11-01). Paste says so; coming back stays quiet, nobody asked.
+  let answer;
+  try {
+    answer = await api("/api/clipboard", { asked });
+  } catch (problem) {
+    if (asked) setStatus(`${APP_NAME} did not answer, so the copied link could not be read. Restart ${APP_NAME}.`);
+    return;
+  }
   if (answer.error) { if (asked) setStatus(answer.error); return; }
   let links = answer.links || [];
   if (!asked) {
