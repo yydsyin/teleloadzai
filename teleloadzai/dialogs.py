@@ -261,7 +261,7 @@ def _run_dialog(script: str) -> str | None:
         )
     except subprocess.TimeoutExpired as problem:
         raise DialogError(
-            "The Windows window stayed open for five minutes with no answer, "
+            "The file window stayed open for five minutes with no answer, "
             "so it was closed. Try again."
         ) from problem
     except FileNotFoundError as problem:
@@ -270,7 +270,7 @@ def _run_dialog(script: str) -> str | None:
             "cannot open. Type the path by hand instead."
         ) from problem
     except Exception as problem:
-        raise DialogError(f"The Windows window could not open: {problem}") from problem
+        raise DialogError(f"The file window could not open: {problem}") from problem
 
     chosen = (finished.stdout or "").strip()
     if chosen:
@@ -282,7 +282,7 @@ def _run_dialog(script: str) -> str | None:
         detail = [line.strip() for line in (finished.stderr or "").splitlines()
                   if line.strip() and not line.strip().startswith(("At line", "+"))]
         raise DialogError(
-            "The Windows window could not open: "
+            "The file window could not open: "
             + (detail[0][:160] if detail else f"PowerShell stopped with code {finished.returncode}")
         )
     return None                      # the user pressed Cancel

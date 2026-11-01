@@ -92,7 +92,11 @@
   .wrap[data-showing="main"] > #jobs-card {
     flex: 1 1 auto; min-height: 170px; display: flex; flex-direction: column; margin-bottom: 0;
   }
-  #jobs { flex: 1; min-height: 0; overflow-y: auto; margin-right: -8px; padding-right: 8px; }
+  /* The scrollbar's room is always kept: it came only with a card open, and
+     every row slid 15 px left of the header's ⋯ (review of 2026-11-01).
+     .sb-twin keeps the same room in the header, at Windows' own width. */
+  #jobs { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; margin-right: -8px; padding-right: 8px; }
+  .sb-twin { display: inline-block; height: 1px; overflow: hidden; scrollbar-gutter: stable; margin-left: -6px; }
   #jobs:not(:empty) ~ #jobs-empty { display: none; }
   #jobs:empty { flex: 0; }
   /* Near the top of the free space, not in its middle: centred, it floated
@@ -152,6 +156,7 @@
   .wrap[data-showing="main"]:has(#batch:not(.hidden)) { height: auto; min-height: 100vh; }
   .wrap:has(#batch:not(.hidden)) > #jobs-card { flex: none; }
   .wrap:has(#batch:not(.hidden)) #jobs { overflow: visible; }
+  .wrap:has(#batch:not(.hidden)) .sb-twin { display: none; }
   .wrap:has(#batch:not(.hidden)) #jobs-empty { display: none; }
   .batch-links li { display: flex; gap: 12px; justify-content: space-between; padding: 4px 0; }
   .batch-links .link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -295,6 +300,9 @@
   .set-name { font-weight: 600; }
   .set-sub { font-size: 13px; color: var(--soft); line-height: 1.5; }
   .set-control { display: flex; align-items: center; gap: 8px; flex: none; }
+  /* One above the other in the Updates card: 233 and 195 px wide, their
+     left edges 37 px apart (review of 2026-11-01). */
+  #update-mode, #ytdlp-channel { min-width: 240px; }
   /* In a column the fields' usual "flex: 1" stretched their HEIGHT: the
      folder box came out 22 px tall (seen 2026-10-23). */
   .set-row-wide #folder { width: 100%; flex: none; }
@@ -362,7 +370,6 @@
   /* Sites with nothing to set (one program, no log-in, nothing seen) fold
      under one line: 23 rows of equal weight, used or not (same critique). */
   #sites-table .site-more > * { grid-column: 1 / -1; min-height: 0; }
-  #sites-table .site-more button { margin-left: -8px; }
   /* The cookie fold is ONE Settings card, a Windows 11 expander: its row
      (icon, name, what is inside, an arrow) opens the card downward. It was
      a bare line with the browser's black triangle, and opened a second
@@ -922,7 +929,7 @@
         <div class="title" id="title" role="heading" aria-level="2">…</div>
         <div class="meta" id="meta"></div>
         <div style="margin-top:8px"><span class="tag" id="platform"></span> <span class="tag" id="tool"></span></div>
-        <div class="hint warn-text hidden" id="short-link-note" style="margin-top:6px">Teleloadzai could not open this short link to see where it leads, so it cannot tell which site it is from. If the download fails, paste the full link from the post instead.</div>
+        <div class="hint warn-text hidden" id="short-link-note" style="margin-top:6px">Teleloadzai could not open this short link, so it does not know which site it is from. If the download fails, paste the full link from the post.</div>
         <div class="hint hidden" id="tool-need" style="margin-top:8px;padding:6px 10px;border-width:1px;border-style:solid;border-radius:8px">
           <span id="tool-need-text"></span>
           <div style="margin-top:6px"><button class="tiny" id="tool-need-login"></button></div>
@@ -1090,6 +1097,7 @@
         <span class="more-wrap hidden" id="list-more"><button class="more-btn" type="button" aria-haspopup="menu"
           aria-expanded="false" aria-label="More: the whole list">⋯</button><span class="more-menu hidden"
           role="menu"><button type="button" role="menuitem" id="clear-all">Remove all</button></span></span>
+        <span class="sb-twin" aria-hidden="true"></span>
       </span>
     </div>
     <!-- A long list stays readable (the study: Parabolic's filters with
@@ -1133,7 +1141,7 @@
   <div class="card hidden" data-view="main" id="welcome">
     <div class="hint">
       Paste a link above to start. If a site needs a program that is not installed yet,
-      Teleloadzai offers to install it right there, the first time.
+      Teleloadzai offers to install it the first time you need it.
     </div>
     <div class="row" style="margin-top:10px">
       <button class="ghost" id="welcome-done">Got it</button>
@@ -1183,7 +1191,7 @@
           <span class="opt-icon icon-clipboard" aria-hidden="true"></span>
           <span class="set-main">
             <span class="set-name">Use a link I copied</span>
-            <span class="set-sub">When you come back to Teleloadzai. Only a link is taken from what you copied, and nothing is kept.</span>
+            <span class="set-sub">When you come back to Teleloadzai. It takes only links from what you copied, and keeps nothing.</span>
           </span>
           <span class="set-control"><input type="checkbox" class="toggle" id="use-clipboard"></span>
         </label>
@@ -1217,7 +1225,7 @@
               <option value="60">1 hour</option>
               <option value="120">2 hours</option>
               <option value="240">4 hours</option>
-              <option value="0">no limit</option>
+              <option value="0">No limit</option>
             </select>
           </span>
         </div>
@@ -1289,8 +1297,7 @@
               <div class="hint" style="line-height:1.6">
                 A small piece of text a site saves when you log in, which says "this
                 is me". The log-in window takes only the cookies of the one site you
-                log in to, and they go straight to the download tool and nowhere
-                else.
+                log in to, and gives them only to the download program.
               </div>
             </details>
           </div>
@@ -1327,7 +1334,7 @@
               kind of file, choose <b>Netscape</b>. Your file is never changed.
               <br>
               <b>Teleloadzai keeps only the sites it can download from</b> and throws
-              the rest away before saving. Your bank and your mail never come in.
+              the rest away before saving. Cookies from your bank or your mail are never kept.
             </div>
             <!-- "Keep every site" was removed here on 2026-10-23 (the user's
                  decision): it saved a whole browser export, bank and mail
@@ -1355,8 +1362,8 @@
           <label class="set-main set-name" for="cookies-keep">When I close __APP_NAME__</label>
           <span class="set-control">
             <select id="cookies-keep">
-              <option value="keep">stay logged in</option>
-              <option value="once">forget everything</option>
+              <option value="keep">Stay logged in</option>
+              <option value="once">Forget everything</option>
             </select>
           </span>
         </div>
@@ -2888,7 +2895,7 @@ function jobRow(job) {
       </div>` : ""}
     ${job.state === "cancelled" && job.interrupted ? `<div class="hint" style="margin-top:6px">
         Teleloadzai was closed during this download.${job.live
-          ? " A live stream cannot pick up where it was: Continue records again from now." : ""}
+          ? " A live stream cannot go on from where it stopped: Continue starts a new recording." : ""}
       </div>` : ""}
     ${job.state === "error" && (job.files || []).length ? `<div class="hint" style="margin-top:6px">
         <span class="saved-before"></span>
@@ -3445,8 +3452,8 @@ function toolRow(tool, progress) {
   const badges = [];
   // "base" was jargon, and a green "installed" on 8 rows of a list called
   // "Installed programs" said nothing (loop round 1, 2026-10-23).
-  if (tool.essential) badges.push('<span class="badge">needed by all</span>');
-  if (tool.installed && tool.outside) badges.push('<span class="badge alert">not ours</span>');
+  if (tool.essential) badges.push('<span class="badge">always needed</span>');
+  if (tool.installed && tool.outside) badges.push('<span class="badge alert">installed elsewhere</span>');
   if (tool.update_available) badges.push('<span class="badge new">update</span>');
   for (const need of tool.requires || []) {
     const missing = need === "Python" ? tool.blocked
@@ -3470,7 +3477,7 @@ function toolRow(tool, progress) {
     // buttons all called "Remove".
     if (tool.update_available) buttons += `<button class="ghost tiny" data-install="${tool.id}"
       aria-label="${tool.channel_change ? "Switch" : "Update"} ${tool.name}">${
-      tool.channel_change ? (tool.channel === "preview" ? "Switch to preview" : "Switch to stable")
+      tool.channel_change ? (tool.channel === "preview" ? "Switch to Preview" : "Switch to Stable")
         : "Update"}</button>`;
     if (!tool.essential) buttons += `<button class="ghost tiny" data-remove="${tool.id}" aria-label="Remove ${tool.name}">Remove</button>`;
   }
@@ -3615,7 +3622,7 @@ function pendingUpdates() {
 }
 
 function updateWords(tool) {
-  if (tool.channel_change) return `${tool.name} → its ${tool.channel} builds`;
+  if (tool.channel_change) return `${tool.name} → ${tool.channel === "preview" ? "Preview" : "Stable"} version`;
   const here = tool.version || tool.release_installed;
   return `${tool.name} ${here ? shortVersion(here) + " → " : ""}${shortVersion(tool.latest)}`;
 }
@@ -3662,7 +3669,7 @@ function installSentence(id, p) {
   if (p.state === "error") return `The update of ${name} did not finish: ${p.error || "unknown error"}.`;
   if (!p.changed) return `The update did not change ${name}: ${shortVersion(p.after || "")} is kept.`;
   if (!p.before) return `${name} installed${p.after ? ": " + shortVersion(p.after) : ""}.`;
-  if (p.switched || p.before === p.after) return `${name} now comes from its ${p.channel} builds (${shortVersion(p.after)}).`;
+  if (p.switched || p.before === p.after) return `${name} now uses its ${p.channel === "preview" ? "Preview" : "Stable"} version (${shortVersion(p.after)}).`;
   return `${name} updated: ${shortVersion(p.before)} → ${shortVersion(p.after)}.`;
 }
 
@@ -3749,7 +3756,7 @@ async function tryPreview(job, button) {
   $("ytdlp-channel").value = "preview";
   await api("/api/tools/check", { id: "yt-dlp" });
   await loadTools();
-  notify("yt-dlp now comes from its preview builds (the Programs page to go back).");
+  notify("yt-dlp now uses its Preview version. To go back, open Programs.");
   updateAndRetry(job, button);
 }
 
@@ -3773,8 +3780,8 @@ $("ytdlp-channel").addEventListener("change", async () => {
   await api("/api/settings", { ytdlp_channel: preview ? "preview" : "stable" });
   await api("/api/tools/check", { id: "yt-dlp" });       // that channel's release, now
   await loadTools();
-  notify(preview ? "Saved: yt-dlp will come from its preview builds. Press “Switch to preview” to change it now."
-    : "Saved: yt-dlp will come from its stable builds.");
+  notify(preview ? "Saved: yt-dlp will use its Preview version. Press “Switch to Preview” to change it now."
+    : "Saved: yt-dlp will use its Stable version.");
 });
 
 $("update-bar-all").addEventListener("click", updateAll);
@@ -4194,13 +4201,13 @@ $("go").addEventListener("click", async () => {
   if (askWhere && namesItself(tool, mode)) {
     // gallery-dl, XHS-Downloader: a typed name was thrown away -- only the
     // folder is ever used, so only the folder is asked (2026-10-24).
-    setStatus(`Choose the folder in the Windows window: ${tool.name} names the file itself…`);
+    setStatus(`Choose the folder in the window that opens: ${tool.name} names the file itself…`);
     const chosen = await api("/api/pick-folder", {});
     if (chosen.error) { setStatus("Error: " + chosen.error); return; }
     if (chosen.cancelled || !chosen.folder) { setStatus("Cancelled."); return; }
     folder = chosen.folder;
   } else if (askWhere) {
-    setStatus("Choose where to save it in the Windows window…");
+    setStatus("Choose where to save it in the window that opens…");
     const chosen = await api("/api/save-as", { suggested: title, mode });
     if (chosen.error) { setStatus("Error: " + chosen.error); return; }
     if (chosen.cancelled || !chosen.path) { setStatus("Cancelled."); return; }
@@ -4590,11 +4597,11 @@ function renderBatch() {
   }
   const each = severalMode === "each";
   const list0 = batchPlaylist;
-  if (batchExtra && !list0) skipped.push(`${batchExtra} more: ${BATCH_MAX} links at most at once. Paste the rest after.`);
+  if (batchExtra && !list0) skipped.push(`${batchExtra} links left out: ${BATCH_MAX} at most at once. Paste the rest after.`);
   // A playlist's videos past 50 still come down with "Same for all" (one row
   // per video, all of them); one by one, 50 is the most the card can hold.
   if (batchExtra && list0 && each) {
-    skipped.push(`${batchExtra} more videos: ${BATCH_MAX} at most when choosing for each video. ` +
+    skipped.push(`${batchExtra} videos left out: ${BATCH_MAX} at most when choosing for each video. ` +
       "“Same for all” takes the whole playlist.");
   }
   // Rows waiting are never trimmed, so past HISTORY_LIMIT (500, measured
@@ -4744,7 +4751,7 @@ $("batch-go").addEventListener("click", async () => {
   // One folder window for all of them, never one per link (the user's
   // choice, 2026-10-24); each file keeps the name its program gives it.
   if (askWhere) {
-    setStatus("Choose the folder for these downloads in the Windows window…");
+    setStatus("Choose the folder for these downloads in the window that opens…");
     const chosen = await api("/api/pick-folder", {});
     if (chosen.error) { setStatus("Error: " + chosen.error); return; }
     if (chosen.cancelled || !chosen.folder) { setStatus("Cancelled. Nothing was added."); return; }
@@ -4805,8 +4812,8 @@ async function downloadEach(ready) {
       // A program that names its files itself is asked a folder, never a
       // name it would throw away (gallery-dl, XHS-Downloader).
       const own = namesItself(tool, item.fmt);
-      setStatus(own ? `Choose the folder for “${label}” in the Windows window: ${tool.name} names the file itself…`
-        : `Choose where to save “${label}” in the Windows window…`);
+      setStatus(own ? `Choose the folder for “${label}” in the window that opens: ${tool.name} names the file itself…`
+        : `Choose where to save “${label}” in the window that opens…`);
       const chosen = own ? await api("/api/pick-folder", {})
         : await api("/api/save-as", { suggested: item.title || "", mode: item.fmt });
       if (chosen.error) { refused.push(`${label}: ${chosen.error}`); continue; }
@@ -4855,7 +4862,7 @@ $("clear-all").addEventListener("click", (event) => {
 });
 
 $("browse").addEventListener("click", async () => {
-  setStatus("Choose a folder in the Windows window…");
+  setStatus("Choose a folder in the window that opens…");
   const result = await api("/api/browse", {});
   // A window that failed to open is not the same as the user cancelling.
   if (result.error) { setStatus("Error: " + result.error); return; }
@@ -4889,7 +4896,7 @@ $("notify-done").addEventListener("change", async () => {
   const on = $("notify-done").checked;
   await api("/api/settings", { notify_done: on });
   notify(on ? "Saved: a Windows message tells you when a download ends while you are elsewhere."
-            : "Saved: no Windows message. The Downloads list still shows every end.");
+            : "Saved: no Windows message. The Downloads list still shows how each download ended.");
 });
 
 $("auto-read").addEventListener("change", async () => {
@@ -4910,7 +4917,7 @@ $("ask-where").addEventListener("change", async () => {
   updateGoLabel();
   await api("/api/settings", { ask_where: askWhere });
   notify(askWhere ? "Saved: Windows will ask where to save each file."
-                  : "Saved: files go straight to the default folder.");
+                  : "Saved: files go to your Download folder without asking.");
 });
 
 // ---- log-in cookies -------------------------------------------------------
@@ -5329,7 +5336,7 @@ async function loadCookies() {
 $("cookies-import").addEventListener("click", async () => {
   cookieError("");
   $("cookies-import").disabled = true;
-  setStatus("Choose your cookies.txt in the Windows window…");
+  setStatus("Choose your cookies.txt in the window that opens…");
   try {
     const result = await api("/api/cookies/import", {});
     if (result.cancelled) { setStatus(""); return; }
@@ -5358,8 +5365,8 @@ async function forgetCookies() {
   // say the log-ins were "locked by Windows" until the next start -- a
   // promise about something that does not exist.
   setStatus(result.browser_wiped === "later"
-    ? "Cookies forgotten. The log-in window's own files (no log-in in them) are in use, "
-      + "and will be tidied the next time you start " + APP_NAME + "."
+    ? "Cookies forgotten. The log-in window's own files (no log-in in them) are still in use. "
+      + APP_NAME + " deletes them the next time it starts."
     : "Cookies forgotten.");
 }
 

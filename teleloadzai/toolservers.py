@@ -235,7 +235,7 @@ class _Server:
                     raise ToolServerError(
                         f"Port {self.port}, which {self.name} must use, is taken by "
                         + (holder if holder else "another program")
-                        + ". Close it and try again, or use another tool."
+                        + ". Close it and try again, or use another program."
                     )
 
             self._said = []

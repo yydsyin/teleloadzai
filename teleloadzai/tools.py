@@ -87,12 +87,12 @@ SPECS: tuple[ToolSpec, ...] = (
              preview_repo="yt-dlp/yt-dlp-nightly-builds"),
 
     ToolSpec("ffmpeg", "FFmpeg", "GyanD/codexffmpeg", "zip",
-             what_for="Makes MP3, and joins video with sound.", essential=True,
+             what_for="Makes MP3s, and joins picture and sound.", essential=True,
              exe_name="ffmpeg.exe", asset_keywords=("essentials_build.zip",),
              asset_exclude=("shared",), extract_only=("ffmpeg.exe", "ffprobe.exe")),
 
     ToolSpec("n-m3u8dl-re", "N_m3u8DL-RE", "nilaoda/N_m3u8DL-RE", "zip",
-             what_for="Links straight to a video stream, the second choice after yt-dlp.",
+             what_for="For stream links (.m3u8, .mpd), when yt-dlp is not enough.",
              exe_name="N_m3u8DL-RE.exe", asset_keywords=("win-x64",),
              extract_only=("N_m3u8DL-RE.exe",)),
 
@@ -243,7 +243,7 @@ def install_python_with_winget(timeout: float = 1800) -> dict:
     return {
         "ok": False,
         # A new PATH only reaches programs started afterwards.
-        "error": tail[-1][:200] if tail else "Python still not found -- restart Teleloadzai",
+        "error": tail[-1][:200] if tail else "Python still not found. Restart Teleloadzai.",
     }
 
 

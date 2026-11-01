@@ -208,14 +208,14 @@ def main() -> int:
             console.add("app", f"Teleloadzai: {text}", "err")
     except Exception as problem:
         rescued = []
-        print(f"Could not tidy the unfinished downloads of last time: {problem}")
+        print(f"Could not clean up the unfinished downloads of last time: {problem}")
     # A site refused since (Netflix) must not keep the cookies it had.
     try:
         dropped = cookies.drop_unsupported()
         if dropped:
             print(f"{dropped} cookies of sites no longer supported were removed.")
     except Exception as problem:
-        print(f"Could not tidy the cookie file: {problem}")
+        print(f"Could not clean up the cookie file: {problem}")
     # The list of the last run, after the sweep above has moved what cut-off
     # downloads finished: only now is the port ours (decision 21).
     QUEUE.load()

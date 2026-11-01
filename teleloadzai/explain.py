@@ -160,7 +160,7 @@ KNOWN: tuple[Known, ...] = (
         tools=("tiktokdownloader",),
         title="TikTokDownloader could not read this video.",
         next_step=("We have seen this in three cases: no cookies for the "
-                   "site (log in to it in Settings); a video the site does "
+                   "site (log in to it on the Sites page); a video the site does "
                    "not show on your connection; and a video that does not "
                    "exist. Check the link, or try another video."),
         seen=("2026-09-22: /douyin/detail without a cookie failed this way, "
@@ -298,7 +298,7 @@ KNOWN: tuple[Known, ...] = (
                "tiktokdownloader", "ks-downloader"),
         title="This folder's path is too long for Windows.",
         retry=False,
-        next_step=("Choose a folder with a shorter path in Settings → Downloads, "
+        next_step=("Choose a folder with a shorter path in Settings → Download folder, "
                    "then paste the link again."),
         seen=("2026-10-24, real runs (yt-dlp, N_m3u8DL-RE, TikTokDownloader) in "
               "a 205-character folder: refused in words, nothing created. "

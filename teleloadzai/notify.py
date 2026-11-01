@@ -175,7 +175,7 @@ def _start() -> None:
             _refusal_said = True
             from . import console
             console.add("app", f"{APP_NAME}: Windows did not let {APP_NAME} show its "
-                        "message when a download ends. The list still shows every end.", "err")
+                        "message when a download ends. The list still shows how each download ended.", "err")
 
 
 def _wake() -> None:

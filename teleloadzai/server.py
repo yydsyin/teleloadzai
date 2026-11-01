@@ -298,7 +298,7 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
     # never receives is not carried as if it were: "best" is what happens.
     can = runners.CHOICES.get(tool, {})
     if mode not in can:
-        return {"error": f"{tool_name(tool)} cannot make an MP3. Choose MP4, or another tool."}, 400
+        return {"error": f"{tool_name(tool)} cannot make an MP3. Choose MP4, or another program."}, 400
     if not can[mode]:
         quality = "best"
     if tools.installed_path(tool) is None:
@@ -462,7 +462,7 @@ def start_install(tool_id: str) -> dict:
             # only when the version read really changed.
             console.add(line_id, f"{name} installed: {new}." if not before["installed"]
                         else f"Updated: {old} → {new}." if old != new
-                        else f"Switched to its {after['channel']} builds: {new}." if before["channel"] != after["channel"]
+                        else f"Switched to the {after['channel'].capitalize()} version: {new}." if before["channel"] != after["channel"]
                         else f"The update did not change {name}: {new} is kept.", "end")
         except tools.InstallError as exc:
             # "python_missing" is not a failure, it is a question for the user.

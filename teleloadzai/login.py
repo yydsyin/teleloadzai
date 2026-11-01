@@ -370,7 +370,7 @@ def unavailable_reason() -> str | None:
         import webview
     except ImportError:
         return ("the window engine is not installed, so Teleloadzai cannot open "
-                "a login window. Import a cookies.txt instead")
+                "a log-in window. Import a cookies.txt instead")
     if not webview.windows:
         return ("Teleloadzai is running in a browser tab, not in its own window, "
                 "so it has no window to open the log-in in. Start it normally, "
