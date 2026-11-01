@@ -386,10 +386,15 @@ def _pip_version(tool: ToolSpec) -> str:
 # --------------------------------------------------------------------------
 
 def _load_cache() -> dict:
-    try:
-        return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    # Under the save's lock: on Windows a read and a replace of the same file
+    # refuse each other -- 16 of 3,000 saves refused while another thread
+    # read, 0 with one lock (2026-11-01); a refused save left
+    # `tools.json.<n>.tmp`, and a refused read gave {}.
+    with _cache_lock:
+        try:
+            return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
 
 
 def _save_cache(cache: dict) -> None:

@@ -317,30 +317,46 @@ def _sign(platform, dates: dict, seen: dict, now: float) -> tuple[str, float]:
 # How each site's last log-in ended: {platform id: {"how": ..., "at": ...}}.
 # Only ids, words and dates -- never a cookie (hard rule 1).
 HISTORY_FILE = DATA_DIR / "logins.json"
+# One at a time, reads too: on Windows a read and a replace of the same file
+# refuse each other (seen on this PC 2026-11-01), and a refused read gives {},
+# which the next log-in would save as the whole history.
+_history_lock = threading.RLock()
 
 
 def _history() -> dict:
-    try:
-        import json
-        return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    with _history_lock:
+        try:
+            import json
+            return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
 
 
 def _remember(platform_id: str, how: str) -> None:
     import json
-    history = _history()
-    history[platform_id] = {"how": how, "at": time.time()}
-    try:
-        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        HISTORY_FILE.write_text(json.dumps(history, indent=2), encoding="utf-8")
-    except OSError:
-        pass                    # a sign, not a need: the cookies are saved
+    import os
+    with _history_lock:
+        history = _history()
+        history[platform_id] = {"how": how, "at": time.time()}
+        # To a temporary file first, then put in place, as every other file
+        # of ours: written straight, a cut write would leave half a file.
+        temp = HISTORY_FILE.with_name(HISTORY_FILE.name + ".tmp")
+        try:
+            HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+            temp.write_text(json.dumps(history, indent=2), encoding="utf-8")
+            os.replace(temp, HISTORY_FILE)
+        except OSError:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            # a sign, not a need: the cookies are saved
 
 
 def forget_history() -> None:
     """With the cookies gone, no site may still look logged in."""
-    HISTORY_FILE.unlink(missing_ok=True)
+    with _history_lock:
+        HISTORY_FILE.unlink(missing_ok=True)
 
 
 def unavailable_reason() -> str | None:

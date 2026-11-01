@@ -45,10 +45,15 @@ MAX_PARALLEL_LIMIT = 5
 # --------------------------------------------------------------------------
 
 def load_settings() -> dict:
-    try:
-        stored = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        stored = {}
+    # Under the save's lock: on Windows a read during the save's replace is
+    # refused (seen on this PC 2026-11-01), and a refused read would give the
+    # DEFAULTS -- cookies off, the default folder -- for the next save to
+    # write over every setting.
+    with _settings_lock:
+        try:
+            stored = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            stored = {}
     return {
         "download_folder": stored.get("download_folder") or str(DEFAULT_DOWNLOAD_DIR),
         "max_parallel": stored.get("max_parallel") or MAX_PARALLEL_DEFAULT,

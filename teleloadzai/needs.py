@@ -87,7 +87,11 @@ def all_needs() -> dict[str, dict]:
     """{"site|program": {"need": ..., "seen": "YYYY-MM-DD"}} -- what was seen
     last, the file over the proofs it started from."""
     merged = {k: {"need": n, "seen": d} for k, (n, d) in SEEN_BEFORE.items()}
-    merged.update(_read())
+    # Under the save's lock: on Windows a read and a replace of the same file
+    # refuse each other (seen on this PC 2026-11-01): the Sites page would
+    # lose what was learned for one look, and the result being saved be dropped.
+    with _lock:
+        merged.update(_read())
     return merged
 
 

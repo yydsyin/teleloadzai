@@ -90,6 +90,20 @@ def _writes(change):
     return wrapped
 
 
+def _reads(look):
+    """For every function that reads our cookie file: never during a write.
+    On Windows a read and a replace of the same file refuse each other (seen
+    2026-11-01 on this PC, not yet in this file): `header_for` refused would
+    fail a TikTok download with "PermissionError"."""
+    import functools
+
+    @functools.wraps(look)
+    def wrapped(*args, **kwargs):
+        with _lock:
+            return look(*args, **kwargs)
+    return wrapped
+
+
 @contextmanager
 def for_one_run(path: Path | None) -> Iterator[Path | None]:
     """The cookie file to hand ONE tool run: a copy of ours, gone afterwards.
@@ -426,6 +440,7 @@ def _write_store(lines) -> None:
         raise
 
 
+@_reads
 def import_file(chosen: Path) -> dict:
     """Check the user's file, then write our own SHORTER copy of it.
 
@@ -579,10 +594,12 @@ def clear() -> bool:
     return True
 
 
+@_reads
 def have_file() -> bool:
     return COOKIE_FILE.is_file() and COOKIE_FILE.stat().st_size > 0
 
 
+@_reads
 def site_dates() -> dict[str, dict]:
     """For each site in our file: how many cookies, and their latest end date.
 
@@ -605,6 +622,7 @@ def site_dates() -> dict[str, dict]:
     return found
 
 
+@_reads
 def badge_dates(domains: tuple[str, ...], names: tuple[str, ...]) -> list[float] | None:
     """The end dates of a site's log-in cookies, or None when there is none.
 
@@ -658,6 +676,7 @@ def drop_unsupported() -> int:
     return dropped
 
 
+@_reads
 def header_for(site: str, enabled: bool) -> str:
     """The cookies of ONE site as `name=value; name=value`, or "".
 
@@ -714,6 +733,7 @@ def unusable_reason(tool_id: str, enabled: bool) -> str | None:
     return None
 
 
+@_reads
 def state(enabled: bool) -> dict:
     """Everything the page needs to draw the cookie card. No value, ever."""
     if not have_file():
