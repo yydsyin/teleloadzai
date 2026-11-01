@@ -728,7 +728,10 @@
   .jprog.unknown .pbar > i { width: 30%; transform: none; transition: none; opacity: .55;
     animation: slide 1.4s ease-in-out infinite; }
   @keyframes slide { from { margin-left: -30%; } to { margin-left: 100%; } }
-  @media (prefers-reduced-motion: reduce) { .jprog.unknown .pbar > i { animation: none; } }
+  /* Less motion asked: no piece at all. Stopped, it stood still at the
+     start, a third of the bar filled -- read as "30 % done", a measure
+     nobody took (grids of 2026-11-01). The seconds say it is alive. */
+  @media (prefers-reduced-motion: reduce) { .jprog.unknown .pbar > i { animation: none; visibility: hidden; } }
   .prog-line { font-size: 12px; color: var(--soft); margin-top: 5px; font-variant-numeric: tabular-nums;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .job.state-running .job-right .small { font-size: 13px; color: var(--ink); font-weight: 600; }
