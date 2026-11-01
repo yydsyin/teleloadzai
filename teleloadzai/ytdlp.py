@@ -56,6 +56,9 @@ _PROGRESS_TEMPLATE = (
 _STEPS = (
     ("[Merger]", "joining picture and sound"),
     ("[ExtractAudio]", "making the MP3"),
+    # After the join, a 342 MB lecture took seconds here, and the row still
+    # said "joining picture and sound" (seen 2026-11-01).
+    ("[EmbedSubtitle]", "adding the subtitles"),
 )
 _FILE_TEMPLATE = f"after_move:{_FILE_TAG}\t%(filepath)s"
 # Said before the download starts: is this a live stream? Stop is how a live
@@ -84,6 +87,9 @@ _FIXING = re.compile(r'^\[Fixup\w*\] .* of "(.+)"$')
 # `[Metadata] Adding metadata to "<path>"`, `[EmbedThumbnail] ffmpeg: Adding
 # thumbnail to "<path>"` (seen 2026-10-24).
 _TAGGING = re.compile(r'^\[(?:Metadata|EmbedThumbnail)\] .*Adding \w+ to "(.+)"$')
+# Subtitles put into the finished video, the same way (seen 2026-11-01, yt-dlp
+# 2026.10.29): `[EmbedSubtitle] Embedding subtitles in "<path>"`.
+_EMBEDDING = re.compile(r'^\[EmbedSubtitle\] Embedding subtitles in "(.+)"$')
 # The cover is fetched BEFORE the download, as its own file beside it, then
 # turned into a .jpg: `[info] Writing video thumbnail 38 to: <name>.webp`.
 # A Stop before the end left it in the user's folder.
@@ -609,6 +615,17 @@ def _only_chosen_name(out_path: Path | None) -> bool:
         return True             # no folder yet: nothing there to replace
 
 
+def _made_by_this_run(path: Path, started_at: float) -> bool:
+    """Not there yet (yt-dlp is about to write it), or written since the run
+    began. A file older than the run is the user's: a Stop never takes it."""
+    try:
+        return path.stat().st_mtime >= started_at
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+
+
 def download(
     url: str,
     mode: str,
@@ -728,11 +745,17 @@ def download(
                     on_writing(Path(line[len(_DESTINATION):].strip()))
             if on_writing:
                 merging = (_MERGING.match(line.strip()) or _FIXING.match(line.strip())
-                           or _TAGGING.match(line.strip()))
+                           or _TAGGING.match(line.strip()) or _EMBEDDING.match(line.strip()))
                 cover = _THUMBNAIL.match(line.strip())
                 if merging:
                     whole = Path(merging.group(1))
                     on_writing(whole.with_name(f"{whole.stem}.temp{whole.suffix}"))
+                    # The file itself too, when this run made it: stopped
+                    # while its subtitles went in, a 342 MB MP4 without them
+                    # stayed, the row "stopped" (2026-11-01). Never a file
+                    # that was there before -- yt-dlp may rework the user's.
+                    if _made_by_this_run(whole, started_at):
+                        on_writing(whole)
                 elif line.startswith(_CONVERTING):
                     on_writing(Path(line[len(_CONVERTING):].strip()))
                 elif line.startswith(_SUBTITLE_FILE):

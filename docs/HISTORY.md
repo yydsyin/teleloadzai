@@ -126,3 +126,23 @@ playlists and channels, subscriptions with auto-download, scheduler, speed limit
 subtitles (download / embed / translate), SponsorBlock, cut a section (2:00 -> 5:00),
 filename templates, "already downloaded" archive, batch import from a .txt file,
 MP3 tags + cover art, notifications, history and search, dark mode.
+
+## Results after 2026-10-31
+
+### 2026-11-01 — step 5d: Stop seen in the steps still open
+
+Six Stops pressed through the running app's own API, each on a real download, the folder listed **at** the Stop and 3 s after, the programs and ports counted.
+
+| Stop during | At the Stop | After | Result |
+|---|---|---|---|
+| "Making the MP3", yt-dlp (1 h 36 min YouTube, 320) | FFmpeg + 2 yt-dlp; cover, half MP3, 106 MB sound file | 0 files, 0 programs | ✅ |
+| "Making the MP3", our FFmpeg (10 min TikTok) | FFmpeg; half MP3, 88 MB step video, cover | 0 files, 0 programs | ✅ |
+| a TikTok fetch (88 MB) / a Kuaishou fetch (40 MB) | a `.mp4.part` | 0 files, server closed | ✅ |
+| the subtitles going in (MIT lecture, 46 min, "In the video") | `.vtt`, the MP4, `.temp.mp4` | **the MP4 stayed**: 342,284,050 bytes, AV1 + AAC, no subtitle track; the row "Stopped", no file | ❌ fixed |
+| "Reading the post", TikTokDownloader / KS-Downloader | the server running, port 5555 / 5557 open | **the server open 9 s / 16 s more**, the row already "Stopped" | ❌ fixed |
+
+**The fixes.** (1) When yt-dlp says it is reworking a finished file (`[Merger]`, `[Fixup…]`, `[Metadata]`, `[EmbedThumbnail]`, and now `[EmbedSubtitle]`), the file itself is counted as being written by the job too — only if it did not exist yet or was written since the run began: yt-dlp does embed subtitles into a video already in the folder, and that file is never taken. The row now says "Adding the subtitles…" during that step (it said "Joining picture and sound"). (2) The post read runs on the side; Stop leaves it at once, and the job's own `release()` shuts the server when no one else uses it. A first version also added a "shut it now" method to the server: its control did not turn red — it did nothing, since `release()` already shuts it — and it was removed.
+
+**Seen after the fixes:** the subtitle Stop leaves 0 files; the same download without Stop keeps its MP4 with a `mov_text` track; the Stop during the read closes both servers within 1 s, 3 times of 3 each — with the old waiting read, KS-Downloader's still open at 1 s (control); a full TikTok (2,004,627 B) and Kuaishou (40,406,544 B) download; a bad TikTok link still shows "TikTokDownloader: Failed to retrieve data!"; the MP3 and mid-fetch Stops again. The rule that protects an older file was tested directly (old / new / missing file), and fails when broken.
+
+⚠️ **Not seen:** a Stop during "Separate file" subtitles (too short to hit); a Stop while yt-dlp reworks an older file (the step on a small video ends before a Stop lands — only the direct test covers it); Douyin (same code as TikTok). **Found on the way, not touched:** `data/tools.json.26628.tmp` (3,239 bytes, 2026-10-31 19:26), a temporary file some earlier write left behind.

@@ -400,6 +400,34 @@ RECIPES: dict[str, Recipe] = {
 }
 
 
+def _read_unless_stopped(read: Callable[[], dict], request: Request) -> dict:
+    """A server's read, given up the moment Stop is pressed. Its answer can
+    take up to 90 s, and waiting for it kept the server open 9 s
+    (TikTokDownloader) and 16 s (KS-Downloader) after Stop, the row already
+    "stopped", holding the cookie (2026-11-01). Leaving now sends the job to
+    its `release()`, which shuts the server when no one else uses it; the
+    read left behind dies with it."""
+    if request.stop is None:
+        return read()
+    answer: dict = {}
+
+    def work() -> None:
+        try:
+            answer["data"] = read()
+        except Exception as problem:
+            answer["error"] = problem
+
+    worker = threading.Thread(target=work, daemon=True)
+    worker.start()
+    while worker.is_alive():
+        worker.join(0.2)
+        if _stopped(request):
+            raise RunnerError("Stopped.")   # the job is already "stopped": never shown
+    if "error" in answer:
+        raise answer["error"]
+    return answer["data"]
+
+
 def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
             on_start: Callable[[subprocess.Popen], None] | None = None,
             on_step: Callable[[str], None] | None = None,
@@ -434,7 +462,8 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
         # Stopped while it started: the post is not read, the cookie not sent.
         _check_stop(request)
         _say(on_step, "reading the post")
-        data = toolservers.detail(request.url, douyin, cookie)
+        data = _read_unless_stopped(lambda: toolservers.detail(request.url, douyin, cookie),
+                                    request)
     finally:
         toolservers.TIKTOK.release()
     _check_stop(request)                # Stop pressed while the post was read
@@ -495,7 +524,7 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
     try:
         _check_stop(request)
         _say(on_step, "reading the post")
-        data = toolservers.ks_detail(request.url, cookie)
+        data = _read_unless_stopped(lambda: toolservers.ks_detail(request.url, cookie), request)
     finally:
         toolservers.KS.release()
     _check_stop(request)
