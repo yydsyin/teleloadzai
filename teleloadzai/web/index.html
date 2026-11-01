@@ -192,7 +192,7 @@
   .resume-bar span { flex: 1; min-width: 200px; }
   .list-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
   #list-filters:not(:has(button:not(.hidden))) { display: none; }
-  .job.filtered-out, .fail-group.filtered-out { display: none; }
+  .job.filtered-out, .fail-group.filtered-out, .group-label.filtered-out { display: none; }
   #list-filters button { min-height: 30px; padding: 0 10px; font-size: 13px; }
   #list-filters button[data-filter="error"]:not([aria-pressed="true"]) { color: var(--bad); }
   #result-close {
@@ -744,6 +744,8 @@
   .mark.gone { background: var(--line); color: var(--soft); }
   .job.failrow .fail-why, .job.failrow .fail-more { margin-left: 32px; }
   .fail-group { border-left: 3px solid var(--bad); padding: 4px 0 0 12px; margin: 2px 0 10px; }
+  /* A playlist's label above its rows, one row per video (2026-11-01). */
+  .group-label { font-size: 12px; color: var(--soft); padding: 12px 0 4px; border-top: 1px solid var(--line); }
   .fail-group .fg-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .fail-group .fg-title { color: var(--bad); font-weight: 600; }
   .fail-group .fg-why { color: var(--soft); font-size: 13px; margin: 2px 0 4px; }
@@ -3156,6 +3158,51 @@ const retryFailedButton = failGroup.querySelector("#retry-failed");
 
 /** Put each element at its place in `box`, in this order, moving only what
  *  is out of place (a row under the pointer is not replaced). */
+/* A playlist is one row per video (the user, 2026-11-01): its rows stay
+ * together where its newest row stands, in the playlist's own order, under
+ * one label that counts them. `jobs` come newest first. */
+const groupLabels = new Map();
+
+function grouped(jobs) {
+  const out = [];
+  const seen = new Set();
+  for (const job of jobs) {
+    if (!job.group) { out.push(job); continue; }
+    if (seen.has(job.group)) continue;
+    seen.add(job.group);
+    out.push(...jobs.filter((j) => j.group === job.group).sort((a, b) => a.group_index - b.group_index));
+  }
+  return out;
+}
+
+function withLabels(jobs, everyJob) {
+  const elements = [];
+  let last = "";
+  for (const job of jobs) {
+    if (job.group && job.group !== last) elements.push(groupLabel(job.group, everyJob));
+    last = job.group || "";
+    elements.push(jobRows.get(job.id));
+  }
+  return elements;
+}
+
+function groupLabel(group, everyJob) {
+  let label = groupLabels.get(group);
+  if (!label) {
+    label = document.createElement("div");
+    label.className = "group-label";
+    groupLabels.set(group, label);
+  }
+  const members = everyJob.filter((j) => j.group === group);
+  const done = members.filter((j) => j.state === "done").length;
+  const failed = members.filter((j) => j.state === "error").length;
+  const text = `${members[0].group_title || "Playlist"} · ${members.length} video${members.length === 1 ? "" : "s"}`
+    + ` · ${done} done` + (failed ? ` · ${failed} failed` : "");
+  if (label.textContent !== text) label.textContent = text;
+  label._used = true;
+  return label;
+}
+
 function placeInOrder(box, elements) {
   elements.forEach((el, index) => {
     if (box.children[index] !== el) box.insertBefore(el, box.children[index] || null);
@@ -3267,13 +3314,23 @@ async function refresh() {
   // on its way first, then the failed ones together, then the rest.
   const rowOf = (job) => jobRows.get(job.id);
   const failedJobs = jobs.filter((j) => j.state === "error");
-  const onItsWay = jobs.filter((j) => j.state === "waiting" || j.state === "running");
-  const others = jobs.filter((j) => j.state !== "error" && j.state !== "waiting" && j.state !== "running");
+  // A playlist still under way keeps its finished videos with it, under
+  // its label, as in the mock the user chose (2026-11-01).
+  const active = (j) => j.state === "waiting" || j.state === "running";
+  const busyGroups = new Set(jobs.filter((j) => j.group && active(j)).map((j) => j.group));
+  const upTop = (j) => active(j) || (j.state !== "error" && busyGroups.has(j.group));
+  const onItsWay = grouped(jobs.filter(upTop));
+  const others = grouped(jobs.filter((j) => j.state !== "error" && !upTop(j)));
   if (failedJobs.length) {
     paintFailGroup(failedJobs);
     placeInOrder(failGroup.querySelector(".fg-rows"), failedJobs.map(rowOf));
   } else failGroup.remove();
-  placeInOrder(list, [...onItsWay.map(rowOf), ...(failedJobs.length ? [failGroup] : []), ...others.map(rowOf)]);
+  for (const label of groupLabels.values()) label._used = false;
+  placeInOrder(list, [...withLabels(onItsWay, jobs), ...(failedJobs.length ? [failGroup] : []),
+                      ...withLabels(others, jobs)]);
+  for (const [group, label] of groupLabels) {
+    if (!label._used) { label.remove(); groupLabels.delete(group); }
+  }
 
   const running = jobs.filter((j) => j.state === "running").length;
   const waiting = jobs.filter((j) => j.state === "waiting").length;
@@ -3336,6 +3393,14 @@ function paintListTools(jobs) {
     if (row) row.classList.toggle("filtered-out", listFilter !== "all" && job.state !== listFilter);
   }
   failGroup.classList.toggle("filtered-out", listFilter !== "all" && listFilter !== "error");
+  // A playlist's label goes with its rows: under "Failed" it stood alone
+  // over the red group, its own rows all hidden (2026-11-01). Its failed
+  // rows live in the red group, without the label.
+  for (const [group, label] of groupLabels) {
+    const shown = jobs.some((j) => j.group === group && j.state !== "error"
+      && (listFilter === "all" || j.state === listFilter));
+    label.classList.toggle("filtered-out", !shown);
+  }
   // A real count, never an estimate (decision 33): finished = done, failed
   // or stopped, out of every row. Drawn by the bar only -- the line "6 of 6
   // finished · 3 failed" went with model D (the filters say the counts).
@@ -4468,10 +4533,10 @@ function openPlaylist(found, info, url) {
   stopWaiting();
   $("result").classList.add("hidden");
   currentUrl = "";
-  // Every title, not only the 50 the card shows: the row lists each video
-  // from the start (2026-10-31).
+  // Every video, not only the 50 the card shows: "Same for all" adds one
+  // row per video, all of them (the user, 2026-11-01).
   batchPlaylist = { url, title: info.title || "", count: info.items.length, found,
-                    titles: info.items.map((it) => it.title || "") };
+                    entries: info.items.map((it) => ({ url: it.url, title: it.title || "" })) };
   batchExtra = Math.max(0, info.items.length - BATCH_MAX);
   batch = info.items.slice(0, BATCH_MAX).map((it) => ({
     url: it.url, found, tool: null, title: it.title || "", duration: it.duration }));
@@ -4480,6 +4545,14 @@ function openPlaylist(found, info, url) {
   renderBatch();
   if (severalMode === "each") readEach();
   $("announce").textContent = $("batch-title").textContent;
+}
+
+/** The group a playlist's rows share, made once per Download press: an id
+ *  (two playlists of the same name stay apart) and the playlist's name. */
+function playlistGroup() {
+  if (!batchPlaylist) return null;
+  return { group: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+           group_title: batchPlaylist.title || "Playlist" };
 }
 
 /** "youtube.com/watch?v=jNQXAC9IVRw", cut to fit a row. */
@@ -4578,11 +4651,16 @@ function renderBatch() {
   const each = severalMode === "each";
   const list0 = batchPlaylist;
   if (batchExtra && !list0) skipped.push(`${batchExtra} more: ${BATCH_MAX} links at most at once. Paste the rest after.`);
-  // A playlist's videos past 50 still come down with "Same for all" (one job
-  // takes the whole list); one by one, 50 is the most the card can hold.
+  // A playlist's videos past 50 still come down with "Same for all" (one row
+  // per video, all of them); one by one, 50 is the most the card can hold.
   if (batchExtra && list0 && each) {
     skipped.push(`${batchExtra} more videos: ${BATCH_MAX} at most when choosing for each video. ` +
       "“Same for all” takes the whole playlist.");
+  }
+  // Rows waiting are never trimmed, so past HISTORY_LIMIT (500, measured
+  // 2026-11-01) the list's updates pass ~50 ms and can be felt. Said first.
+  if (list0 && !each && list0.count > 500) {
+    skipped.push(`This playlist has ${list0.count} videos, one row each: the list may be slow while they download.`);
   }
   const ready = batch.filter((i) => i.tool);
   if (each) ready.forEach(startRow);
@@ -4736,13 +4814,14 @@ $("batch-go").addEventListener("click", async () => {
   go.disabled = true;
   const refused = [];
   let added = 0;
-  // A playlist, "Same for all": ONE job for the whole list, all its videos
-  // (past 50 too), each named by its own title -- the folder window above,
-  // never one "Save as" name that became "name 1", "name 2"… (seen
-  // 2026-10-24 on an Instagram post; the same rule for a playlist).
+  // A playlist, "Same for all": one row per video, all of them (past 50
+  // too), each named by its own title, in the folder chosen above (the
+  // user, 2026-11-01: "always one video by one video"; until then the
+  // whole list was one row). They share a group: one label, in order.
+  const pl = playlistGroup();
   const jobs = batchPlaylist
-    ? [{ url: batchPlaylist.url, found: batchPlaylist.found, tool: ready[0].tool, title: batchPlaylist.title,
-         items: batchPlaylist.titles }]
+    ? batchPlaylist.entries.map((it, k) => ({ url: it.url, found: batchPlaylist.found, tool: ready[0].tool,
+        title: it.title, group: { ...pl, group_index: k + 1 } }))
     : ready;
   for (const item of jobs) {
     go.textContent = `Adding ${added + refused.length + 1} of ${jobs.length}…`;
@@ -4750,7 +4829,7 @@ $("batch-go").addEventListener("click", async () => {
       url: item.url, mode: batchMode, title: item.title || "", target: "",
       quality: batchMode === "mp3" ? $("batch-quality").value : "best",
       tool: item.tool.id, platform: item.found.platform_id || "", folder,
-      ...(item.items ? { items: item.items } : {}),
+      ...(item.group || {}),
     });
     if (answer.error) refused.push(`${shortLink(item.url)}: ${answer.error}`);
     else added++;
@@ -4759,7 +4838,7 @@ $("batch-go").addEventListener("click", async () => {
   closeCard();
   refresh();
   // Every link accounted for: a refused one is said, never dropped (decision 34).
-  const done = whole && added ? `The playlist was added: ${whole} videos, in one row.`
+  const done = whole && added ? `${added} videos of the playlist added, one row each.`
     : added === 1 ? "1 download added." : `${added} downloads added.`;
   if (refused.length) setStatus(`${done} Not added: ${refused.join(" · ")}`);
   else notify(done);
@@ -4775,6 +4854,7 @@ async function downloadEach(ready) {
   const refused = [];
   const cancelled = [];
   let added = 0;
+  const pl = playlistGroup();         // a playlist's rows stay together, in order
   for (const [n, item] of ready.entries()) {
     const label = item.title || shortLink(item.url);
     const tool = rowTool(item);
@@ -4799,6 +4879,7 @@ async function downloadEach(ready) {
       url: item.url, mode: item.fmt, title: item.title || "", target,
       quality: item.quality || "best",
       tool: tool.id, platform: item.found.platform_id || "", folder,
+      ...(pl ? { ...pl, group_index: batch.indexOf(item) + 1 } : {}),
       // Only a choice its row really showed (item 7, "Choose for each").
       ...(item.fmt === "mp4" && item.subs && makesSubs(tool)
         ? { subs: item.subs, sub_lang: item.subLang } : {}),

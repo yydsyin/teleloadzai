@@ -273,7 +273,8 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
                    tool: str, platform: str, force: bool = False,
                    replace: str = "", folder: str = "",
                    subs: str = "", sub_lang: str = "",
-                   items: list[str] | None = None) -> tuple[dict, int]:
+                   items: list[str] | None = None,
+                   group: tuple[str, str, int] | None = None) -> tuple[dict, int]:
     """Check a download request and put it in the queue. Returns (json, status).
 
     ``replace`` is the id of a finished job this one takes the place of --
@@ -325,7 +326,8 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
                         cookie_note=cookies.unusable_reason(tool, on) or "",
                         platform=platform,
                         cookie_header=on and tool in cookies.HEADER_CAPABLE,
-                        replace=replace, subs=subs, sub_lang=sub_lang, items=items)
+                        replace=replace, subs=subs, sub_lang=sub_lang, items=items,
+                        group=group)
     except TargetInUse as taken:
         return {"error": f"Another download in the list is already saving to “{taken}”. "
                          "Choose another name."}, 409
@@ -894,6 +896,11 @@ class Handler(BaseHTTPRequestHandler):
                 # listed on its row from the start (2026-10-31). Text only.
                 items=[str(t) for t in body["items"]]
                       if isinstance(body.get("items"), list) else None,
+                # A playlist's video: which playlist, its name, its place
+                # (one row per video, 2026-11-01).
+                group=(str(body["group"])[:64], str(body.get("group_title") or "")[:300],
+                       int(body.get("group_index") or 0))
+                      if body.get("group") and str(body.get("group_index") or "0").isdigit() else None,
             )
             self._json(answer, status)
             return

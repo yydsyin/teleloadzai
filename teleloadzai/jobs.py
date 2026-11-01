@@ -50,8 +50,13 @@ def target_clashes(target: str, taken: set[str]) -> bool:
 _KEPT = ("id", "url", "mode", "quality", "title", "folder", "target", "tool",
          "platform", "skipped", "skip_reason", "state", "files", "error",
          "error_from_tool", "limit_minutes", "live", "interrupted", "note", "pieces",
-         "subs", "sub_lang", "items")
-HISTORY_LIMIT = 200         # rows kept; the oldest finished ones go first
+         "subs", "sub_lang", "items", "group", "group_title", "group_index")
+# Rows kept; the oldest finished ones go first. Measured 2026-11-01 with the
+# page's own refresh(): each update while downloading took 14-19 ms at 200
+# rows, 40 ms at 500, 84-91 ms at 1,000 (felt as stutter), 177-217 ms at
+# 2,000; a save of jobs.json 4 ms at 500. 500 holds a 182-video playlist,
+# one row per video, beside 300 older rows.
+HISTORY_LIMIT = 500
 
 # Each video or file of a row that holds several (the user, 2026-10-31: "see
 # the process of all videos in the list, not only for yt-dlp"). Read from the
@@ -260,6 +265,12 @@ class Job:
     # Each video or file of a row that holds several: {"title", "state",
     # "error"}; state is WAITING or one of the ITEM_ states above.
     items: list[dict] = field(default_factory=list)
+    # A playlist is one row per video (the user, 2026-11-01): its rows share
+    # a `group` (an id made when it was added), its name, and their place
+    # in it, so the list keeps them together, in order, under one label.
+    group: str = ""
+    group_title: str = ""
+    group_index: int = 0
     error: str = ""
     error_from_tool: bool = False   # is `error` the tool's own words? (decision 38)
     # A finished job's one plain sentence about what it did not get: "Saved
@@ -315,6 +326,7 @@ class Job:
             "eta": self.eta, "done_bytes": self.done_bytes, "total_bytes": self.total_bytes,
             "estimated": self.estimated, "files": self.files, "error": self.error,
             "items": self.items,
+            "group": self.group, "group_title": self.group_title, "group_index": self.group_index,
             "note": self.note,
             # Asked to the disk at each refresh, like the finished files: a
             # piece the user deleted is no longer said.
@@ -495,7 +507,8 @@ class Queue:
             cookie_file: Path | None = None, cookie_note: str = "",
             platform: str = "", cookie_header: bool = False,
             replace: str = "", subs: str = "", sub_lang: str = "",
-            items: list[str] | None = None) -> Job | None:
+            items: list[str] | None = None,
+            group: tuple[str, str, int] | None = None) -> Job | None:
         """Queue a download. With ``replace``, it takes the place of that
         finished job -- same id, same spot in the list -- instead of adding a
         row: a Retry used to leave the failed row behind, one more each time.
@@ -513,6 +526,8 @@ class Queue:
             cookie_note=cookie_note, platform=platform,
             cookie_header=cookie_header, subs=subs, sub_lang=sub_lang,
         )
+        if group:
+            job.group, job.group_title, job.group_index = group
         with self._lock:
             # Checked and added in one step: two requests at once cannot both
             # pass with the same file.
@@ -524,6 +539,9 @@ class Queue:
                     return None
                 if items is None and job.tool == "yt-dlp":
                     items = [item.get("title", "") for item in old.items]
+                if not group:               # a Retry stays in its playlist
+                    job.group, job.group_title, job.group_index = (
+                        old.group, old.group_title, old.group_index)
                 self._jobs[replace] = job           # its place in _order stays
             else:
                 self._jobs[job.id] = job
