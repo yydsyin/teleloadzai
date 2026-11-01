@@ -50,7 +50,7 @@ def target_clashes(target: str, taken: set[str]) -> bool:
 _KEPT = ("id", "url", "mode", "quality", "title", "folder", "target", "tool",
          "platform", "skipped", "skip_reason", "state", "files", "error",
          "error_from_tool", "limit_minutes", "live", "interrupted", "note", "pieces",
-         "subs", "sub_lang", "items", "group", "group_title", "group_index")
+         "subs", "sub_lang", "items", "group", "group_title", "group_index", "post_part")
 # Rows kept; the oldest finished ones go first. Measured 2026-11-01 with the
 # page's own refresh(): each update while downloading took 14-19 ms at 200
 # rows, 40 ms at 500, 84-91 ms at 1,000 (felt as stutter), 177-217 ms at
@@ -72,6 +72,9 @@ HISTORY_LIMIT = 500
 ITEM_RUNNING, ITEM_DONE, ITEM_FAILED, ITEM_STOPPED, ITEM_THERE, ITEM_MISSED = (
     "running", "done", "failed", "stopped", "there", "missed")
 ITEMS_KEPT = 2000           # a 5,000-video channel must not fill jobs.json
+# Programs that fetch a whole post in one run: their files become one row
+# each once it ends (`Queue._split_post`, 2026-11-01).
+POST_TOOLS = ("xhs-downloader", "gallery-dl")
 _ITEM_START = re.compile(r"^\[download\] Downloading item (\d+) of (\d+)")
 _ITEM_ERROR = re.compile(r"^ERROR: \[[^\]]+\] [^:\s]+: (.+)")
 _PLAYLIST_END = "[download] Finished downloading playlist"
@@ -271,6 +274,10 @@ class Job:
     group: str = ""
     group_title: str = ""
     group_index: int = 0
+    # A picture of a post split one row per file (`_split_post`), not its
+    # first: it cannot be downloaded again alone -- the program fetches the
+    # whole post -- so only the first row offers it.
+    post_part: bool = False
     error: str = ""
     error_from_tool: bool = False   # is `error` the tool's own words? (decision 38)
     # A finished job's one plain sentence about what it did not get: "Saved
@@ -327,6 +334,10 @@ class Job:
             "estimated": self.estimated, "files": self.files, "error": self.error,
             "items": self.items,
             "group": self.group, "group_title": self.group_title, "group_index": self.group_index,
+            "post_part": self.post_part,
+            # The first row of a split post: its "Download again" fetches
+            # the whole post, and says so.
+            "post_head": bool(self.group) and self.group == self.id,
             "note": self.note,
             # Asked to the disk at each refresh, like the finished files: a
             # piece the user deleted is no longer said.
@@ -539,7 +550,15 @@ class Queue:
                     return None
                 if items is None and job.tool == "yt-dlp":
                     items = [item.get("title", "") for item in old.items]
-                if not group:               # a Retry stays in its playlist
+                if old.group and old.group == old.id:
+                    # "Download again" on a split post fetches the whole post:
+                    # its other picture rows go, the new run splits again.
+                    for other in [i for i in self._order
+                                  if i != replace and self._jobs[i].group == old.group]:
+                        del self._jobs[other]
+                        self._order.remove(other)
+                    job.title = old.group_title     # the post's name, not its 1st file's
+                elif not group:             # a Retry stays in its playlist
                     job.group, job.group_title, job.group_index = (
                         old.group, old.group_title, old.group_index)
                 self._jobs[replace] = job           # its place in _order stays
@@ -551,6 +570,27 @@ class Queue:
         self._pump()
         self.save()
         return job
+
+    def _split_post(self, job: Job) -> None:
+        """A post of several files ends as one row per file (the user,
+        2026-11-01: "always one video by one video", for every program).
+        XHS-Downloader and gallery-dl fetch a whole post in one run and name
+        each file only at the end (seen 2026-10-31), so the rows are made
+        here, once it is over, under one label: the post's name. Lock held."""
+        if job.tool not in POST_TOOLS or job.skipped or len(job.files) < 2:
+            return
+        files = list(job.files)
+        job.group, job.group_title, job.group_index = job.id, job.title or "Post", 1
+        job.files, job.title = files[:1], Path(files[0]).stem
+        at = self._order.index(job.id)
+        for k, path in enumerate(files[1:], start=2):
+            part = Job(id=uuid.uuid4().hex[:12], url=job.url, mode=job.mode, quality=job.quality,
+                       title=Path(path).stem, folder=job.folder, tool=job.tool,
+                       platform=job.platform, state=DONE, percent="100%", files=[path],
+                       group=job.group, group_title=job.group_title, group_index=k,
+                       post_part=True)
+            self._jobs[part.id] = part
+            self._order.insert(at + k - 1, part.id)
 
     def all(self) -> list[dict]:
         """Newest first, which is the order the UI shows."""
@@ -860,6 +900,7 @@ class Queue:
                     job.note = note
                     job.state = DONE
                     job.percent = "100%"
+                    self._split_post(job)
         except Exception as exc:
             with self._lock:
                 limit = job.limit_reached and job.state == RUNNING

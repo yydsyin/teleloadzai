@@ -2836,6 +2836,13 @@ function paintItems(row, job, right) {
   }
 }
 
+/** A post split one row per file (XHS-Downloader, gallery-dl): its program
+ *  fetches the whole post, so the first row says it, and the others offer
+ *  no "Download again" of their own (2026-11-01). */
+function againWords(job) {
+  return job.post_head ? "Download the whole post again" : "Download again";
+}
+
 function jobShape(job) {
   return JSON.stringify([job.state, job.interrupted, job.skipped, job.skip_reason, job.error, job.note,
     Boolean(job.on_disk),
@@ -2886,7 +2893,7 @@ function jobRow(job) {
       && `<button type="button" role="menuitem" data-reveal="${job.id}">Show in folder</button>`,
       // The same video again, in the same place (the user, 2026-10-26). Its
       // file is still there: two clicks, it will be replaced (decision 24).
-      job.on_disk && `<button type="button" role="menuitem" data-again="${job.id}">Download again</button>`,
+      job.on_disk && !job.post_part && `<button type="button" role="menuitem" data-again="${job.id}">${againWords(job)}</button>`,
       // Its file moved or deleted: Open and Show in folder could only
       // answer an error (decision 40) -- the row can go.
       `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`])
@@ -2901,8 +2908,8 @@ function jobRow(job) {
         <span class="small"></span>
         ${failed ? fails.primary : ""}
         ${compact && job.on_disk ? `<button class="ghost tiny" data-open="${job.id}">Open</button>` : ""}
-        ${compact && !job.on_disk ? `<button class="ghost tiny" data-force="${job.id}">Download again</button>` : ""}
-        ${already ? `<button class="ghost tiny" data-force="${job.id}">Download again</button>` : ""}
+        ${compact && !job.on_disk && !job.post_part ? `<button class="ghost tiny" data-force="${job.id}">${againWords(job)}</button>` : ""}
+        ${already && !job.post_part ? `<button class="ghost tiny" data-force="${job.id}">${againWords(job)}</button>` : ""}
         ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
         ${menu}
       </span>
@@ -3104,7 +3111,7 @@ function jobRow(job) {
   const again = row.querySelector("[data-again]");
   if (again) again.addEventListener("click", (event) => {
     if (again.dataset.armed !== "yes") event.stopPropagation();
-    twoClicks(again, "Replace the file? Click again", async () => {
+    twoClicks(again, row._job.post_head ? "Replace the post's files? Click again" : "Replace the file? Click again", async () => {
       await retryRow(again.dataset.again, { force: true });
       closeMenus(null);
       refresh();
@@ -3196,7 +3203,9 @@ function groupLabel(group, everyJob) {
   const members = everyJob.filter((j) => j.group === group);
   const done = members.filter((j) => j.state === "done").length;
   const failed = members.filter((j) => j.state === "error").length;
-  const text = `${members[0].group_title || "Playlist"} · ${members.length} video${members.length === 1 ? "" : "s"}`
+  // A split post holds pictures as often as videos: "files" there.
+  const noun = members.some((j) => j.post_head || j.post_part) ? "file" : "video";
+  const text = `${members[0].group_title || "Playlist"} · ${members.length} ${noun}${members.length === 1 ? "" : "s"}`
     + ` · ${done} done` + (failed ? ` · ${failed} failed` : "");
   if (label.textContent !== text) label.textContent = text;
   label._used = true;
