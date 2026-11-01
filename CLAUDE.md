@@ -265,6 +265,7 @@ What each step did, found and checked, round by round: `docs/HISTORY.md` §7 (wo
 - **Item 6, a Windows message when downloads end** ✅ 2026-10-24 — a tray message named "Teleloadzai". ⚠️ A click from Windows' notification list does nothing (see step 6). Not seen: a real failed download's message.
 - **Item 7, subtitles** ✅ 2026-10-25 — one link and "Choose for each". ⚠️ Not seen: a real Stop during the subtitle step; "Chosen for the subtitles" on a real card.
 - **The Downloads list**: a finished row is one line (2026-10-24); failed rows grouped, one button each, the rest behind ⋯ (model D, 2026-10-25).
+- **One row per video** ✅ 2026-11-01, from a drawn mock (the user: "always one video by one video") — a playlist, "Same for all" or "Choose for each", is one row per video under one label, every video; a post fetched whole by XHS-Downloader or gallery-dl becomes one row per file, only the first offering "Download the whole post again". The list keeps **500** rows (`jobs.HISTORY_LIMIT`, measured: 40 ms per update at 500). The folder window is Windows' modern one (`dialogs._PICK_FOLDER`). ⚠️ Not seen: a folder chosen by hand in the real window; a Retry of a post.
 
 **Safety rule for this phase:** the "video downloader" category is full of adware.
 - **Open source** → safe to install and to read the code.

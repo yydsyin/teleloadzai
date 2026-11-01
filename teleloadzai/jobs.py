@@ -294,6 +294,9 @@ class Job:
     started: float = 0.0
     part: str = ""              # "picture" / "sound" while yt-dlp fetches that part
     step: str = ""              # "joining picture and sound", "making the MP3"
+    # When that step began: "Making the MP3… 30 s" counted from the start of
+    # the whole row, while the MP3 itself had taken 2 s (seen 2026-10-31).
+    step_started: float = 0.0
     # The files yt-dlp said it was writing, for this job only. After a Stop,
     # their unfinished pieces are removed -- and nothing else (`_leftovers`).
     destinations: list[Path] = field(default_factory=list, repr=False)
@@ -367,6 +370,8 @@ class Job:
                        if self.state == RUNNING and self.started else 0,
             "part": self.part,
             "step": self.step,
+            "step_elapsed": int(time.time() - self.step_started)
+                            if self.state == RUNNING and self.step and self.step_started else 0,
             # A live recording and its limit: the row said "Downloading" over
             # an empty bar, never "live" nor "of 60 min" (loop round 2,
             # 2026-10-23). streamlink only ever records live streams.
@@ -752,6 +757,8 @@ class Queue:
 
         def on_step(step: str) -> None:
             with self._lock:
+                if step != job.step:
+                    job.step_started = time.time()
                 job.step = step
             # TikTokDownloader and KS-Downloader print nothing we read: their
             # steps are what the console can say of them.

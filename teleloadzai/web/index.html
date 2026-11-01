@@ -2652,7 +2652,10 @@ function jobProgress(job) {
   // show; a silent 0% bar looks exactly like a crash (decision 33).
   // After the download, FFmpeg's step, as yt-dlp announces it. There is no
   // percentage for it, so the time is the measure again.
-  else if (job.step) right = job.step[0].toUpperCase() + job.step.slice(1) + "… " + formatElapsed(job.elapsed || 0);
+  // The step's own seconds, not the row's (2026-11-01: "Making the MP3… 30 s"
+  // for an MP3 made in 2 s).
+  else if (job.step) right = job.step[0].toUpperCase() + job.step.slice(1) + "… "
+    + formatElapsed(job.step_elapsed ?? job.elapsed ?? 0);
   // A tool with no percentage whose file grows in the folder: what has
   // arrived, never a guessed size (gallery-dl, streamlink, N_m3u8DL-RE).
   else if (!job.percent) right = job.done_bytes
