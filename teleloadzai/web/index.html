@@ -84,8 +84,8 @@
   .linkbox input[type=text] { height: 48px; font-size: 16px; padding: 0 14px; }
   .linkbox #read { min-height: 48px; padding: 0 22px; }
   .linkbox .err { margin-top: 6px; }
-  /* The main screen fills the window and never scrolls: the list scrolls in
-     its own card instead. */
+  /* The main screen fills the window and never scrolls while no card is
+     open: the list scrolls in its own card instead (a card open: below). */
   .wrap[data-showing="main"] { display: flex; flex-direction: column; height: 100vh; padding-bottom: 16px; }
   .wrap:not([data-showing="main"]) { padding-bottom: 60px; }
   .wrap[data-showing="main"] > .card { flex: none; }
@@ -140,13 +140,15 @@
     list-style: none; margin: 10px 0 0; padding: 6px 0 0; border-top: 1px solid var(--line);
     max-height: min(196px, 15vh); overflow-y: auto; font-size: 13px;
   }
-  /* This card is taller than one link's: under it the list gives up room,
-     or the main screen scrolled (measured at 860x814, 2026-10-24). The
-     empty list's drawing goes; a list with rows keeps two in sight. */
-  .wrap:has(#batch:not(.hidden)) > #jobs-card { min-height: 96px; }
-  /* "Choose for each" with its Subtitles row and "Not added": 834 px in an
-     814 px window. The list behind gives the room (critique of 2026-10-31). */
-  .wrap:has(#batch.each:not(.hidden)) > #jobs-card { min-height: 72px; }
+  /* A card open: the page may scroll, and a list with rows keeps about four
+     in sight (the user, 2026-11-01, from a drawn mock). Under a playlist
+     card the list had shrunk to 0-25 px -- not one row in sight, at both
+     sizes -- and the page could not scroll to it. Without a card the main
+     screen still never scrolls. The one-video card is left as it was: it
+     leaves about 3 rows without any scroll (288 px measured at 860x814);
+     this rule made it scroll 52-68 px for one more. */
+  .wrap[data-showing="main"]:has(#batch:not(.hidden)) { height: auto; min-height: 100vh; }
+  .wrap:has(#batch:not(.hidden)) > #jobs-card:has(#jobs:not(:empty)) { flex: 1 1 0; min-height: 340px; }
   .wrap:has(#batch:not(.hidden)) #jobs-empty { display: none; }
   .batch-links li { display: flex; gap: 12px; justify-content: space-between; padding: 4px 0; }
   .batch-links .link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -220,7 +220,7 @@ The Console's box is the one dark surface of the light theme, so its colours hav
 
 - **A menu on the left** (model S1, chosen by the user 2026-10-25 from a drawing, after a launcher they showed): an 88 px strip fixed to the window's left edge, a hair darker than the page, with **Download · Console · Programs · Sites** at the top and **Settings** alone at the bottom. Each item is a 72 px tile — icon (22 px) over its name (12 px) — and **each one is its own page**; the open one is tinted yellow. It replaced layout A's Settings button in the corner. **The window opens maximized** ("Restore down" gives the old 860-wide window).
 - **One column** beside the menu, centred, 860 px wide at most (1040 px from 1200 px wide), with a 16 px gutter.
-- **The Download page never scrolls.** It is one column `100vh` tall: link box, card, then the list, which takes the room left (at least 170 px) and scrolls inside its card.
+- **The Download page never scrolls — except under a card of several links.** It is one column `100vh` tall: link box, card, then the list, which takes the room left (at least 170 px) and scrolls inside its card. With the card of several links or a playlist open, the page may scroll and a list with rows keeps **340 px, four rows** (the user, 2026-11-01, from a mock: under that card the list had 0–25 px, not one row in sight, at both sizes). The one-link card is unchanged: 2 rows at 1463×834, 3 at 860×814, no scroll.
 - **Programs**, **Sites** and **Settings** are each a page with its title (22 px) and its groups of rows; Settings holds the download settings only — no tabs (Sites became its own page the same day, at the user's request).
 - **The compact step:** a window ≤ 640 px wide or ≤ 720 px tall has smaller margins, a 40 px link field, a smaller picture and lower rows. The real window (860×814 inside) and full screen (1463×834) are above it.
 - **Test at the user's two real sizes:** the small window (860×814 inside) and full screen (1463×834). Invented sizes missed what the user saw at once.
@@ -309,7 +309,7 @@ Under its title, a **Choices** row (the stack icon, a two-way switch): **Same fo
 - **A playlist** uses the same card: the title "Team Fortress 2 [2010 Version] — 29 videos", its videos as the rows (their titles, not links), "…and N more videos" past 50 in Same for all.
 - In the compact step the Choices row is tighter (34 px), so the screen does not scroll at 520×700.
 
-While this card is open, the list under it may shrink to 96 px, so the main screen never scrolls.
+While this card is open, the page may scroll, and the list under it keeps four rows (340 px; 2026-11-01 — it used to shrink to 96 px, and showed no row at all).
 
 ### List tools
 Over the Downloads list:
