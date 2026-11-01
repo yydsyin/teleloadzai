@@ -22,14 +22,71 @@ _ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 # A hidden top-most form is used as the parent, otherwise the dialog can
 # open behind the browser window and look like nothing happened.
+# Windows' modern folder window (IFileOpenDialog with FOS_PICKFOLDERS): a
+# path box, "Select Folder", resizable. The old FolderBrowserDialog tree was
+# 705x710 and the user had to drag it to reach OK (2026-11-01). PowerShell has
+# no command for it, so its interface is declared in C#. Probed 2026-11-01 on
+# this PC, the way the app runs it: it opens in 0.7-1.1 s, holds Windows'
+# DirectUIHWND (the old one only a SysTreeView32), 731x480; "Select Folder"
+# answered the start folder, closing it answered nothing (docs/BELIEFS.md).
+# __START__ is filled by pick_folder(): the C# braces stay as they are.
 _PICK_FOLDER = """
 Add-Type -AssemblyName System.Windows.Forms
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = 'Choose the download folder'
-$dialog.SelectedPath = '{start}'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+[ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IShellItem {
+    void BindToHandler(); void GetParent();
+    void GetDisplayName(uint sigdn, [MarshalAs(UnmanagedType.LPWStr)] out string name);
+    void GetAttributes(); void Compare();
+}
+
+[ComImport, Guid("42F85136-DB7E-439C-85F1-E4075D135FC8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IFileOpenDialog {
+    [PreserveSig] int Show(IntPtr parent);
+    void SetFileTypes(); void SetFileTypeIndex(); void GetFileTypeIndex(); void Advise(); void Unadvise();
+    void SetOptions(uint fos); void GetOptions(out uint fos);
+    void SetDefaultFolder(IShellItem item); void SetFolder(IShellItem item);
+    void GetFolder(); void GetCurrentSelection();
+    void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string name); void GetFileName();
+    void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string title);
+    void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string text);
+    void SetFileNameLabel(); void GetResult(out IShellItem item);
+}
+
+[ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
+public class FileOpenDialogCoClass {}
+
+public static class ModernFolder {
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    static extern void SHCreateItemFromParsingName(string path, IntPtr bc,
+        [MarshalAs(UnmanagedType.LPStruct)] Guid riid, out IShellItem item);
+
+    // FOS_PICKFOLDERS 0x20 | FOS_FORCEFILESYSTEM 0x40 | FOS_PATHMUSTEXIST 0x800
+    public static string Pick(IntPtr parent, string title, string start) {
+        var dialog = (IFileOpenDialog)new FileOpenDialogCoClass();
+        dialog.SetOptions(0x20 | 0x40 | 0x800);
+        dialog.SetTitle(title);
+        try {
+            IShellItem folder;
+            SHCreateItemFromParsingName(start, IntPtr.Zero, typeof(IShellItem).GUID, out folder);
+            dialog.SetFolder(folder);
+        } catch { }             // a start folder gone since: Windows opens its own default
+        if (dialog.Show(parent) != 0) return null;       // Cancel, or closed
+        IShellItem result;
+        dialog.GetResult(out result);
+        string path;
+        result.GetDisplayName(0x80058000, out path);        // SIGDN_FILESYSPATH
+        return path;
+    }
+}
+'@
 $parent = New-Object System.Windows.Forms.Form
 $parent.TopMost = $true
-if ($dialog.ShowDialog($parent) -eq 'OK') {{ Write-Output $dialog.SelectedPath }}
+$chosen = [ModernFolder]::Pick($parent.Handle, 'Choose the download folder', '__START__')
+if ($chosen) { Write-Output $chosen }
 $parent.Dispose()
 """
 
@@ -238,7 +295,7 @@ def _quote(text: str) -> str:
 
 def pick_folder(start: Path) -> Path | None:
     """Open the Windows folder dialog. Returns None if the user cancels."""
-    chosen = _run_dialog(_PICK_FOLDER.format(start=_quote(start)))
+    chosen = _run_dialog(_PICK_FOLDER.replace("__START__", _quote(start)))
     return Path(chosen) if chosen else None
 
 
