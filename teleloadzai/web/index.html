@@ -571,6 +571,9 @@
     display: flex; align-items: center; justify-content: flex-end;
     gap: 8px; flex-wrap: wrap; min-width: 0;
   }
+  .opt-control:has(#batch-folder) { flex-wrap: nowrap; }
+  #batch-folder { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #batch-folder-change { flex: none; }
   .opt-icon {
     width: 32px; height: 32px; flex: none; border-radius: 8px;
     background: color-mix(in srgb, var(--go) 22%, var(--card));
@@ -1066,7 +1069,8 @@
       <div class="opt-row">
         <span class="opt-icon icon-folder" aria-hidden="true"></span>
         <span class="opt-name">Folder</span>
-        <span class="opt-control"><span class="hint" id="batch-folder"></span></span>
+        <span class="opt-control"><span class="hint" id="batch-folder"></span>
+          <button type="button" class="ghost tiny" id="batch-folder-change" aria-label="Change the folder for these downloads">Change…</button></span>
       </div>
       <div class="opt-foot">
         <button id="batch-go" aria-keyshortcuts="Control+Enter">Download</button>
@@ -4026,6 +4030,7 @@ function closeCard(keepLink = false) {
   $("batch").classList.add("hidden");
   batch = [];
   batchPlaylist = null;
+  batchFolder = "";           // Change… was for that card only
   eachRead++;                 // its videos still being read are dropped
   $("read").disabled = false;
   currentUrl = "";
@@ -4329,6 +4334,7 @@ let batchMode = "mp4";
 // "same": one Format / Quality / folder for all. "each": a row of choices per
 // video -- the user's own pick, kept in Settings (asked 2026-10-24).
 let severalMode = "same";
+let batchFolder = "";       // chosen with Change…, for this card only; else the Settings folder
 // The card is a playlist: {url, title, count, found}. Its videos are the rows
 // (50 at most); "Same for all" downloads the whole list as one job.
 let batchPlaylist = null;
@@ -4597,7 +4603,14 @@ function batchTool(found, wanted) {
   return { tool };
 }
 
+/** A long folder as its drive and its end: the end is what tells it apart. */
+function shortFolder(path) {
+  const parts = path.split("\\");
+  return path.length <= 46 || parts.length < 4 ? path : `${parts[0]}\\…\\${parts.slice(-2).join("\\")}`;
+}
+
 async function readMany(links) {
+  batchFolder = "";
   cardBox = $("url").value;
   const mine = ++readNumber;
   stopWaiting();
@@ -4776,9 +4789,14 @@ function renderBatch() {
   }
   select.classList.toggle("hidden", !mp3);
   $("batch-quality-why").classList.toggle("hidden", mp3);
-  $("batch-folder").textContent = !askWhere ? ($("folder").value || "The folder in Settings")
-    : each ? "You choose each video's name and folder when you press Download"
-    : "You choose it when you press Download";
+  // The folder itself, and a way to change it: the row said "You choose it
+  // when you press Download" (the user, 2026-11-05). Not drawn when each
+  // video has its own window: nothing here would decide anything.
+  const folderNow = batchFolder || $("folder").value;
+  $("batch-folder").textContent = shortFolder(folderNow);
+  $("batch-folder").title = folderNow;
+  $("batch-folder").classList.toggle("hidden", each && askWhere);
+  $("batch-folder-change").classList.toggle("hidden", each && askWhere);
 
   const go = $("batch-go");
   const count = list0 && !each && ready.length ? list0.count : ready.length;
@@ -4810,20 +4828,29 @@ for (const b of document.querySelectorAll(".bchoice")) {
   b.addEventListener("click", () => { batchMode = b.dataset.bmode; renderBatch(); });
 }
 
+// For these downloads only: the Settings folder is not changed (Browse… does
+// that). Cancel leaves the row as it was.
+$("batch-folder-change").addEventListener("click", async () => {
+  const button = $("batch-folder-change");
+  button.disabled = true;
+  setStatus("Choose the folder for these downloads in the window that opens…");
+  const chosen = await api("/api/pick-folder", {});
+  button.disabled = false;
+  if (chosen.error) { setStatus("Error: " + chosen.error); return; }
+  setStatus("");
+  if (chosen.cancelled || !chosen.folder) return;
+  batchFolder = chosen.folder;
+  renderBatch();
+});
+
 $("batch-go").addEventListener("click", async () => {
   const ready = batch.filter((i) => i.tool);
   if (!ready.length) return;
   if (severalMode === "each") { downloadEach(ready); return; }
-  let folder = "";
-  // One folder window for all of them, never one per link (the user's
-  // choice, 2026-10-24); each file keeps the name its program gives it.
-  if (askWhere) {
-    setStatus("Choose the folder for these downloads in the window that opens…");
-    const chosen = await api("/api/pick-folder", {});
-    if (chosen.error) { setStatus("Error: " + chosen.error); return; }
-    if (chosen.cancelled || !chosen.folder) { setStatus("Cancelled. Nothing was added."); return; }
-    folder = chosen.folder;
-  }
+  // The folder the card shows: no window at Download (the user, 2026-11-05;
+  // one window for all of them until then). "" is the Settings folder. Each
+  // file keeps the name its program gives it.
+  const folder = batchFolder;
   const go = $("batch-go");
   go.disabled = true;
   const refused = [];
@@ -4873,7 +4900,7 @@ async function downloadEach(ready) {
     const label = item.title || shortLink(item.url);
     const tool = rowTool(item);
     let target = "";
-    let folder = "";
+    let folder = batchFolder;
     if (askWhere) {
       go.textContent = `Choosing ${n + 1} of ${ready.length}…`;
       // A program that names its files itself is asked a folder, never a
@@ -4935,6 +4962,7 @@ $("browse").addEventListener("click", async () => {
   if (result.error) { setStatus("Error: " + result.error); return; }
   if (result.cancelled) setStatus(""); else notify("Folder saved.");
   if (result.download_folder) $("folder").value = result.download_folder;
+  if (batch.length) renderBatch();       // an open card shows this folder
 });
 
 // Saved when the field is left or Enter is pressed, like every other
@@ -4944,6 +4972,7 @@ $("folder").addEventListener("change", async () => {
   const settings = await api("/api/settings", { download_folder: $("folder").value.trim() });
   $("folder").value = settings.download_folder || "";
   notify("Folder saved.");
+  if (batch.length) renderBatch();       // an open card shows this folder
 });
 
 // These three used to save in silence: the user could not tell a change

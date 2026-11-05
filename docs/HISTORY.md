@@ -185,3 +185,13 @@ Six Stops pressed through the running app's own API, each on a real download, th
 **Left alone, not asked:** "Retry failed" has a border and "Clear finished" none; a single stream from N_m3u8DL-RE is tagged "Files".
 
 ⚠️ **Not seen:** the real app window; these rows during other programs' real downloads, except the live recording. The user's "sometimes" was not pinned to one moment: fix (1) is my best reading of it.
+
+### 2026-11-05 — the card of several links shows its folder
+
+**The user**, from a screenshot of "You choose it when you press Download": say the normal setting, a default folder people can change. A yes to a drawn model; decision 22 changed with it.
+
+**Built:** the row shows the Settings folder and **Change…** (`batchFolder`, this card only); Download opens no window under "Same for all". Under "Choose for each" the row is gone while each video has its own window, and stays when "Ask where" is off.
+
+**Seen, in a test copy** (the real code and programs, its own empty data folder, port 8778: the user's window was open, and a second copy on the real data would tidy its files at start): 2 links through the real card and Download: 0 windows asked, one real file in the chosen folder (533,931 bytes), the Settings folder unchanged; the next card back on the Settings folder, one file there. The other link of each pair is a video YouTube has removed: a real failed row, in the same folder. gallery-dl (names its own files): 224,566 bytes in the chosen folder. Downloading again: "Already in your folder", same size, nothing replaced. Change… cancelled: row unchanged, no message; refused: said. A very long path: one line at both sizes, no sideways scroll.
+
+⚠️ **Not seen:** the real Windows folder window opened by Change… (its answers were simulated: it would have opened on the user's screen; the route and `pick_folder` themselves are unchanged); the real app window.
