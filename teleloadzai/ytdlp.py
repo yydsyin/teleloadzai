@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
@@ -48,7 +48,21 @@ _PROGRESS_TEMPLATE = (
     "\t%(progress.speed)s\t%(progress.eta)s"
     "\t%(info.vcodec)s\t%(info.acodec)s"
     "\t%(progress.downloaded_bytes)s\t%(progress.total_bytes)s"
-    "\t%(progress.total_bytes_estimate)s"
+    "\t%(progress.total_bytes_estimate)s\t%(info.format_id)s"
+)
+# The size of both parts of an MP4, said before the first one starts: with
+# them the bar counts the whole download, once, instead of reaching 99.6% on
+# the picture and falling to 27% on the sound (seen 2026-11-05). Probed the
+# same day: "395, 223779, 223778, 140, 309288, 309287" for a file of 533,931
+# bytes, the same ids as `info.format_id` above; all "NA" for one file (an
+# MP3), which then counts alone as before.
+_SIZES_TAG = "TLZ_S"
+_SIZES_TEMPLATE = (
+    f"before_dl:{_SIZES_TAG}"
+    "\t%(requested_formats.0.format_id)s\t%(requested_formats.0.filesize)s"
+    "\t%(requested_formats.0.filesize_approx)s"
+    "\t%(requested_formats.1.format_id)s\t%(requested_formats.1.filesize)s"
+    "\t%(requested_formats.1.filesize_approx)s"
 )
 
 # The steps after the download, as yt-dlp announces them (both seen
@@ -113,6 +127,7 @@ class Progress:
     done: int = 0           # bytes of this part so far
     total: int = 0          # its size, 0 when unknown
     estimated: bool = False  # the size is yt-dlp's estimate, not the file's
+    format_id: str = ""     # which of yt-dlp's formats is coming down
 
 
 def _number(text: str) -> float | None:
@@ -125,14 +140,48 @@ def _number(text: str) -> float | None:
 
 def _progress(parts: list[str]) -> Progress:
     """One progress line, split on tabs, as numbers."""
-    parts = parts + [""] * (9 - len(parts))
+    parts = parts + [""] * (10 - len(parts))
     speed, eta = _number(parts[2]), _number(parts[3])
     done, total, guess = _number(parts[6]), _number(parts[7]), _number(parts[8])
     return Progress(
         percent=parts[1].strip(), speed=speed or 0.0,
         eta=int(eta) if eta is not None else None, part=_part(parts[4], parts[5]),
         done=int(done or 0), total=int(total or guess or 0),
-        estimated=not total and bool(guess),
+        estimated=not total and bool(guess), format_id=parts[9].strip(),
+    )
+
+
+def _part_sizes(parts: list[str]) -> list[tuple[str, int, bool]]:
+    """The sizes line as (format id, bytes, is an estimate), or [] unless both
+    parts have a size: a total without one of them would be a false total."""
+    parts = parts + [""] * (7 - len(parts))
+    sizes = []
+    for format_id, exact, guess in (parts[1:4], parts[4:7]):
+        size = _number(exact) or _number(guess)
+        if not size or format_id.strip() in ("", "NA"):
+            return []
+        sizes.append((format_id.strip(), int(size), not _number(exact)))
+    return sizes
+
+
+def _whole(progress: Progress, sizes: list[tuple[str, int, bool]]) -> Progress:
+    """One part's progress as the whole download's, when both sizes are known.
+    Anything else coming down (a subtitle, one file alone) stays as it is."""
+    ids = [format_id for format_id, _, _ in sizes]
+    if progress.format_id not in ids:
+        return progress
+    at = ids.index(progress.format_id)
+    before = sum(size for _, size, _ in sizes[:at])
+    after = sum(size for _, size, _ in sizes[at + 1:])
+    # The part's own running total when it has one: truer than the size
+    # announced before it started.
+    total = before + (progress.total or sizes[at][1]) + after
+    done = min(before + progress.done, total)
+    return replace(
+        progress, percent=f"{100 * done / total:.1f}%", done=done, total=total,
+        # yt-dlp's time left is for this part only; the same sum, for both.
+        eta=int((total - done) / progress.speed) if progress.speed > 0 else None,
+        estimated=progress.estimated or any(guessed for _, _, guessed in sizes),
     )
 
 
@@ -681,6 +730,7 @@ def download(
         "--print", _FILE_TEMPLATE,
         "--print", _LIVE_TEMPLATE,
         "--print", _TITLE_TEMPLATE,
+        "--print", _SIZES_TEMPLATE,
         # `--print` turns quiet mode on, and quiet mode hides "[Merger]" and
         # "[ExtractAudio]" -- the only signs of the step after the download.
         # Probed on this exact command, 2026-09-25: steps seen [] without
@@ -714,12 +764,15 @@ def download(
     if on_start:
         on_start(process)
 
+    sizes: list[tuple[str, int, bool]] = []   # this video's two parts, if known
     assert process.stdout is not None
     for line in process.stdout:
         line = line.rstrip("\n")
         if line.startswith(_PROGRESS_TAG):
             if on_progress:
-                on_progress(_progress(line.split("\t")))
+                on_progress(_whole(_progress(line.split("\t")), sizes))
+        elif line.startswith(_SIZES_TAG):
+            sizes = _part_sizes(line.split("\t"))
         elif line.startswith(_LIVE_TAG):
             if on_live and line.split("\t", 1)[-1].strip() == "True":
                 on_live()

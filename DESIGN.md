@@ -157,7 +157,7 @@ The page is `teleloadzai/web/index.html`. Its `:root` block is the source of the
 
 Each link is a parcel. Before Download it gets a **label**: the card with its title, picture, format, quality and program. After Download its row says where it is in words ("Downloading the picture", "Making the MP3") until it is in your folder. The world is warm paper and ink with soft corners, like a shipping slip on a desk, not a dark "pro" dashboard. Everything is calm and quiet, so the one thing that moves (the download in progress) and the one thing to press (Download) stand out.
 
-The layout is **A**. There is one column. The link box sits under its title "Paste a link", and Settings sits alone in the top corner. The card comes under the link box, and the list fills the rest of the window and scrolls inside its own card. No name band: the window title already says "Teleloadzai". Settings copies the **Windows 11 Settings app** (model S2): a side menu, and every setting a row.
+The layout is **A**. There is one column. The link box sits under its title "Paste a link", and Settings sits alone in the top corner. The card comes under the link box, and the list under it shows all its rows; the page scrolls when they need more room. No name band: the window title already says "Teleloadzai". Settings copies the **Windows 11 Settings app** (model S2): a side menu, and every setting a row.
 
 **Key Characteristics:**
 - Warm paper page, a lighter card on top, dark ink text.
@@ -221,7 +221,7 @@ The Console's box is the one dark surface of the light theme, so its colours hav
 
 - **A menu on the left** (model S1, chosen by the user 2026-10-25 from a drawing, after a launcher they showed): an 88 px strip fixed to the window's left edge, a hair darker than the page, with **Download · Console · Programs · Sites** at the top and **Settings** alone at the bottom. Each item is a 72 px tile — icon (22 px) over its name (12 px) — and **each one is its own page**; the open one is tinted yellow. It replaced layout A's Settings button in the corner. **The window opens maximized** ("Restore down" gives the old 860-wide window).
 - **One column** beside the menu, centred, 860 px wide at most (1040 px from 1200 px wide), with a 16 px gutter.
-- **The Download page never scrolls — except under a card of several links.** It is one column `100vh` tall: link box, card, then the list, which takes the room left (at least 170 px) and scrolls inside its card. With the card of several links or a playlist open, **the page scrolls and the list shows all its rows, with no scroll of its own** — one scrollbar (the user, 2026-11-01: under that card the list first had 0–25 px, not one row in sight; then the same day a 340 px box with its own scroll inside the scrolling page, where a failed row hid above the four in sight). The one-link card is unchanged: 2 rows at 1463×834, 3 at 860×814, no scroll.
+- **The Download page has one scrollbar, the page's.** It is one column, at least `100vh` tall: link box, card, then the list, which **shows all its rows, with no scroll of its own**. With few rows its card reaches the bottom of the window and nothing scrolls. *(The user, 2026-11-01, then 2026-11-05 with a model chosen: under the card of several links the list first had 0–25 px, then a 340 px box where a failed row hid above the four in sight; under a one-video card it kept 100–116 px of 547, and the page could not scroll at all.)*
 - **Programs**, **Sites** and **Settings** are each a page with its title (22 px) and its groups of rows; Settings holds the download settings only — no tabs (Sites became its own page the same day, at the user's request).
 - **The compact step:** a window ≤ 640 px wide or ≤ 720 px tall has smaller margins, a 40 px link field, a smaller picture and lower rows. The real window (860×814 inside) and full screen (1463×834) are above it.
 - **Test at the user's two real sizes:** the small window (860×814 inside) and full screen (1463×834). Invented sizes missed what the user saw at once.
@@ -282,7 +282,7 @@ A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the ti
 **One grammar for every row** (the user, 2026-11-01: "it looks so messy", chosen from a drawn mock): every row, in every state, has the same places — **mark · format tag · name · status · one button · ⋯**. The marks start at one x, the buttons end at one x (measured: 265 / 1219 full screen, 121 / 760 in the small window). A row without ⋯ keeps its 30 px place empty. *(Until then a running row had no mark and sat 18 px left of the finished ones; a failed one was pushed right by a red line; a waiting one drew a whole empty track.)*
 - **Marks:** waiting = an empty circle (1.5 px strong line); running = a ring that turns (still when the system asks for less motion); done ✓, failed ✕, stopped / gone / already there – (see Marks below).
 - **Status place** (right, before the button): running = the percentage, 13 px ink semibold ("51.0%"), else the seconds (a step, or a program that gives no percentage); waiting = "Waiting"; failed = "Failed" in bad red; stopped = "Stopped" / "Interrupted"; done = the size.
-- **A running row** has a second part under the name (from the name's x): a 4 px bar, then one 12 px soft line — "Downloading the picture · 70.2 MB / 138.1 MB · 8.1 MB/s · 8 s left", "Making the MP3…", "yt-dlp is working…". With a real percentage the bar fills (`scaleX`, 0.7 s, the refresh rhythm); without one a 30 % piece slides (a soft full bar was tried first: it read as finished). Never a bar frozen at 0 (decision 33).
+- **A running row** has a second part under the name (from the name's x): a 4 px bar, then one 12 px soft line — "Downloading the picture · 70.2 MB / 138.1 MB · 8.1 MB/s · 8 s left", "Making the MP3…", "yt-dlp is working…". With a real percentage the bar fills, by its width in 0.25 s, so it never sits behind the number; an MP4 counts its picture and sound as **one** download when yt-dlp gives both sizes. Without a percentage a 30 % piece slides (a soft full bar was tried first: it read as finished). Never a bar frozen at 0 (decision 33).
 - **A live recording** says "1 min 15 s of 60 min" in the status place and "Recording live · size" under the bar; its bar follows the time limit, the one real measure it has.
 - **Order:** running, then waiting, then failed, then the rest (the waiting rows stood above the running ones).
 - **No title read yet:** the link is shown in soft grey, never in ink like a title.
@@ -313,11 +313,11 @@ Under its title, a **Choices** row (the stack icon, a two-way switch): **Same fo
 - **A playlist** uses the same card: the title "Team Fortress 2 [2010 Version] — 29 videos", its videos as the rows (their titles, not links), "…and N more videos" past 50 in Same for all.
 - In the compact step the Choices row is tighter (34 px), so the screen does not scroll at 520×700.
 
-While this card is open, the page scrolls and the list under it shows all its rows, with no scroll of its own (2026-11-01 — it first shrank to 96 px and showed no row, then kept four rows in a box with its own scroll).
+Under this card, the list shows all its rows and the page scrolls, as everywhere on this page.
 
 ### List tools
 Over the Downloads list:
-- **from 2 rows, while something waits or runs:** a 4 px green bar of the real share finished (no total in words since model D: the filters carry the counts);
+- **from 2 downloads under way together:** a 4 px green bar of how many of **them** have ended; rows from before do not count (no total in words since model D: the filters carry the counts);
 - **from 4 rows:** a two-way-switch style row of filters with counts (All · Running · Waiting · Done · Failed, in red when not chosen). **All five always show**; a filter at 0 is grey and cannot be pressed (they came and went as downloads moved, and the list jumped — 2026-11-01);
 - **from 2 retryable failed rows:** "Retry failed", an outline in the header, left of "Clear finished".
 
@@ -363,5 +363,5 @@ Drawn by Windows, not by the page: "Teleloadzai" on top, a title ("Download fini
 - **Don't** put a thick coloured bar on the side of a card for a warning; tint the card instead.
 - **Don't** show the site and program as pills under the title: they read as buttons. They are plain grey words.
 - **Don't** add a name band or a logo bar: the window title already says it.
-- **Don't** let the main screen scroll; the list scrolls in its card.
+- **Don't** give the Downloads list a scroll of its own: one scrollbar, the page's.
 - **Don't** load fonts or icons from the network.

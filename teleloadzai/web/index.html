@@ -84,19 +84,22 @@
   .linkbox input[type=text] { height: 48px; font-size: 16px; padding: 0 14px; }
   .linkbox #read { min-height: 48px; padding: 0 22px; }
   .linkbox .err { margin-top: 6px; }
-  /* The main screen fills the window and never scrolls while no card is
-     open: the list scrolls in its own card instead (a card open: below). */
-  .wrap[data-showing="main"] { display: flex; flex-direction: column; height: 100vh; padding-bottom: 16px; }
+  /* The main screen fills the window at least, and the PAGE scrolls when the
+     list needs more: one scrollbar, every row in reach. A list with its own
+     scroll showed 100-116 px of 547 under a video card, and the page could
+     not scroll at all (the user, 2026-11-01 and 2026-11-05: "I can't see the
+     whole page with scrolling"). Under the card of several links it had been
+     worse: a failed row hid above the four in sight. */
+  .wrap[data-showing="main"] { display: flex; flex-direction: column; min-height: 100vh; padding-bottom: 16px; }
   .wrap:not([data-showing="main"]) { padding-bottom: 60px; }
+  /* The message line sits over the bottom of the window: the last row can be
+     scrolled clear of it. */
+  .wrap[data-showing="main"]:has(#status:not(.hidden)) { padding-bottom: 60px; }
   .wrap[data-showing="main"] > .card { flex: none; }
   .wrap[data-showing="main"] > #jobs-card {
     flex: 1 1 auto; min-height: 170px; display: flex; flex-direction: column; margin-bottom: 0;
   }
-  /* The scrollbar's room is always kept: it came only with a card open, and
-     every row slid 15 px left of the header's ⋯ (review of 2026-11-01).
-     .sb-twin keeps the same room in the header, at Windows' own width. */
-  #jobs { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; margin-right: -8px; padding-right: 8px; }
-  .sb-twin { display: inline-block; height: 1px; overflow: hidden; scrollbar-gutter: stable; margin-left: -6px; }
+  #jobs { flex: 1; }
   #jobs:not(:empty) ~ #jobs-empty { display: none; }
   #jobs:empty { flex: 0; }
   /* Near the top of the free space, not in its middle: centred, it floated
@@ -144,19 +147,6 @@
     list-style: none; margin: 10px 0 0; padding: 6px 0 0; border-top: 1px solid var(--line);
     max-height: min(196px, 15vh); overflow-y: auto; font-size: 13px;
   }
-  /* A card of several links open: the PAGE scrolls, and the list shows all
-     its rows, with no scroll of its own (the user, 2026-11-01: "I can't even
-     see the whole page with scrolling"). Under a playlist card the list had
-     first shrunk to 0-25 px; then, the same day, it was a 340 px box with
-     its own scroll inside a scrolling page -- a failed row hid above the
-     four in sight, and the page's scroll never reached it. Without a card
-     the main screen still never scrolls. The one-video card is left as it
-     was: it leaves about 3 rows without any scroll (288 px measured at
-     860x814). */
-  .wrap[data-showing="main"]:has(#batch:not(.hidden)) { height: auto; min-height: 100vh; }
-  .wrap:has(#batch:not(.hidden)) > #jobs-card { flex: none; }
-  .wrap:has(#batch:not(.hidden)) #jobs { overflow: visible; }
-  .wrap:has(#batch:not(.hidden)) .sb-twin { display: none; }
   .wrap:has(#batch:not(.hidden)) #jobs-empty { display: none; }
   .batch-links li { display: flex; gap: 12px; justify-content: space-between; padding: 4px 0; }
   .batch-links .link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -190,8 +180,7 @@
   /* Over the list: filters with counts. ("6 of 6 finished · 3 failed" went
      on 2026-10-25, model D: the filters already say the counts.) */
   .list-bar { height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 0 0 10px; }
-  .list-bar > i { display: block; height: 100%; width: 100%; background: var(--ok); transform-origin: left;
-    transform: scaleX(0); transition: transform .7s linear; }
+  .list-bar > i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .25s linear; }
   /* The updates band's tint: something to act on, not an error. */
   .resume-bar {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px;
@@ -727,12 +716,14 @@
      line's circles (model 3A), which drew three circles to say one word. */
   .jprog { margin: 8px 0 0 32px; }
   .pbar { height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; }
-  .pbar > i { display: block; height: 100%; background: var(--ink); transform-origin: left;
-    transform: scaleX(0); transition: transform .7s linear; }
+  /* By its width: moved by `transform`, one update in two waited 0.7 s for
+     the graphics side, and the bar stayed behind the number (seen 2026-11-05,
+     in a pane in the background; by width, none of 11 updates waited). */
+  .pbar > i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .25s linear; }
   /* No percentage (a step, a program that gives none): a short piece that
      slides, and the seconds, never a bar frozen at 0 (decision 33). A soft
      full bar was tried first: it read as finished (seen 2026-11-01). */
-  .jprog.unknown .pbar > i { width: 30%; transform: none; transition: none; opacity: .55;
+  .jprog.unknown .pbar > i { width: 30%; transition: none; opacity: .55;
     animation: slide 1.4s ease-in-out infinite; }
   @keyframes slide { from { margin-left: -30%; } to { margin-left: 100%; } }
   /* Less motion asked: no piece at all. Stopped, it stood still at the
@@ -1096,9 +1087,7 @@
         <button class="ghost tiny" id="clear">Clear finished</button>
         <span class="more-wrap hidden" id="list-more"><button class="more-btn" type="button" aria-haspopup="menu"
           aria-expanded="false" aria-label="More: the whole list">⋯</button><span class="more-menu hidden"
-          role="menu"><button type="button" role="menuitem" id="clear-all">Remove all</button></span></span>
-        <span class="sb-twin" aria-hidden="true"></span>
-      </span>
+          role="menu"><button type="button" role="menuitem" id="clear-all">Remove all</button></span></span>      </span>
     </div>
     <!-- A long list stays readable (the study: Parabolic's filters with
          counts, Media Downloader's asked-for total). Drawn only when the
@@ -1480,6 +1469,7 @@ let currentUrl = "";
 let cardBox = "";
 let qualityLists = { mp3: ["best"], mp4: ["best"] };
 let polling = false;
+let settledRows = null;   // rows from before the downloads under way (the green bar)
 let askWhere = true;
 let currentTools = [];
 let currentPlatform = "";
@@ -2705,8 +2695,14 @@ function formatElapsed(seconds) {
 function paintProgress(row, { percent, line, known }) {
   const box = row.querySelector(".jprog");
   if (!box) return;
+  const bar = box.querySelector(".pbar > i");
+  // The first real percentage is drawn at once. Sliding there, the bar began
+  // full: 100% drawn on an MP3 really at 14.5%, then 50.3% (seen 2026-11-05).
+  const first = known && box.classList.contains("unknown");
+  if (first) bar.style.transition = "none";
   box.classList.toggle("unknown", !known);
-  box.querySelector(".pbar > i").style.transform = known ? `scaleX(${Math.min(percent, 100) / 100})` : "";
+  bar.style.width = known ? `${Math.min(percent, 100)}%` : "";
+  if (first) { void bar.offsetWidth; bar.style.transition = ""; }
   const words = box.querySelector(".prog-line");
   if (words.textContent !== line) words.textContent = line;
 }
@@ -3195,7 +3191,11 @@ document.addEventListener("click", (event) => {
   closeMenus(menu);
   const open = menu.classList.toggle("hidden") === false;
   button.setAttribute("aria-expanded", String(open));
-  if (open) menu.querySelector("button")?.focus();
+  if (open) {
+    menu.querySelector("button")?.focus();
+    // The last row's menu opened half under the window (878 of 814 px).
+    menu.scrollIntoView({ block: "nearest" });
+  }
 });
 document.addEventListener("keydown", (event) => {
   const open = document.querySelector(".more-menu:not(.hidden)");
@@ -3354,16 +3354,24 @@ function paintListTools(jobs) {
       && (listFilter === "all" || j.state === listFilter));
     label.classList.toggle("filtered-out", !shown);
   }
-  // A real count, never an estimate (decision 33): finished = done, failed
-  // or stopped, out of every row. Drawn by the bar only -- the line "6 of 6
-  // finished · 3 failed" went with model D (the filters say the counts).
-  const ended = jobs.filter((j) => ["done", "error", "cancelled"].includes(j.state) && !j.interrupted).length;
-  const show = jobs.length >= 2;
-  // The bar only while something is on its way: all green under a finished
-  // list was one more line saying nothing (2026-10-24).
-  $("list-bar").classList.toggle("hidden",
-    !show || !jobs.some((j) => j.state === "waiting" || j.state === "running"));
-  $("list-bar").firstElementChild.style.transform = `scaleX(${show ? ended / jobs.length : 0})`;
+  // A real count, never an estimate (decision 33): of the downloads under way
+  // together, how many have ended. Rows from before them do not count: one
+  // new download beside 11 old rows drew 92%, and never moved (seen
+  // 2026-11-05). Drawn by the bar only -- the line "6 of 6 finished · 3
+  // failed" went with model D (the filters say the counts).
+  const going = (j) => j.state === "waiting" || j.state === "running";
+  const under = jobs.filter(going);
+  // Everything not moving now is "before": at the first look, and whenever
+  // the list comes to rest. A row started again counts again.
+  if (!settledRows || !under.length) settledRows = new Set(jobs.filter((j) => !going(j)).map((j) => j.id));
+  under.forEach((j) => settledRows.delete(j.id));
+  const together = jobs.filter((j) => !settledRows.has(j.id));
+  // From two: one download's own bar says it all. And only while something
+  // is on its way: all green under a finished list was one more line saying
+  // nothing (2026-10-24).
+  const show = together.length >= 2 && under.length > 0;
+  $("list-bar").classList.toggle("hidden", !show);
+  $("list-bar").firstElementChild.style.width = `${show ? 100 * (together.length - under.length) / together.length : 0}%`;
   // One failed row has its own Retry; from two, one button for all of them.
   retryFailedButton.classList.toggle("hidden", retryable(jobs).length < 2);
   // Cut off when Teleloadzai closed: nothing restarts by itself (the user's

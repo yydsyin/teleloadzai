@@ -156,3 +156,20 @@ Six Stops pressed through the running app's own API, each on a real download, th
 **Seen:** a collision test with Teleloadzai's own functions, 3 s per file, files in a throwaway folder: the old code (`git archive HEAD`) failed on all five — `settings.json` 2,387 saves refused, 1,802 reads with the defaults — the new code 0 refused, 0 wrong on all five; the real `data/` unchanged. The running app: Settings, cookies, Sites, Programs answer at once, 0 page errors, a yt-dlp and a TikTokDownloader download done. The old `.tmp` deleted (the user's yes).
 
 ⚠️ **Not fixed:** two settings changes at the very same moment — both reads now right, but the second save can still drop the first one's single change (before: all settings). **Not covered:** another program (an antivirus) holding a file.
+
+### 2026-11-05 — the bars tell the truth; the Download page has one scrollbar
+
+**The user:** "the real downloading progression is not correspond to the progress bar", and "I can't see the whole page with scrolling" — the same words as 2026-11-01, when the fix went only to the card of several links, and the one-video card was left as it was. That was my mistake.
+
+**Measured before the fix (Big Buck Bunny, real downloads):**
+- The green bar over the list counted old rows: **92 %** for an entire MP3, never moving.
+- A row's bar began full when its first percentage arrived: **100 % drawn at a real 14.5 %, then 50.3 %** (`.jprog.unknown` gives way to a bar with no width set, sliding down from full).
+- An MP4's two files each counted to 100: **99.6 %, then 27 %**, for 118.6 + 29.3 MB.
+- One update in two waited 0.7 s when the bar moved by `transform`, in a pane in the background: **6.8 % drawn while the number went to 96.1 %**. By `width`: none of 11 updates waited, same conditions. A visible window was not available to compare, so moving by width removes the doubt instead of settling it.
+- The list showed **116 px of 547** at 860×814 and **100 px of 547** at 1463×834 under a video card; the page scrolled 0 px.
+
+**The fix:** `ytdlp._SIZES_TEMPLATE`, `_part_sizes`, `_whole`: one percentage for both parts. `paintProgress` draws the first percentage at once. Both bars move by width in 0.25 s (0.7 s left the bar at 14 % with the number at 42.2 % on a 24 MB/s line). The green bar: downloads under way together only, from 2. `#jobs` has no scroll of its own; `.sb-twin` (2026-11-01) is gone with it. A menu scrolls itself into view: the last row's ended at 878 of 814 px.
+
+**Seen after the fix:** MP4 1080p: 6.8 % → 96.1 % with **0 fall back**, total 148.0 MB, file 148.1 MB. Three together: green 0 → 33 → 67 → hidden. A stream with separate parts (Apple's bipbop, yt-dlp): bar within 1 % of the number, the size marked "~". N_m3u8DL-RE: no percentage, "so far" line unchanged. Stop on both: cancelled, 0 programs left, 0 files left. Both sizes: list's own scroll 0, last row in view (782/814, 802/834), no sideways scroll, ⋯ aligned; card of several links, empty list (page scroll 0, seen at 1463×834), last row clear of the message line (738 vs 752), the other pages unchanged.
+
+⚠️ **Not seen:** the real app window (the browser pane stayed hidden, which also slows drawing); TikTokDownloader and KS-Downloader (no public test link at hand; same painting code); gallery-dl, XHS-Downloader, Streamlink (nothing changed for them: no percentage).
