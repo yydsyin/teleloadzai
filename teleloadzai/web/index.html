@@ -706,6 +706,12 @@
   .job .job-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .job .job-right { flex: none; display: inline-flex; align-items: center; gap: 8px; }
   .job-right .ghost.tiny { min-width: 64px; }
+  /* The button's place, as wide as "Download again" (121 px): the status
+     words line up. Their right edge went from 602 to 703 px down the list,
+     with each button's width (review of 2026-11-05). Only a longer button,
+     "Update yt-dlp and retry", still pushes its own word. */
+  .job-act { display: inline-flex; justify-content: flex-end; min-width: 121px; }
+  .group-from { margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .more-gap { width: 30px; flex: none; }      /* the ⋯ place, kept when a row has none */
   .job.compact .small { color: var(--soft); white-space: pre; }
   /* No title read yet: the link, grey -- in black it read as a real title. */
@@ -1470,6 +1476,8 @@ let cardBox = "";
 let qualityLists = { mp3: ["best"], mp4: ["best"] };
 let polling = false;
 let settledRows = null;   // rows from before the downloads under way (the green bar)
+let shownOrder = null;    // the rows' order on screen, kept while something moves
+let plainFailed = new Set();   // failed rows standing together, away from their playlist's label
 let askWhere = true;
 let currentTools = [];
 let currentPlatform = "";
@@ -2583,6 +2591,13 @@ function compactRow(job) {
   return job.state === "done" && !job.skipped && (job.files || []).length > 0;
 }
 
+/** A live recording the user ended: Stop is how a recording finishes, and its
+ *  file is there. It read as a failure: "Stopped", "Download again" (review of
+ *  2026-11-05). */
+function recordedRow(job) {
+  return job.state === "cancelled" && job.live && !job.interrupted && Boolean(job.on_disk);
+}
+
 /** A skip because the file is in the folder (decision 24, gallery-dl's own
  *  "# path"), not a tool's history skip. */
 function skipInFolder(job) {
@@ -2617,6 +2632,7 @@ function jobProgress(job) {
   // The state in words, in the status place: the tracking line said it
   // until 2026-11-01. Red for a failure (its style).
   else if (job.state === "error") right = "Failed";
+  else if (recordedRow(job)) right = "Recorded";
   else if (job.state === "cancelled") right = job.interrupted ? "Interrupted" : "Stopped";
   else if (job.state === "waiting") right = "Waiting";
   // A live recording has a real measure: the time against its limit
@@ -2814,7 +2830,8 @@ function jobRow(job) {
   // "Already there" is one line too, like the finished rows (review of
   // 2026-10-25: it was the last row of three lines among them).
   const already = job.state === "done" && job.skipped;
-  if (compact || already) row.classList.add("compact");
+  const recorded = recordedRow(job);
+  if (compact || already || recorded) row.classList.add("compact");
   // A failed row: one line and its reason under it, among the other failed
   // rows (2026-11-01; model D's red group until then); one button, the rest
   // in "⋯".
@@ -2829,7 +2846,7 @@ function jobRow(job) {
   // Every row has one (2026-11-01): a running row had none, and its name
   // started 18 px left of the finished ones under it.
   const mark = failed ? '<span class="mark bad" aria-hidden="true">✕</span>'
-    : compact && job.on_disk ? '<span class="mark ok" aria-hidden="true">✓</span>'
+    : (compact && job.on_disk) || recorded ? '<span class="mark ok" aria-hidden="true">✓</span>'
     : job.state === "running" ? '<span class="mark run" aria-hidden="true"></span>'
     : job.state === "waiting" ? '<span class="mark wait" aria-hidden="true"></span>'
     : '<span class="mark gone" aria-hidden="true">–</span>';
@@ -2851,7 +2868,14 @@ function jobRow(job) {
       // Its file moved or deleted: Open and Show in folder could only
       // answer an error (decision 40) -- the row can go.
       `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`])
-    : already || stopped ? moreMenu([`<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`])
+    // Every other ended row: its file's buttons here too. They stood on a
+    // line of their own, three buttons where a row has one (review of
+    // 2026-11-05). Only while the file is there (decision 40).
+    : already || stopped ? moreMenu([
+      !recorded && job.on_disk && `<button type="button" role="menuitem" data-open="${job.id}">Open</button>`,
+      job.on_disk && `<button type="button" role="menuitem" data-reveal="${job.id}">Show in folder</button>`,
+      recorded && `<button type="button" role="menuitem" data-retry="${job.id}">Record again</button>`,
+      `<button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button>`])
     // The ⋯ place is kept empty, so the buttons stay in one column.
     : '<span class="more-gap"></span>';
 
@@ -2861,12 +2885,14 @@ function jobRow(job) {
       <span class="job-right">
         ${compact && !job.on_disk ? '<span class="done-at gone" aria-hidden="true">Gone · moved or deleted</span>' : ""}
         <span class="small"></span>
+        <span class="job-act">
         ${failed ? fails.primary : ""}
-        ${compact && job.on_disk ? `<button class="ghost tiny" data-open="${job.id}">Open</button>` : ""}
+        ${(compact && job.on_disk) || recorded ? `<button class="ghost tiny" data-open="${job.id}">Open</button>` : ""}
         ${compact && !job.on_disk && !job.post_part ? `<button class="ghost tiny" data-force="${job.id}">${againWords(job)}</button>` : ""}
         ${already && !job.post_part ? `<button class="ghost tiny" data-force="${job.id}">${againWords(job)}</button>` : ""}
-        ${stopped ? `<button class="ghost tiny" data-retry="${job.id}">${job.interrupted ? "Continue" : "Download again"}</button>` : ""}
+        ${stopped && !recorded ? `<button class="ghost tiny" data-retry="${job.id}">${job.interrupted ? "Continue" : "Download again"}</button>` : ""}
         ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
+        </span>
         ${menu}
       </span>
     </div>
@@ -2879,15 +2905,9 @@ function jobRow(job) {
         ⚠️ Running without your cookies: ${job.cookie_note}.
       </div>` : ""}
     ${job.state === "done" && job.note && !job.skipped ? '<div class="hint job-note" style="margin-top:6px"></div>' : ""}
-    ${job.state === "done" && (job.files || []).length && !compact ? `<div class="row" style="margin-top:6px">
-        <button class="ghost tiny" data-open="${job.id}">Open</button>
-        <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
-      </div>` : ""}
     ${already && !skipInFolder(job) ? '<div class="hint skip-why" style="margin-top:4px"></div>' : ""}
-    ${job.state === "cancelled" && (job.files || []).length ? `<div class="hint" style="margin-top:6px">
+    ${stopped && !recorded && job.on_disk ? `<div class="hint" style="margin-top:6px">
         <span class="saved-before"></span>
-        <button class="ghost tiny" data-open="${job.id}">Open</button>
-        <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
       </div>` : ""}
     ${job.state === "cancelled" && job.interrupted ? `<div class="hint" style="margin-top:6px">
         Teleloadzai was closed during this download.${job.live
@@ -2897,6 +2917,7 @@ function jobRow(job) {
         <span class="saved-before"></span>
         <button class="ghost tiny" data-reveal="${job.id}">Show in folder</button>
       </div>` : ""}
+    ${failed && job.group_title ? '<div class="hint group-from hidden"></div>' : ""}
     ${failed ? `<div class="fail-why">${errorExplanation(job)}</div>
       ${hasDetails ? `<div class="fail-more hidden">
         ${toolSaid ? `<details class="more tool-words">
@@ -2997,12 +3018,13 @@ function jobRow(job) {
   // the server's sentence, set as text (Phase 2 item 5).
   const note = row.querySelector(".job-note");
   if (note) note.textContent = job.note;
+  const from = row.querySelector(".group-from");
+  if (from) from.textContent = `From: ${job.group_title}`;
   // A tool that failed half-way (3 pictures of 8) is a failure, and what it
   // did save is said -- never shown as "done" (silent-failure hunt, 2026-10-18).
   const savedBefore = row.querySelector(".saved-before");
-  // A live recording stopped by the user keeps what it recorded (2026-10-18).
   if (savedBefore && job.state === "cancelled") savedBefore.textContent =
-    `Recorded until Stop: ${fileName(files[0])}.`;
+    `Saved before it stopped: ${fileName(files[0])}.`;
   else if (savedBefore) savedBefore.textContent = files.length === 1
     ? `Saved before it failed: ${fileName(files[0])}.`
     : `Saved before it failed: ${files.length} files, ${fileName(files[0])} first.`;
@@ -3133,10 +3155,16 @@ function grouped(jobs) {
 
 function withLabels(jobs, everyJob) {
   const elements = [];
+  const labelled = new Set();     // one label, one place: the same one drawn twice would move at each refresh
   let last = "";
   for (const job of jobs) {
-    if (job.group && job.group !== last) elements.push(groupLabel(job.group, everyJob));
-    last = job.group || "";
+    // With the other failed rows, a failed video has left its label.
+    const group = job.state === "error" && plainFailed.has(job.id) ? "" : job.group;
+    if (group && group !== last && !labelled.has(group)) {
+      labelled.add(group);
+      elements.push(groupLabel(group, everyJob));
+    }
+    last = group || "";
     elements.push(jobRows.get(job.id));
   }
   return elements;
@@ -3274,9 +3302,29 @@ async function refresh() {
                                   ...list.filter((j) => j.state !== "running")];
   const onItsWay = grouped(runningFirst(jobs.filter(upTop)));
   const others = grouped(jobs.filter((j) => j.state !== "error" && !upTop(j)));
+  // That order is for a list at rest. While something moves, a row that ends
+  // stays where it is: it jumped from place 1 to 18 of 30, and every row
+  // under it moved, under the mouse (review of 2026-11-05). New rows come on
+  // top. Only what starts may still pass what waits (2026-11-01).
+  const moving = jobs.some(active);
+  if (!moving || !shownOrder) plainFailed = new Set(failedJobs.map((j) => j.id));
+  let order = [...onItsWay, ...failedJobs, ...others];
+  if (moving && shownOrder) {
+    const known = new Set(shownOrder);
+    const byId = new Map(jobs.map((j) => [j.id, j]));
+    order = [...order.filter((j) => !known.has(j.id)),
+             ...shownOrder.map((id) => byId.get(id)).filter(Boolean)];
+    const places = order.flatMap((j, at) => (active(j) && !j.group ? [at] : []));
+    const inTurn = runningFirst(places.map((at) => order[at]));
+    places.forEach((at, n) => { order[at] = inTurn[n]; });
+  }
+  shownOrder = order.map((j) => j.id);
   for (const label of groupLabels.values()) label._used = false;
-  placeInOrder(list, [...withLabels(onItsWay, jobs), ...failedJobs.map(rowOf),
-                      ...withLabels(others, jobs)]);
+  placeInOrder(list, withLabels(order, jobs));
+  // "From:" only for a failed video away from its playlist's label.
+  for (const job of failedJobs) {
+    rowOf(job).querySelector(".group-from")?.classList.toggle("hidden", !plainFailed.has(job.id));
+  }
   for (const [group, label] of groupLabels) {
     if (!label._used) { label.remove(); groupLabels.delete(group); }
   }
@@ -3307,7 +3355,7 @@ async function refresh() {
 // The list's filters, its total and "Retry all failed" (several links,
 // 2026-10-24). Filters from 4 rows: below that, the whole list is in sight.
 const LIST_FILTERS = [["all", "All"], ["running", "Running"], ["waiting", "Waiting"],
-                      ["done", "Done"], ["error", "Failed"]];
+                      ["done", "Done"], ["error", "Failed"], ["cancelled", "Stopped"]];
 let listFilter = "all";
 let lastJobs = [];
 for (const [key, name] of LIST_FILTERS) {
@@ -3340,7 +3388,9 @@ function paintListTools(jobs) {
     button.setAttribute("aria-pressed", String(key === listFilter));
     // Empty: grey, not gone (they came and went, and the list jumped).
     button.disabled = key !== "all" && !n;
-    button.classList.toggle("hidden", !long);
+    // "Stopped" only when there are some: without it the counts did not add
+    // up to "All" (27 of 30, review of 2026-11-05).
+    button.classList.toggle("hidden", !long || (key === "cancelled" && !n));
   }
   for (const job of jobs) {
     const row = jobRows.get(job.id);
@@ -3350,7 +3400,7 @@ function paintListTools(jobs) {
   // its own rows all hidden (2026-11-01). Its failed rows stand with the
   // other failed ones, without the label.
   for (const [group, label] of groupLabels) {
-    const shown = jobs.some((j) => j.group === group && j.state !== "error"
+    const shown = jobs.some((j) => j.group === group && !(j.state === "error" && plainFailed.has(j.id))
       && (listFilter === "all" || j.state === listFilter));
     label.classList.toggle("filtered-out", !shown);
   }

@@ -173,3 +173,15 @@ Six Stops pressed through the running app's own API, each on a real download, th
 **Seen after the fix:** MP4 1080p: 6.8 % → 96.1 % with **0 fall back**, total 148.0 MB, file 148.1 MB. Three together: green 0 → 33 → 67 → hidden. A stream with separate parts (Apple's bipbop, yt-dlp): bar within 1 % of the number, the size marked "~". N_m3u8DL-RE: no percentage, "so far" line unchanged. Stop on both: cancelled, 0 programs left, 0 files left. Both sizes: list's own scroll 0, last row in view (782/814, 802/834), no sideways scroll, ⋯ aligned; card of several links, empty list (page scroll 0, seen at 1463×834), last row clear of the message line (738 vs 752), the other pages unchanged.
 
 ⚠️ **Not seen:** the real app window (the browser pane stayed hidden, which also slows drawing); TikTokDownloader and KS-Downloader (no public test link at hand; same painting code); gallery-dl, XHS-Downloader, Streamlink (nothing changed for them: no percentage).
+
+### 2026-11-05 — the Downloads list: six things that looked weird
+
+**The user:** "sometimes it's still looks weird". Reviewed on 30 test rows, one per state, drawn by the real row code from a real row's fields, in the page only.
+
+**Fixed, as drawn and approved:** (1) a row that ended jumped from place 1 to 18 of 30 and the next row moved 89 px: while something moves, ended rows stay; only a start may pass what waits, or the 2026-11-01 defect comes back. (2) "Already in your folder" and a stopped recording had a second line of buttons: into ⋯. (3) A stopped live recording said "Stopped" / "Download again": now ✓ "Recorded" / Open (`jobs._on_disk` now also answers for a stopped row). (4) Status words ended anywhere from 602 to 703 px: a 121 px place for the button; now 646, and 602 beside the longest button. (5) A failed playlist video did not say its playlist: "From: …", only when away from its label. (6) The filters counted 27 of 30: "Stopped", shown only when there are some.
+
+**Seen:** a whole session stepped through the real list code, each order as designed, 0 rows moved in 5 refreshes (the probe saw a forced move). Every new menu item pressed, its call caught so no window opened. A **real** live recording (@LofiGirl/live, 19 s, Stop): "Recorded", ✓, Open, 786,432 bytes on the disk. 9 real rows at both sizes: nothing overflowing, no name cut. A theory ruled out: the same label placed twice, moving rows at each refresh — it did not happen; `withLabels` now cannot do it.
+
+**Left alone, not asked:** "Retry failed" has a border and "Clear finished" none; a single stream from N_m3u8DL-RE is tagged "Files".
+
+⚠️ **Not seen:** the real app window; these rows during other programs' real downloads, except the live recording. The user's "sometimes" was not pinned to one moment: fix (1) is my best reading of it.

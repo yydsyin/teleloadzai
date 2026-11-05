@@ -312,9 +312,10 @@ class Job:
     stop: threading.Event = field(default_factory=threading.Event, repr=False)
 
     def _on_disk(self) -> dict:
-        """For a finished row only: {"on_disk": files still there,
-        "disk_bytes": their size}. A file moved or deleted since is said."""
-        if self.state != DONE or not self.files:
+        """For a row that has ended with files (a finished one, a live
+        recording stopped): {"on_disk": files still there, "disk_bytes": their
+        size}. A file moved or deleted since is said."""
+        if self.state not in (DONE, CANCELLED) or not self.files:
             return {}
         present, size = 0, 0
         for name in self.files:
