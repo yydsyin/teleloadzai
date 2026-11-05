@@ -195,3 +195,13 @@ Six Stops pressed through the running app's own API, each on a real download, th
 **Seen, in a test copy** (the real code and programs, its own empty data folder, port 8778: the user's window was open, and a second copy on the real data would tidy its files at start): 2 links through the real card and Download: 0 windows asked, one real file in the chosen folder (533,931 bytes), the Settings folder unchanged; the next card back on the Settings folder, one file there. The other link of each pair is a video YouTube has removed: a real failed row, in the same folder. gallery-dl (names its own files): 224,566 bytes in the chosen folder. Downloading again: "Already in your folder", same size, nothing replaced. Change… cancelled: row unchanged, no message; refused: said. A very long path: one line at both sizes, no sideways scroll.
 
 ⚠️ **Not seen:** the real Windows folder window opened by Change… (its answers were simulated: it would have opened on the user's screen; the route and `pick_folder` themselves are unchanged); the real app window.
+
+### 2026-11-05 — Update is offered only when an update exists
+
+**The user:** "they shouldn't have options to update and retry if there isn't update available." Decision 8 already said so; the code did not: it asked "not known to be the newest". **Measured on the real data:** TikTokDownloader and KS-Downloader print no version and were installed before releases were recorded, so with no update available their failed rows always offered "Update … and retry" and said "Updating … is the first thing to try"; yt-dlp did the same with GitHub out of reach.
+
+**The fix:** `updateReady` (the tool says `update_available`) decides the row's button, its menu, its sentence, a known error's "Update yt-dlp, then try again", and the card's Update. `upToDate` stays for what it knows: "already the newest", and yt-dlp's preview offer. An update that changed nothing now redraws the row by the versions, instead of "Update failed. Try again".
+
+**Seen, in the page, every state:** the 7 programs with no update: no Update anywhere; update available: offered, with its sentence; GitHub out of reach: not offered, no claim. The real failed row: "Read the link again". The card with an unknown read failure: Update shown only when available.
+
+⚠️ **Open:** Teleloadzai cannot tell whether TikTokDownloader or KS-Downloader installed before 2026-10-21 has a newer version (decision 31), so none is ever offered for them, until they are installed again.

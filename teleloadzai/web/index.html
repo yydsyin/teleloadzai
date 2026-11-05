@@ -1000,9 +1000,10 @@
       </div>
       <div class="hint hidden" id="tool-why"></div>
       <div class="opt-foot">
-        <!-- A link its own tool could not read, for a reason nobody knows:
-             updating is the first thing to try (decision 8) -- the card
-             offered only a grey "Try anyway" (review of 2026-09-27). -->
+        <!-- A link its own tool could not read, for a reason nobody knows,
+             and a newer version exists: updating is the first thing to try
+             (decision 8) -- the card offered only a grey "Try anyway" (review
+             of 2026-09-27). -->
         <button class="hidden" id="probe-update" style="margin-left:auto"></button>
         <button id="go" style="margin-left:auto" aria-keyshortcuts="Control+Enter">Download</button>
       </div>
@@ -1578,7 +1579,7 @@ function updateGoLabel() {
   // Not when the reader is already the newest version: the same answer
   // would come back (upToDate) -- said instead, below.
   const newest = doubtful && !probeKnown && !probeNoAnswer && upToDate(reader.id);
-  const updateFirst = doubtful && !probeKnown && !probeNoAnswer && !newest;
+  const updateFirst = doubtful && !probeKnown && !probeNoAnswer && updateReady(reader.id);
   $("probe-update").classList.toggle("hidden", !updateFirst);
   $("probe-update").textContent = `Update ${reader.name}`;
   $("probe-update").dataset.tool = reader.id;
@@ -2452,14 +2453,22 @@ let loginIsBlocked = "";
  * The tool is known to be the newest version: then "Update" cannot change
  * the answer, and is not offered. TED's crash offered a filled "Update
  * yt-dlp" to a yt-dlp already up to date, again after every press (review of
- * 2026-09-27). Unknown -- GitHub not reached, a version with no number
- * (decision 30), the list not loaded yet -- keeps Update offered (decision 8).
+ * 2026-09-27).
  */
 function upToDate(id) {
   const tool = (toolsData.tools || []).find((t) => t.id === id);
   // A tool that prints no version is judged by the release we installed.
   return Boolean(tool && tool.installed && (tool.version || tool.release_installed)
     && tool.latest && !tool.update_available);
+}
+
+/** A newer version really exists: only then is an update offered (decision
+ *  8). "Not known to be the newest" offered one too: always for
+ *  TikTokDownloader and KS-Downloader, which print no version, and for any
+ *  tool with GitHub out of reach (the user, 2026-11-05). */
+function updateReady(id) {
+  const tool = (toolsData.tools || []).find((t) => t.id === id);
+  return Boolean(tool && tool.installed && tool.update_available);
 }
 
 function loginOffer(job) {
@@ -2485,7 +2494,9 @@ function errorExplanation(job) {
   const ex = job.explain || {};
   const name = job.tool_name || job.tool;       // "TikTokDownloader", not its id
   const newest = upToDate(job.tool) ? ` ${name} is already the newest version.` : "";
-  if (ex.known) return `<b>${ex.title}</b> ${ex.next_step}` + (ex.action === "update" ? newest : "");
+  // "Update it, then try again" only while there is an update to take.
+  if (ex.known && ex.action === "update" && !updateReady(job.tool)) return `<b>${ex.title}</b>${newest}`;
+  if (ex.known) return `<b>${ex.title}</b> ${ex.next_step}`;
   if (job.needs_login) {
     return `<b>${name} says you need to be logged in for this one.</b> Log in, then press Retry.`;
   }
@@ -2506,7 +2517,7 @@ function errorExplanation(job) {
   return `<b>Teleloadzai does not know this error.</b>`
     // One sentence, not "newest. Updating will not help." (loop round 2).
     + (other || (newest ? ` ${name} is already the newest version: try again in a few days.`
-      : ` Updating ${name} is the first thing to try.`))
+      : updateReady(job.tool) ? ` Updating ${name} is the first thing to try.` : ""))
     + (loginOffer(job) && !loggedIn(job.platform) ? ` If this link needs an account, logging in may help.` : "");
 }
 
@@ -2527,10 +2538,10 @@ function failChoice(job) {
   // on every failure, it topped a region-blocked video too (loop round 2).
   // A known error names its own button (explain.py `action`): a 403 said
   // "Update it first" above a filled Retry (review of 2026-09-27).
-  // No Update for a tool already the newest (upToDate).
-  // Nor when the tool itself asked for a log-in: an update does not log in
+  // Update only when a newer version exists (updateReady).
+  // Not when the tool itself asked for a log-in: an update does not log in
   // (a gallery-dl row showed 4 buttons, review of 2026-10-05).
-  const canUpdate = !hopeless && !upToDate(job.tool) && !(job.needs_login || ex.action === "login");
+  const canUpdate = !hopeless && updateReady(job.tool) && !(job.needs_login || ex.action === "login");
   const primary = (job.needs_login || ex.action === "login") && loginOffer(job) ? "login"
     : ex.action === "update" && canUpdate ? "update" : job.other_tool ? "switch"
     : !ex.known && job.error_from_tool && canUpdate ? "update"
@@ -3773,9 +3784,12 @@ async function updateAndRetry(job, button) {
   // Said only when it happened (decision 24), and no retry when nothing
   // changed: it would get the same answer.
   if (!result || result.state === "error" || !result.changed) {
-    if (button) { button.disabled = false; button.textContent = "Update failed. Try again"; }
     setStatus(result ? installSentence(job.tool, result)
       : `The update of ${name} gave no answer after 30 minutes.`);
+    // Nothing changed: the row's buttons follow the versions, not "Try again"
+    // for an update that may not exist. A real failure can be tried again.
+    if (result && result.state !== "error") { await loadTools(); return; }
+    if (button) { button.disabled = false; button.textContent = "Update failed. Try again"; }
     return;
   }
   notify(installSentence(job.tool, result) + " Retrying…");
