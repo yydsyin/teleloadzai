@@ -910,9 +910,9 @@
     <div class="row">
       <!-- Said before anything is pasted (the user, 2026-10-24): several
            videos are several links in one paste, one per line. -->
-      <input type="text" id="url" placeholder="https://…   One link, or several: one per line"
+      <input type="text" id="url" placeholder="https://…   One link, or several"
              autocomplete="off" spellcheck="false" aria-describedby="url-error">
-      <button id="read">Read</button>
+      <button id="read">Paste</button>
     </div>
     <!-- A problem with what was typed is said HERE, where the eyes are: it
          was a message at the bottom of the window, 600 px away (review of
@@ -1181,7 +1181,7 @@
           <span class="opt-icon icon-play" aria-hidden="true"></span>
           <span class="set-main">
             <span class="set-name">Read a link as soon as it is pasted</span>
-            <span class="set-sub">Off: the link waits in the box, so you can change it, then press Read.</span>
+            <span class="set-sub">Off: the link waits in the box, so you can change it, then press Continue.</span>
           </span>
           <span class="set-control"><input type="checkbox" class="toggle" id="auto-read"></span>
         </label>
@@ -1857,9 +1857,14 @@ function needText(tool) {
   const failed = probeProblem && readBy ? readBy.id : "";
   const free = currentTools.find((t) => t.id !== tool.id && !t.need && t.id !== failed);
   const orFree = free ? ` Or choose ${free.name} above: it works without a log-in.` : "";
-  if (!n.cookies_on) {
-    return `${tool.name} needs your ${site} cookies, and cookies are switched off. `
-      + `Turn them on in the Sites page${n.logged_in ? "" : ", then log in to " + site}.` + orFree;
+  // "Turn them on" only when something is saved: with nothing saved the Sites
+  // page has no switch, and a log-in turns them on by itself. The card sent a
+  // beginner to look for a switch that does not exist (the beginner's walk,
+  // 2026-11-06). Below, the need itself, with its button.
+  const savedVisit = n.kind === "visit" && n.visited;
+  if (!n.cookies_on && (n.logged_in || savedVisit)) {
+    return `Your ${savedVisit && !n.logged_in ? `visit to ${site}` : `${site} log-in`} is saved, but log-ins are switched off. `
+      + "Turn them on in the Sites page." + orFree;
   }
   if (n.kind === "visit") {
     // A reminder, not a refusal: TikTokDownloader often works without it.
@@ -1880,7 +1885,7 @@ function needText(tool) {
       return (readBy && tool.id === readBy.id ? "" : probeReason + " ")
         + "Logging in may let you download it.";
     }
-    return `${site} asks for an account. Logging in may help. Not tested yet.`;
+    return `${site} asks for an account. Logging in may help.`;
   }
   return `${tool.name} needs you to be logged in to ${site}.` + orFree;
 }
@@ -1906,7 +1911,7 @@ function steppedText(chosen, usual) {
     return STEPPED_GETS[currentPlatformId];
   }
   const why = usual.need.logged_in
-    ? `needs your ${site} cookies, and log-ins are switched off in the Sites page.`
+    ? `needs you to be logged in to ${site}, and log-ins are switched off in the Sites page.`
     : `needs you to be logged in to ${site}.`;
   return `Using ${chosen.name}: ${usual.name}, the usual program for ${site}, ${why}`;
 }
@@ -2516,7 +2521,8 @@ function errorExplanation(job) {
   // One line on the compact failed row (2026-10-25).
   return `<b>Teleloadzai does not know this error.</b>`
     // One sentence, not "newest. Updating will not help." (loop round 2).
-    + (other || (newest ? ` ${name} is already the newest version: try again in a few days.`
+    + (other || (previewOffer(job, false) ? ` ${name} is already the newest stable version. Its test version may help.`
+      : newest ? ` ${name} is already the newest version: try again in a few days.`
       : updateReady(job.tool) ? ` Updating ${name} is the first thing to try.` : ""))
     + (loginOffer(job) && !loggedIn(job.platform) ? ` If this link needs an account, logging in may help.` : "");
 }
@@ -2571,7 +2577,7 @@ function failButtons(job) {
     ["update", canUpdate && `data-update="${job.tool}">Update ${job.tool_name || job.tool} and retry`],
     // yt-dlp already the newest stable, and the error not known: its
     // preview builds get fixes days earlier -- the next way out.
-    ["preview", previewOffer(job, hopeless) && `data-preview="${job.id}">Try yt-dlp's preview version`],
+    ["preview", previewOffer(job, hopeless) && `data-preview="${job.id}">Try a newer test version`],
     ["retry", !hopeless && `data-retry="${job.id}">Retry`],
   ].filter(([, inner]) => inner);
   // Model D (2026-10-25): ONE button on the row -- the way out the case
@@ -2677,7 +2683,9 @@ function jobProgress(job) {
   else if (!job.percent) {
     right = formatElapsed(job.elapsed || 0);
     line = job.done_bytes ? ["Downloading", sizeText(job), speedText(job)].filter(Boolean).join(" · ")
-      : `${job.tool_name || job.tool} is working…`;
+      // yt-dlp prints its percentage from the first byte, so here it is still
+      // starting. The others may say nothing until the end: only "Working…".
+      : job.tool === "yt-dlp" ? "Starting the download…" : "Working…";
   }
   // The time left only when the tool knows it (yt-dlp said "NA" at 100%,
   // seen 2026-09-25) -- never a guessed one.
@@ -2917,7 +2925,7 @@ function jobRow(job) {
     ${job.error && !(job.state === "error" && (job.error_from_tool || (job.explain || {}).known))
       ? '<div class="err"></div>' : ""}
     ${job.cookie_note && job.state !== "done" ? `<div class="hint warn-text" style="margin-top:6px">
-        ⚠️ Running without your cookies: ${job.cookie_note}.
+        ⚠️ Running without your log-in: ${job.cookie_note}.
       </div>` : ""}
     ${job.state === "done" && job.note && !job.skipped ? '<div class="hint job-note" style="margin-top:6px"></div>' : ""}
     ${already && !skipInFolder(job) ? '<div class="hint skip-why" style="margin-top:4px"></div>' : ""}
@@ -3344,6 +3352,13 @@ async function refresh() {
     if (!label._used) { label.remove(); groupLabels.delete(group); }
   }
 
+  // The first-day note has said its piece once a download exists: it stayed
+  // saying "Paste a link above to start" under finished rows (the beginner's
+  // walk, 2026-11-06).
+  if (jobs.length && !$("welcome").classList.contains("hidden")) {
+    $("welcome").classList.add("hidden");
+    api("/api/settings", { setup_done: true });
+  }
   const running = jobs.filter((j) => j.state === "running").length;
   const waiting = jobs.filter((j) => j.state === "waiting").length;
   // One form of title: it changed to "Downloads · 2 running, 2 waiting"
@@ -4110,14 +4125,15 @@ $("need-tool-install").addEventListener("click", async () => {
 $("thumb").addEventListener("error", () => $("thumb").classList.add("hidden"));
 
 // ---- The link from the clipboard (Phase 2 item 3, 2026-10-24) --------------
-// One button: "Paste" while the box is empty, "Read" once it holds text.
+// One button: "Paste" while the box is empty, "Continue" once it holds text
+// ("Read" told a beginner nothing: the beginner's walk, 2026-11-06).
 // The server sends only the links it found; the rest of what was copied
 // never reaches the page (server.clipboard_links).
 
 /** Read's label follows the box -- never while a read is running. */
 function setReadLabel() {
   if ($("read").disabled) return;
-  $("read").textContent = $("url").value.trim() ? "Read" : "Paste";
+  $("read").textContent = $("url").value.trim() ? "Continue" : "Paste";
 }
 $("url").addEventListener("input", () => {
   setReadLabel();
@@ -4171,8 +4187,8 @@ async function useClipboard(asked) {
     // The link waits in the box, to be changed if needed (the setting).
     $("url").focus();
     setReadLabel();
-    if (!asked) notify(links.length === 1 ? "The link you copied is in the box. Press Read when it is ready."
-      : `The ${links.length} links you copied are in the box. Press Read when they are ready.`);
+    if (!asked) notify(links.length === 1 ? "The link you copied is in the box. Press Continue when it is ready."
+      : `The ${links.length} links you copied are in the box. Press Continue when they are ready.`);
     return;
   }
   if (links.length > 1) readMany(links); else read();
@@ -4206,15 +4222,25 @@ $("url").addEventListener("paste", (event) => {
   // from the paste itself, before that (several links, 2026-10-24).
   const pasted = (event.clipboardData && event.clipboardData.getData("text")) || "";
   const several = linksIn(pasted);
-  if (several.length > 1) {
+  // A link pasted beside the one already there is added to it. Glued to it,
+  // the card showed one video and the second was lost without a word (the
+  // beginner's walk, 2026-11-06). What is selected is replaced, as anywhere.
+  const box = $("url");
+  const kept = box.selectionStart === box.selectionEnd ? linksIn(box.value) : [];
+  const links = [...new Set([...kept, ...several])];
+  if (several.length > 1 || (several.length && kept.length)) {
     event.preventDefault();
-    $("url").value = several.join(" ");
+    // The open card was for the link alone: it would stay above two.
+    if (!$("result").classList.contains("hidden") || !$("batch").classList.contains("hidden")) closeCard(true);
+    box.value = links.join(" ");
     // A line with a link in it is a share text, cut to its link; a line
     // with none was dropped in silence.
     strayLines = pasted.split(/\r?\n/).map((line) => line.trim())
       .filter((line) => line && !linksIn(line).length);
-    strayFor = $("url").value;
-    if (autoRead) readMany(several); else setReadLabel();
+    strayFor = box.value;
+    if (!autoRead) setReadLabel();
+    else if (links.length > 1) readMany(links);
+    else read();
     return;
   }
   // Off (the setting): the link waits in the box for Read or Enter.
@@ -5013,7 +5039,7 @@ $("auto-read").addEventListener("change", async () => {
   autoRead = $("auto-read").checked;
   await api("/api/settings", { auto_read: autoRead });
   notify(autoRead ? "Saved: a pasted link is read at once."
-                  : "Saved: a pasted link waits in the box. Press Read when it is ready.");
+                  : "Saved: a pasted link waits in the box. Press Continue when it is ready.");
 });
 $("use-clipboard").addEventListener("change", async () => {
   const on = $("use-clipboard").checked;
@@ -5424,6 +5450,9 @@ $("cookies-switch").addEventListener("change", async () => {
   $("cookies-state").textContent = on ? "on" : "off · paused";
   await api("/api/settings", { cookies_enabled: on });
   loadCookies();
+  // An open card said "log-ins are switched off" after they were turned on
+  // (the beginner's walk, 2026-11-06).
+  refreshNeeds();
 });
 
 $("cookies-keep").addEventListener("change", async () => {

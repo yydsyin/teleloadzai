@@ -83,13 +83,14 @@ One desktop interface that groups the best video/audio download tools behind a s
 - **Checking a registry is not proof.** A name can be free on PyPI, npm and GitHub and still belong to a real company. **Always do a real web search too** before saying something is free, available, or does not exist. *(Lesson of 2026-09-20: "Grabbity" passed every registry and was a Latvian software company.)*
 - Before recommending any tool: check its repo is **not archived**, and its **last commit date**.
 
-**Six tools, and they do different jobs. Five are skills (🧰), one is an agent (🤖) — a different thing, called a different way.**
+**Seven tools, and they do different jobs. Six are skills (🧰), one is an agent (🤖) — a different thing, called a different way.**
 
 - 🧰 **`mes-erreurs-recurrentes`** says **WHAT** to check — the mistakes I repeat, each with the control that catches it. Load it before announcing "done", "fixed", "verified", "0 error", and before claiming something is absent, clean or impossible. It is global: it applies to every project of this user.
 - 🧰 **`doubt-driven-development`** says **HOW** — have the work re-read by a fresh context whose job is to **demolish**, not to approve. I re-read with the idea that produced the mistake, so I cannot see it.
 - 🧰 **`verifying-external-behavior`** — before writing code around **somebody else's program**. Every tool we drive is somebody else's program. Its sentence is our own bug: *"permissive clients don't reject wrong arguments — they ignore them"* — that is `--record_data false`, passed to XHS-Downloader, ignored by it, announced by me as fixed. Load it before adding a flag, a sub-command or a config file to a recipe. *(Installed 2026-09-22 from `wdm0006/python-skills`, MIT.)*
 - 🧰 **`security-and-hardening`** — before any code that touches a **cookie**, a token or a saved credential, which means all of step 5. ⚠️ It is written for Node web apps; most of it does not apply. Take "Secrets Management", "Never log sensitive data", "Destructive Operations on Derived Paths", and leave the rest.
 - 🧰 **`ux-copy`** — when writing **what the user is told**: an error, an empty state, a loading line, a confirm box. It is how decisions 33 and 34 get their sentences. We wrote the rules; this writes the words.
+- 🧰 **`cognitive-walkthrough`** — walk a real task as a beginner, before calling a screen finished. It predicts problems; it doesn't replace a real person. *(Installed 2026-11-06 from `mastepanoski/claude-skills`, MIT.)*
 - 🤖 **`silent-failure-hunter`** hunts **one precise family of bug**: code that fails quietly while the app reports success. *(Added 2026-09-21 at the user's request. It is exactly the bug of 2026-09-20: yt-dlp skipped the download, the file never changed, and the window said **done**.)* ⚠️ It lives in `agents/`, not `skills/` — an **agent**, not a skill. Corrected 2026-09-22; this file called it a skill for a day.
 - **A confirmed mistake of MINE gets written into `mes-erreurs-recurrentes` the same day** — the habit, not the project's bug.
 

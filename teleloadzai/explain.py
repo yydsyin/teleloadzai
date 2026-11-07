@@ -59,8 +59,7 @@ KNOWN: tuple[Known, ...] = (
         words=("only works when logged-in",),
         tools=("yt-dlp",),
         title="Vimeo shows this video only to a logged-in account.",
-        next_step=("Log in to Vimeo, then try again. A download with a "
-                   "log-in has not been tested yet."),
+        next_step="Log in to Vimeo, then try again: it may help.",
         action="login",
         seen=("2026-09-26: vimeo.com/56015672 and vimeo.com/68375962, no "
               "cookies -- yt-dlp: 'The web client only works when "
@@ -97,13 +96,13 @@ KNOWN: tuple[Known, ...] = (
     Known(
         words=("there is no video in this post",),
         tools=("yt-dlp",),
-        # What happened first, the program second (review of 2026-09-28).
-        title="This post has no video. yt-dlp downloads videos only.",
+        # True whichever program the card is on: "yt-dlp downloads videos
+        # only" stayed red above gallery-dl (the beginner's walk, 2026-11-06).
+        title="yt-dlp found no video in this post.",
         # Updating does not change it: yt-dlp builds nothing for a photo.
         retry=False,
-        next_step=("If the post holds photos, gallery-dl can save them. It "
-                   "needs you to be logged in to Instagram. Not tested yet "
-                   "on such a post."),
+        next_step=("If the post holds photos, gallery-dl may save them. It "
+                   "needs you to be logged in to Instagram."),
         seen=("2026-09-27, no cookies: instagram.com/p/DDhF_64RGd9 and "
               "/p/DGDRzmvALJW (named in gallery-dl issue 6688 and yt-dlp "
               "issue 12439) -- 'There is no video in this post'. The card offered "
@@ -159,7 +158,7 @@ KNOWN: tuple[Known, ...] = (
         words=("failed to retrieve data",),
         tools=("tiktokdownloader",),
         title="TikTokDownloader could not read this video.",
-        next_step=("We have seen this in three cases: no cookies for the "
+        next_step=("We have seen this in three cases: not logged in to the "
                    "site (log in to it on the Sites page); a video the site does "
                    "not show on your connection; and a video that does not "
                    "exist. Check the link, or try another video."),

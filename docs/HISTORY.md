@@ -205,3 +205,19 @@ Six Stops pressed through the running app's own API, each on a real download, th
 **Seen, in the page, every state:** the 7 programs with no update: no Update anywhere; update available: offered, with its sentence; GitHub out of reach: not offered, no claim. The real failed row: "Read the link again". The card with an unknown read failure: Update shown only when available.
 
 ⚠️ **Open:** Teleloadzai cannot tell whether TikTokDownloader or KS-Downloader installed before 2026-10-21 has a newer version (decision 31), so none is ever offered for them, until they are installed again.
+
+### 2026-11-06 — a beginner's walk through four tasks (`cognitive-walkthrough`)
+
+**The skill:** `mastepanoski/claude-skills`, MIT, 67 stars, last change 2026-10-28, all 3 files read before installing. Tasks: one link to MP3, several links, recover from a failure, log in for Instagram. On a first-day copy (the real code and programs, an empty data folder). It predicts; no real person was involved.
+
+**Real errors, fixed:**
+- A link pasted beside another was glued to it (`…IVRwhttps://…`): the card showed **one video, no warning**, the second lost. Now added with a space; a card already open closes. Nine paste cases seen, by a simulated paste event: text inserted as a browser does.
+- The card said "Turn them on in the Sites page" to someone with no log-in saved: the page then has **no switch** ("off · none saved"), and a log-in turns them on by itself. Now only the need and its button; "turn them on" only when something is saved. And an open card now follows the switch: seen on the real switch, a fake log-in planted in the copy's data only, and seen stale with `refreshNeeds` removed.
+- ⚠️ **My first report of this was partly wrong:** I said the card stayed wrong after turning log-ins on, but that test clicked a hidden checkbox, in a copy with nothing saved. Found by asking the server what it held, before believing the fix had failed.
+- The red title "yt-dlp downloads videos only" stayed above gallery-dl: now "yt-dlp found no video in this post."
+
+**Words:** Read → **Continue** · "yt-dlp is working…" → "Starting the download…" (yt-dlp) or "Working…" · "Try yt-dlp's preview version" → "Try a newer test version", beside "the newest stable version. Its test version may help." · "cookies" → "log-in" on the card, its rows and TikTokDownloader's error; the Sites page keeps "cookie" where it speaks of the file · "Not tested yet" gone, "may" kept (decision 38) · "one per line" gone. **The first-day note** closes with the first download.
+
+**Seen:** the real Bilibili failure and its row; N_m3u8DL-RE and gallery-dl real starts ("Working…", then bytes); both sizes measured, no overlap, no sideways scroll.
+
+⚠️ **Not seen:** the real log-in window and Save windows, the real app window, a real Ctrl+V. **Not done:** titles in the card of several links (needs a model).
