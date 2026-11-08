@@ -254,3 +254,22 @@ Six Stops pressed through the running app's own API, each on a real download, th
 - **A damaged settings file.** Read as "no settings" in silence, then the next save wrote the defaults over every choice. Now kept as "settings (unreadable).json" and said on the page (once in the Console); a value of the wrong kind (`"record_minutes": "abc"` stopped the app at start, no window) is that setting's default. Seen in the test copy: a cut file and a list instead of a table both said and set aside; a good file, nothing said.
 
 ⚠️ **Not seen:** a real yt-dlp run of several videos stopped in the middle (the probe fakes yt-dlp and copies `on_final`'s rule).
+
+**Then the small findings of the 3 rounds, fixed before the commit (the user: "fix the … left bugs before committing").** Each checked by a probe that fails on the old code, or in the test copy:
+- A Stop now says what stays: "Saved before it stopped: video1.mp4" (or "2 files, … first"); a failed run keeps its finished videos on the row too. Old: the row knew 0 files.
+- Retry, Continue and "Try with…" on a row whose folder was deleted: *"The folder "dl7" no longer exists, so this download goes to <Settings folder>."* (seen in the test copy; nothing said when the folder is there).
+- "Download again" on a split post removes the post's other rows only once the new run has the post. Old: a failed run left the failed row alone; now 3 rows on failure, 3 (no duplicates) on success.
+- A damaged `logins.json` is kept as "logins (unreadable).json" and said once; a log-in sign that cannot be written is said in the Console.
+- The card of several links: if Teleloadzai stops answering (or refuses this tab's token), the loop stops and says *"0 of 2 added, then Teleloadzai stopped answering…"* — it stayed on "Adding 1 of 2…" with no word, and a refused token pushed one "not allowed" per link over the "Reload this page" message. Both modes, in the test copy.
+- The green bar of several downloads: done green, failed red, stopped grey (1 done, 2 failed, 1 stopped, 1 running → 20 / 40 / 20 %; old: 80 % green).
+- Two links pasted over a selected part of the box replace only that part ("A B", B selected → "A C D"; old: "C D").
+- A damaged settings file is also said at the top of the Settings page (the bottom message is replaced by the next one).
+- The end message of a split post counts every file and names the post ("Beach post", 5 files; old: "pic0.jpg", 1). Every row of the post keeps the run's note.
+- Past 500 rows, failed and cut-off rows go last and a post's rows go together, said in the Console (old: the old failed row went, and 2 of a post's rows stayed without their first).
+- Settings: one read-change-save at a time (a log-in could undo a settings change); a wrong value ("x" downloads at once, 5000 minutes) is the value the app uses (2, 1440), checked on save too; a settings file another program holds, or one that could not be set aside, is never written over (saving waits, and it is said).
+- The folder window: a Windows failure is said, never taken for Cancel (E_FAIL → an error, Cancel → nothing; the real window's code still compiles).
+- A bare "ERROR:" line: the failed video takes its reason from the next line.
+
+**Not a real defect, put back:** "a finished video's subtitle rule is too loose" — yt-dlp writes video 2's subtitles only after video 1 is final, so the rule can never take them; the probe passed on the old code too.
+
+⚠️ **My mistake, written in `mes-erreurs-recurrentes` (entry 16):** a probe pressed Download with the card left in "Choose for each" by an earlier test, and a real "Save as" window opened on the user's screen; closed by stopping the test copy. ⚠️ **Not seen:** any of this in the real app window.

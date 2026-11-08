@@ -74,7 +74,11 @@ public static class ModernFolder {
             SHCreateItemFromParsingName(start, IntPtr.Zero, typeof(IShellItem).GUID, out folder);
             dialog.SetFolder(folder);
         } catch { }             // a start folder gone since: Windows opens its own default
-        if (dialog.Show(parent) != 0) return null;       // Cancel, or closed
+        int shown = dialog.Show(parent);
+        // Cancel or closed is ERROR_CANCELLED; any other failure is said,
+        // never taken for a Cancel (hunt of 2026-11-08).
+        if (shown == unchecked((int)0x800704C7)) return null;
+        if (shown != 0) Marshal.ThrowExceptionForHR(shown);
         IShellItem result;
         dialog.GetResult(out result);
         string path;

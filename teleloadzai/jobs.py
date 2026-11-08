@@ -92,6 +92,8 @@ def _read_item_line(job: "Job", text: str) -> None:
     line = text.strip()
     if job.tool == "yt-dlp":
         start = _ITEM_START.match(line)
+        if start or line.startswith(_PLAYLIST_END):
+            job.reason_for = None       # the next video's lines are not its reason
         if start:
             number, count = int(start.group(1)), int(start.group(2))
             # The card's titles fill the list beforehand; a post read with
@@ -123,6 +125,14 @@ def _read_item_line(job: "Job", text: str) -> None:
                 if item["state"] == ITEM_RUNNING:
                     item["state"] = ITEM_FAILED
                     item["error"] = cookies.redact(reason)[:200]
+                    # A bare "ERROR:" prints its reason on the next line
+                    # (seen 2026-10-25): that line fills it in.
+                    job.reason_for = None if reason else item
+            return
+        waiting = getattr(job, "reason_for", None)
+        if waiting is not None and line:
+            waiting["error"] = cookies.redact(line)[:200]
+            job.reason_for = None
         return
     if len(job.items) >= ITEMS_KEPT:
         return
@@ -283,6 +293,11 @@ class Job:
     # first: it cannot be downloaded again alone -- the program fetches the
     # whole post -- so only the first row offers it.
     post_part: bool = False
+    # "Download again" on a split post: the old post's group, whose other
+    # rows go only once the new run has the post (never kept in jobs.json).
+    old_parts: str = field(default="", repr=False)
+    # A video failed on a bare "ERROR:" line: the next line is its reason.
+    reason_for: dict | None = field(default=None, repr=False)
     error: str = ""
     error_from_tool: bool = False   # is `error` the tool's own words? (decision 38)
     # A finished job's one plain sentence about what it did not get: "Saved
@@ -461,11 +476,35 @@ class Queue:
         # a finished row came back "interrupted" (hunt of 2026-10-31).
         with self._save_lock:
             with self._lock:
-                # The oldest finished rows go first; a row in progress never does.
+                # The oldest finished rows go first; a row in progress never
+                # does. Failed and interrupted rows go last -- each is the
+                # only pointer to its unfinished pieces -- and a post's rows go
+                # together: its first row went, the others stayed with no
+                # "Download again" (hunt of 2026-11-08). Said in the Console.
                 extra = len(self._order) - HISTORY_LIMIT
-                for job_id in [i for i in self._order if self._jobs[i].state not in ACTIVE_STATES][:max(0, extra)]:
-                    del self._jobs[job_id]
-                    self._order.remove(job_id)
+                if extra > 0:
+                    def keep_longer(i: str) -> bool:
+                        return self._jobs[i].state == ERROR or self._jobs[i].interrupted
+                    ended = [i for i in self._order if self._jobs[i].state not in ACTIVE_STATES]
+                    gone: list[str] = []
+                    for job_id in sorted(ended, key=keep_longer):      # stable: oldest first in each
+                        if len(gone) >= extra:
+                            break
+                        if job_id in gone:
+                            continue
+                        group = self._jobs[job_id].group
+                        post = group and group in self._jobs and self._jobs[group].group == group \
+                            and self._jobs[group].state not in ACTIVE_STATES
+                        gone += [i for i in self._order if i not in gone
+                                 and (i == job_id or (post and self._jobs[i].group == group))]
+                    failed = sum(1 for i in gone if keep_longer(i))
+                    for job_id in gone:
+                        del self._jobs[job_id]
+                        self._order.remove(job_id)
+                    if failed:
+                        console.add("app", f"Teleloadzai: the list keeps {HISTORY_LIMIT} rows: "
+                                    f"{failed} old failed or cut-off "
+                                    f"{'download' if failed == 1 else 'downloads'} left it.", "err")
                 rows = [{k: getattr(self._jobs[i], k) for k in _KEPT} for i in self._order]
             text = json.dumps({"version": 1, "jobs": rows}, ensure_ascii=False, indent=1)
             temp = self._store.with_name(self._store.name + ".tmp")
@@ -563,12 +602,15 @@ class Queue:
                     items = [item.get("title", "") for item in old.items]
                 if old.group and old.group == old.id:
                     # "Download again" on a split post fetches the whole post:
-                    # its other picture rows go, the new run splits again.
-                    for other in [i for i in self._order
-                                  if i != replace and self._jobs[i].group == old.group]:
-                        del self._jobs[other]
-                        self._order.remove(other)
+                    # its other picture rows go once the new run has it, and
+                    # it splits again. Removed here, a failed run left the
+                    # post with no rows but its failure (hunt of 2026-11-08).
+                    job.old_parts = old.group
                     job.title = old.group_title     # the post's name, not its 1st file's
+                elif old.old_parts:
+                    # Its "Download again" failed: the Retry still owes the
+                    # post's old rows their removal once it succeeds.
+                    job.old_parts, job.title = old.old_parts, old.title
                 elif not group:             # a Retry stays in its playlist
                     job.group, job.group_title, job.group_index = (
                         old.group, old.group_title, old.group_index)
@@ -599,7 +641,7 @@ class Queue:
                        title=Path(path).stem, folder=job.folder, tool=job.tool,
                        platform=job.platform, state=DONE, percent="100%", files=[path],
                        group=job.group, group_title=job.group_title, group_index=k,
-                       post_part=True)
+                       post_part=True, note=job.note)   # the run's note is every file's
             self._jobs[part.id] = part
             self._order.insert(at + k - 1, part.id)
 
@@ -827,6 +869,11 @@ class Queue:
                     and piece.suffix.lower() in (".srt", ".vtt", ".ass"))
             with self._lock:
                 job.writing = [p for p in job.writing if not finished(p)]
+                # Kept for the row: stopped or failed later in the run, it
+                # says what stays in the folder ("Saved before it stopped"),
+                # not a bare "Stopped" (hunt of 2026-11-08, round 3).
+                if str(path) not in job.files:
+                    job.files.append(str(path))
 
         def on_percent(percent: int) -> None:
             """The specialist tools give a bare number, not yt-dlp's three fields."""
@@ -924,6 +971,12 @@ class Queue:
                     job.note = note
                     job.state = DONE
                     job.percent = "100%"
+                    if job.old_parts:
+                        for other in [i for i in self._order if i != job.id
+                                      and self._jobs[i].group == job.old_parts]:
+                            del self._jobs[other]
+                            self._order.remove(other)
+                        job.old_parts = ""
                     self._split_post(job)
         except Exception as exc:
             with self._lock:
@@ -956,7 +1009,9 @@ class Queue:
                     job.error_from_tool = explain.said_by_tool(exc)
                     # Files a tool finished before it failed (3 pictures of
                     # 8): shown on the row, never as the download itself.
-                    job.files = [str(f) for f in getattr(exc, "saved", [])]
+                    # yt-dlp's videos finished before the failure (on_final)
+                    # when the tool names none.
+                    job.files = [str(f) for f in getattr(exc, "saved", [])] or job.files
         finally:
             with self._lock:
                 job.process = None
@@ -1000,6 +1055,10 @@ class Queue:
             # Not for a Stop: the user did it, and is looking.
             with self._lock:
                 state, skipped, count = job.state, job.skipped, len(job.files)
+                # A post split into one row per file: the message counts
+                # them all, not the first row's one file (hunt of 2026-11-08).
+                if job.group and job.group == job.id:
+                    count = sum(1 for other in self._jobs.values() if other.group == job.group)
                 error = job.error
             # What the site needs, kept true by real results (the user,
             # 2026-10-25: "the needs may change with the updates"). Worked
@@ -1028,6 +1087,8 @@ class Queue:
                 # Never the link: a message on the screen says a name only
                 # ("A download failed" when there is none).
                 named = job.title or saved
+                if job.group and job.group == job.id:
+                    named = job.group_title or named    # the post, not its first file
             if state == DONE and count > 1 and not skipped:
                 # A playlist in one row: its title and how many files.
                 notify.ended(named, "done", count)

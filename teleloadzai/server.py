@@ -34,8 +34,13 @@ from .platforms import PLATFORMS, tool_name
 
 SETTINGS_FILE = DATA_DIR / "settings.json"
 _settings_lock = threading.Lock()
+# One read-change-save at a time: a log-in saving "use my log-ins" while a
+# settings change was saved could undo it -- each wrote back the file it had
+# read (hunt of 2026-11-08). Never held around a window or the network.
+_settings_change = threading.RLock()
 # A damaged settings file, said once on the page (GET /api/settings).
 settings_problem = ""
+_settings_stuck = False         # damaged and not set aside: never written over
 
 
 def _set_aside_settings() -> dict:
@@ -47,12 +52,18 @@ def _set_aside_settings() -> dict:
     aside, number = SETTINGS_FILE.with_name("settings (unreadable).json"), 2
     while aside.exists():
         aside, number = SETTINGS_FILE.with_name(f"settings (unreadable {number}).json"), number + 1
+    global _settings_stuck
     try:
         os.replace(SETTINGS_FILE, aside)
     except OSError as problem:
+        # Not set aside: then never written over either -- the old settings
+        # would be lost for good (hunt of 2026-11-08). Tried again each read.
+        _settings_stuck = True
         settings_problem = (f"Your settings file is damaged and could not be set aside "
-                            f"({problem.strerror}): Teleloadzai uses its usual settings for now.")
+                            f"({problem.strerror}): Teleloadzai uses its usual settings, and "
+                            f"changes are not saved until the file can be moved.")
     else:
+        _settings_stuck = False
         settings_problem = (f"Your settings file was damaged, so Teleloadzai went back to its "
                             f"usual settings. The old file was kept as {aside.name}.")
     # The page says it, and its own messages reach the Console: added here
@@ -73,6 +84,7 @@ def load_settings() -> dict:
     # refused (seen on this PC 2026-11-01), and a refused read would give the
     # DEFAULTS -- cookies off, the default folder -- for the next save to
     # write over every setting.
+    global _settings_stuck, settings_problem
     with _settings_lock:
         try:
             stored = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
@@ -80,20 +92,38 @@ def load_settings() -> dict:
                 raise ValueError("not a table")
         except ValueError:
             stored = _set_aside_settings()
-        except Exception:
+        except FileNotFoundError:
+            stored = {}                 # the first start: nothing saved yet
+        except OSError as problem:
+            # Held by another program (an antivirus, OneDrive): the defaults
+            # for now, but never saved over the real file (hunt of 2026-11-08).
+            _settings_stuck = True
+            settings_problem = (f"Your settings file could not be read ({problem.strerror}): "
+                                f"Teleloadzai uses its usual settings, and changes are not saved "
+                                f"until it can be read.")
             stored = {}
+        else:
+            _settings_stuck = False         # a good file again: saving comes back
+            if settings_problem.startswith("Your settings file could not be read"):
+                settings_problem = ""       # it passed: no longer true
     # A value of the wrong kind (written by hand) is that setting's default:
     # `"record_minutes": "abc"` stopped the app at start, with no window
     # (hunt of 2026-11-08).
+    # The page shows the value the app USES: "x" parallel downloads showed a
+    # blank list while 2 ran, 5000 minutes a number the recorder cut to 1440.
     try:
-        minutes = int(stored.get("record_minutes") or 60)
+        minutes = max(0, min(24 * 60, int(stored.get("record_minutes") or 60)))
     except (TypeError, ValueError):
         minutes = 60
+    try:
+        parallel = max(1, min(MAX_PARALLEL_LIMIT, int(stored.get("max_parallel") or MAX_PARALLEL_DEFAULT)))
+    except (TypeError, ValueError):
+        parallel = MAX_PARALLEL_DEFAULT
     choices = stored.get("tool_choice")
     folder = stored.get("download_folder")
     return {
         "download_folder": folder if isinstance(folder, str) and folder else str(DEFAULT_DOWNLOAD_DIR),
-        "max_parallel": stored.get("max_parallel") or MAX_PARALLEL_DEFAULT,
+        "max_parallel": parallel,
         # Ask where to save each file, like a browser does. On by default.
         "ask_where": bool(stored.get("ask_where", True)),
         # False until the first-launch screen has been answered once.
@@ -228,9 +258,70 @@ def save_settings(settings: dict) -> None:
     (hunt of 2026-10-31)."""
     ensure_dirs()
     with _settings_lock:
+        if _settings_stuck:
+            return      # the file could not be read or set aside: said, kept
         temp = SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".tmp")
         temp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
         os.replace(temp, SETTINGS_FILE)
+
+
+def _number(value, low: int, high: int) -> int | None:
+    """A whole number in [low, high], or None: the page's list sends one,
+    but a stored "x" showed a blank list while the app used 2."""
+    try:
+        return max(low, min(high, int(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _apply_settings(settings: dict, body: dict) -> None:
+    """The settings page's changes, onto `settings` (POST /api/settings)."""
+    folder = (body.get("download_folder") or "").strip()
+    if folder:
+        settings["download_folder"] = folder
+    if body.get("max_parallel") and _number(body["max_parallel"], 1, MAX_PARALLEL_LIMIT) is not None:
+        settings["max_parallel"] = _number(body["max_parallel"], 1, MAX_PARALLEL_LIMIT)
+    if "ask_where" in body:          # False is a real value, not "missing"
+        settings["ask_where"] = bool(body["ask_where"])
+    if "setup_done" in body:
+        settings["setup_done"] = bool(body["setup_done"])
+    if "record_minutes" in body and _number(body["record_minutes"], 0, 24 * 60) is not None:
+        settings["record_minutes"] = _number(body["record_minutes"], 0, 24 * 60)
+    if body.get("update_mode") in ("ask", "auto", "manual"):
+        settings["update_mode"] = body["update_mode"]
+    if body.get("ytdlp_channel") in ("stable", "preview"):
+        settings["ytdlp_channel"] = body["ytdlp_channel"]
+        tools.set_preview("yt-dlp", body["ytdlp_channel"] == "preview")
+    if body.get("cookies_keep") in ("keep", "once"):
+        settings["cookies_keep"] = body["cookies_keep"]
+    if "use_clipboard" in body:      # False is a real value, not "missing"
+        settings["use_clipboard"] = bool(body["use_clipboard"])
+    if "auto_read" in body:
+        settings["auto_read"] = bool(body["auto_read"])
+    if body.get("several_mode") in ("same", "each"):
+        settings["several_mode"] = body["several_mode"]
+    if body.get("subs_mode") in ("", "embed", "file"):
+        settings["subs_mode"] = body["subs_mode"]
+    if "notify_done" in body:        # False is a real value, not "missing"
+        settings["notify_done"] = bool(body["notify_done"])
+    if isinstance(body.get("tool_choice"), dict):
+        # One site at a time from the page. Only a tool that site
+        # really lists; choosing the default removes the entry, so
+        # a later change of our default still reaches this user.
+        for pid, tid in body["tool_choice"].items():
+            platform = next((p for p in PLATFORMS if p.id == pid), None)
+            if platform is None or tid not in [o.tool_id for o in platform.tools]:
+                continue
+            usable_default = next((o.tool_id for o in platform.tools
+                                   if runners.unavailable_reason(o.tool_id) is None), None)
+            if tid == usable_default:
+                settings["tool_choice"].pop(pid, None)
+            else:
+                settings["tool_choice"][pid] = tid
+    if "cookies_enabled" in body:
+        # The switch can only be turned ON when a file is really here,
+        # otherwise the card would claim cookies we do not have.
+        settings["cookies_enabled"] = bool(body["cookies_enabled"]) and cookies.have_file()
 
 
 def forget_if_once() -> bool:
@@ -250,9 +341,10 @@ def forget_if_once() -> bool:
     # Windows lets the profile folder go (it stays locked while the app runs).
     if login.forget_browser() in ("now", "later"):
         gone = True
-    settings = load_settings()
-    settings["cookies_enabled"] = False
-    save_settings(settings)
+    with _settings_change:
+        settings = load_settings()
+        settings["cookies_enabled"] = False
+        save_settings(settings)
     return gone
 
 
@@ -264,9 +356,10 @@ def _login_saved(kept: int) -> None:
     own would leave the switch off, and the next download would run without
     the cookies the user has just logged in for.
     """
-    settings = load_settings()
-    settings["cookies_enabled"] = True
-    save_settings(settings)
+    with _settings_change:
+        settings = load_settings()
+        settings["cookies_enabled"] = True
+        save_settings(settings)
 
 
 login.on_saved = _login_saved
@@ -277,6 +370,17 @@ def _retry_folder(old) -> str:
     A row from several links went to the folder chosen for them; its Retry
     must not land in the Settings folder instead (2026-10-24)."""
     return str(old.folder) if old.folder and Path(old.folder).is_dir() else ""
+
+
+def _folder_note(old, answer: dict) -> dict:
+    """The first try's folder gone since: the Retry goes to the Settings
+    folder, and the answer says so -- it went there without a word (hunt of
+    2026-11-08)."""
+    # A "Save as" path keeps its own folder (or is refused): never this note.
+    if old.folder and not old.target and not answer.get("error") and not _retry_folder(old):
+        answer = {**answer, "note": f"The folder “{Path(old.folder).name or old.folder}” no longer exists, "
+                                    f"so this download goes to {download_folder()}."}
+    return answer
 
 
 def _retry_target(old, replace_own: bool = False) -> str:
@@ -1026,7 +1130,7 @@ class Handler(BaseHTTPRequestHandler):
                 platform=old.platform, replace=old.id, folder=_retry_folder(old),
                 subs=old.subs, sub_lang=old.sub_lang,
             )
-            self._json(answer, status)
+            self._json(_folder_note(old, answer), status)
             return
 
         if path.startswith("/api/job/") and path.endswith("/cancel"):
@@ -1082,7 +1186,7 @@ class Handler(BaseHTTPRequestHandler):
                 force=bool(body.get("force")), replace=old.id, folder=_retry_folder(old),
                 subs=old.subs, sub_lang=old.sub_lang,
             )
-            self._json(answer, status)
+            self._json(_folder_note(old, answer), status)
             return
 
         if path == "/api/jobs/clear":
@@ -1113,9 +1217,10 @@ class Handler(BaseHTTPRequestHandler):
                 # A refusal the user can act on, never a bare "failed".
                 self._json({"error": cookies.redact(str(problem))}, 400)
                 return
-            settings = load_settings()
-            settings["cookies_enabled"] = True      # importing IS the consent
-            save_settings(settings)
+            with _settings_change:
+                settings = load_settings()
+                settings["cookies_enabled"] = True      # importing IS the consent
+                save_settings(settings)
             self._json({"imported": summary["total"],
                         "ignored": summary["ignored"],
                         "ignored_sites": summary["ignored_sites"],
@@ -1129,9 +1234,10 @@ class Handler(BaseHTTPRequestHandler):
             # the window runs in private mode (found 2026-09-26) -- so this is
             # housekeeping, and the page no longer claims otherwise.
             wiped = login.forget_browser()       # "", "now" or "later"
-            settings = load_settings()
-            settings["cookies_enabled"] = False
-            save_settings(settings)
+            with _settings_change:
+                settings = load_settings()
+                settings["cookies_enabled"] = False
+                save_settings(settings)
             self._json({"removed": removed, "browser_wiped": wiped,
                         "cookies": cookies.state(False)})
             return
@@ -1155,10 +1261,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": cookies.redact(
                     f"The log-in window could not be read: {problem}")}, 500)
                 return
-            settings = load_settings()
             if kept:
-                settings["cookies_enabled"] = True
-                save_settings(settings)
+                with _settings_change:
+                    settings = load_settings()
+                    settings["cookies_enabled"] = True
+                    save_settings(settings)
             self._json({"kept": kept, "cookies": cookies.state(bool(kept))})
             return
 
@@ -1181,61 +1288,18 @@ class Handler(BaseHTTPRequestHandler):
             if chosen is None:
                 self._json({"cancelled": True})
                 return
-            settings = load_settings()
-            settings["download_folder"] = str(chosen)
-            save_settings(settings)
+            with _settings_change:
+                settings = load_settings()
+                settings["download_folder"] = str(chosen)
+                save_settings(settings)
             self._json(settings)
             return
 
         if path == "/api/settings":
-            settings = load_settings()
-            folder = (body.get("download_folder") or "").strip()
-            if folder:
-                settings["download_folder"] = folder
-            if body.get("max_parallel"):
-                settings["max_parallel"] = body["max_parallel"]
-            if "ask_where" in body:          # False is a real value, not "missing"
-                settings["ask_where"] = bool(body["ask_where"])
-            if "setup_done" in body:
-                settings["setup_done"] = bool(body["setup_done"])
-            if "record_minutes" in body:
-                settings["record_minutes"] = body["record_minutes"]
-            if body.get("update_mode") in ("ask", "auto", "manual"):
-                settings["update_mode"] = body["update_mode"]
-            if body.get("ytdlp_channel") in ("stable", "preview"):
-                settings["ytdlp_channel"] = body["ytdlp_channel"]
-                tools.set_preview("yt-dlp", body["ytdlp_channel"] == "preview")
-            if body.get("cookies_keep") in ("keep", "once"):
-                settings["cookies_keep"] = body["cookies_keep"]
-            if "use_clipboard" in body:      # False is a real value, not "missing"
-                settings["use_clipboard"] = bool(body["use_clipboard"])
-            if "auto_read" in body:
-                settings["auto_read"] = bool(body["auto_read"])
-            if body.get("several_mode") in ("same", "each"):
-                settings["several_mode"] = body["several_mode"]
-            if body.get("subs_mode") in ("", "embed", "file"):
-                settings["subs_mode"] = body["subs_mode"]
-            if "notify_done" in body:        # False is a real value, not "missing"
-                settings["notify_done"] = bool(body["notify_done"])
-            if isinstance(body.get("tool_choice"), dict):
-                # One site at a time from the page. Only a tool that site
-                # really lists; choosing the default removes the entry, so
-                # a later change of our default still reaches this user.
-                for pid, tid in body["tool_choice"].items():
-                    platform = next((p for p in PLATFORMS if p.id == pid), None)
-                    if platform is None or tid not in [o.tool_id for o in platform.tools]:
-                        continue
-                    usable_default = next((o.tool_id for o in platform.tools
-                                           if runners.unavailable_reason(o.tool_id) is None), None)
-                    if tid == usable_default:
-                        settings["tool_choice"].pop(pid, None)
-                    else:
-                        settings["tool_choice"][pid] = tid
-            if "cookies_enabled" in body:
-                # The switch can only be turned ON when a file is really here,
-                # otherwise the card would claim cookies we do not have.
-                settings["cookies_enabled"] = bool(body["cookies_enabled"]) and cookies.have_file()
-            save_settings(settings)
+            with _settings_change:
+                settings = load_settings()
+                _apply_settings(settings, body)
+                save_settings(settings)
             self._json(load_settings())
             return
 

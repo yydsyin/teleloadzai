@@ -321,13 +321,36 @@ HISTORY_FILE = DATA_DIR / "logins.json"
 # refuse each other (seen on this PC 2026-11-01), and a refused read gives {},
 # which the next log-in would save as the whole history.
 _history_lock = threading.RLock()
+_history_said = False           # a damaged logins.json, said once
 
 
 def _history() -> dict:
+    import json
+    import os
     with _history_lock:
         try:
-            import json
-            return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+            data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("not a table")
+            return data
+        except ValueError:
+            # Damaged: kept under a name of its own and said in the Console,
+            # never rebuilt from nothing in silence by the next log-in (hunt
+            # of 2026-11-08, as settings.json and needs.json).
+            aside, number = HISTORY_FILE.with_name("logins (unreadable).json"), 2
+            while aside.exists():
+                aside, number = HISTORY_FILE.with_name(f"logins (unreadable {number}).json"), number + 1
+            global _history_said
+            try:
+                os.replace(HISTORY_FILE, aside)
+                said, again = f"was damaged. It was kept as {aside.name}; the Sites page forgets how you logged in.", False
+            except OSError as problem:
+                said, again = f"is damaged and could not be set aside ({problem.strerror}).", _history_said
+                _history_said = True    # read often: this one said once, not each time
+            if not again:
+                from . import console
+                console.add("app", f"Teleloadzai: {HISTORY_FILE.name} {said}", "err")
+            return {}
         except Exception:
             return {}
 
@@ -345,12 +368,16 @@ def _remember(platform_id: str, how: str) -> None:
             HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
             temp.write_text(json.dumps(history, indent=2), encoding="utf-8")
             os.replace(temp, HISTORY_FILE)
-        except OSError:
+        except OSError as problem:
             try:
                 temp.unlink(missing_ok=True)
             except OSError:
                 pass
-            # a sign, not a need: the cookies are saved
+            # A sign, not a need: the cookies are saved. Said, not swallowed
+            # (hunt of 2026-11-08): the Sites page will not show how or when.
+            from . import console
+            console.add("app", f"Teleloadzai: the log-in is saved, but {HISTORY_FILE.name} could not "
+                        f"be written ({problem.strerror}): the Sites page will not show when it was made.", "err")
 
 
 def forget_history() -> None:

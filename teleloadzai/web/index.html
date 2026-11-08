@@ -180,8 +180,12 @@
   #batch-skipped { margin-top: 8px; line-height: 1.6; }
   /* Over the list: filters with counts. ("6 of 6 finished · 3 failed" went
      on 2026-10-25, model D: the filters already say the counts.) */
-  .list-bar { height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 0 0 10px; }
+  .list-bar { display: flex; height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 0 0 10px; }
   .list-bar > i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .25s linear; }
+  /* A failed download is not progress: its share is red, a stopped one
+     grey, never green (hunt of 2026-11-08). */
+  .list-bar > i.bad { background: var(--bad); }
+  .list-bar > i.stop { background: var(--line-strong); }
   /* The updates band's tint: something to act on, not an error. */
   .resume-bar {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px;
@@ -1107,7 +1111,7 @@
     <!-- A long list stays readable (the study: Parabolic's filters with
          counts, Media Downloader's asked-for total). Drawn only when the
          list is long enough to need it. -->
-    <div class="list-bar hidden" id="list-bar" aria-hidden="true"><i></i></div>
+    <div class="list-bar hidden" id="list-bar" aria-hidden="true"><i></i><i class="bad"></i><i class="stop"></i></div>
     <!-- Downloads cut off when Teleloadzai closed (Phase 2 item 2): they
          wait for the user, never restart by themselves. -->
     <div class="resume-bar hidden" id="resume-bar" role="status">
@@ -1163,6 +1167,9 @@
     <div class="settings-page">
     <section class="pane" id="pane-downloads" data-view="settings">
       <h2 class="pane-title page-title" id="set-downloads" tabindex="-1">Settings</h2>
+      <!-- A damaged settings file: said here too, where it matters -- the
+           bottom message was replaced by the next one within seconds. -->
+      <p class="hint warn-text hidden" id="settings-problem" style="margin:0 0 12px"></p>
       <div class="set-group">
         <div class="set-row set-row-wide">
           <span class="opt-icon icon-folder" aria-hidden="true"></span>
@@ -1475,6 +1482,25 @@ async function api(path, body) {
     setStatus("Teleloadzai restarted. Reload this page (F5) to continue.");
   }
   return response.json();
+}
+
+/** One request of a long loop (the card of several links): null when the
+ *  app stopped answering -- its server gone, or this tab's token refused.
+ *  The loop stops and says so: it stayed on "Adding 60 of 182…" with no
+ *  word, and a refused token pushed one "not allowed" per link over the
+ *  "Reload this page" message (hunt of 2026-11-08). */
+async function loopCall(path, body) {
+  try {
+    const answer = await api(path, body);
+    return tokenRefused ? null : answer;
+  } catch {
+    return null;
+  }
+}
+/** What a loop stopped by `loopCall` says. */
+function lostSentence(added, total) {
+  return `${added} of ${total} added, then Teleloadzai stopped answering: the others were not added. `
+    + "Reload this page (F5), then paste them again.";
 }
 
 let mode = "mp4";
@@ -3053,8 +3079,9 @@ function jobRow(job) {
   // A tool that failed half-way (3 pictures of 8) is a failure, and what it
   // did save is said -- never shown as "done" (silent-failure hunt, 2026-10-18).
   const savedBefore = row.querySelector(".saved-before");
-  if (savedBefore && job.state === "cancelled") savedBefore.textContent =
-    `Saved before it stopped: ${fileName(files[0])}.`;
+  if (savedBefore && job.state === "cancelled") savedBefore.textContent = files.length === 1
+    ? `Saved before it stopped: ${fileName(files[0])}.`
+    : `Saved before it stopped: ${files.length} files, ${fileName(files[0])} first.`;
   else if (savedBefore) savedBefore.textContent = files.length === 1
     ? `Saved before it failed: ${fileName(files[0])}.`
     : `Saved before it failed: ${files.length} files, ${fileName(files[0])} first.`;
@@ -3090,6 +3117,7 @@ function jobRow(job) {
     const answer = await api("/api/job/" + switchButton.dataset.switch + "/switch",
                             { tool: switchButton.dataset.tool });
     if (answer.error) { setStatus("Error: " + answer.error); switchButton.disabled = false; return; }
+    if (answer.note) setStatus(answer.note);
     refresh();
   });
 
@@ -3458,7 +3486,13 @@ function paintListTools(jobs) {
   // nothing (2026-10-24).
   const show = together.length >= 2 && under.length > 0;
   $("list-bar").classList.toggle("hidden", !show);
-  $("list-bar").firstElementChild.style.width = `${show ? 100 * (together.length - under.length) / together.length : 0}%`;
+  // Done green, failed red, stopped grey: a failure counted green, and two
+  // failures beside one download drew 67 % (hunt of 2026-11-08).
+  const share = (state) => show ? 100 * together.filter((j) => j.state === state).length / together.length : 0;
+  const [green, red, grey] = $("list-bar").children;
+  green.style.width = `${share("done")}%`;
+  red.style.width = `${share("error")}%`;
+  grey.style.width = `${share("cancelled")}%`;
   // One failed row has its own Retry; from two, one button for all of them.
   retryFailedButton.classList.toggle("hidden", retryable(jobs).length < 2);
   // Cut off when Teleloadzai closed: nothing restarts by itself (the user's
@@ -3484,6 +3518,7 @@ function piecesLeft(count, folder) {
 async function retryRow(id, body = {}) {
   const answer = await api("/api/job/" + id + "/retry", body);
   if (answer.error) setStatus("Error: " + answer.error);
+  else if (answer.note) setStatus(answer.note);     // its folder gone: where it goes now
   return answer.error || "";
 }
 
@@ -3492,10 +3527,15 @@ async function retryRow(id, body = {}) {
  *  a folder gone or a name in use). */
 async function retryRows(rows) {
   const refused = [];
+  const movedNotes = new Set();
   for (const job of rows) {
     const answer = await api("/api/job/" + job.id + "/retry", {});
     if (answer.error) refused.push(`${job.title || shortLink(job.url)}: ${answer.error}`);
+    else if (answer.note) movedNotes.add(answer.note);
   }
+  // Rows whose folder is gone go to the Settings folder: the caller says
+  // it after its count (hunt of 2026-11-08).
+  refused.moved = [...movedNotes].join(" ");
   return refused;
 }
 
@@ -3507,8 +3547,9 @@ $("resume-all").addEventListener("click", async () => {
   const again = rows.length - refused.length;
   button.disabled = false;
   await refresh();
-  if (!refused.length) notify(again === 1 ? "1 download continues." : `${again} downloads continue.`);
-  else setStatus(`${again} of ${rows.length} downloads continue. Not started: ${refused.join(" · ")}`);
+  if (!refused.length && !refused.moved) notify(again === 1 ? "1 download continues." : `${again} downloads continue.`);
+  else if (!refused.length) setStatus(`${again === 1 ? "1 download continues." : `${again} downloads continue.`} ${refused.moved}`);
+  else setStatus(`${again} of ${rows.length} downloads continue. Not started: ${refused.join(" · ")} ${refused.moved}`.trim());
 });
 
 retryFailedButton.addEventListener("click", async () => {
@@ -3525,8 +3566,9 @@ retryFailedButton.addEventListener("click", async () => {
   const again = rows.length - refused.length;
   button.disabled = false;
   await refresh();
-  if (!refused.length) notify(`${again} downloads started again.`);
-  else setStatus(`${again} of ${rows.length} downloads started again. Not started: ${refused.join(" · ")}`);
+  if (!refused.length && !refused.moved) notify(`${again} downloads started again.`);
+  else if (!refused.length) setStatus(`${again} downloads started again. ${refused.moved}`);
+  else setStatus(`${again} of ${rows.length} downloads started again. Not started: ${refused.join(" · ")} ${refused.moved}`.trim());
 });
 
 async function tick() {
@@ -4237,7 +4279,9 @@ $("url").addEventListener("paste", (event) => {
   // the card showed one video and the second was lost without a word (the
   // beginner's walk, 2026-11-06). What is selected is replaced, as anywhere.
   const box = $("url");
-  const kept = box.selectionStart === box.selectionEnd ? linksIn(box.value) : [];
+  // Only the selected part is replaced: with "A B" in the box and B
+  // selected, two pasted links gave "C D", A lost (hunt of 2026-11-08).
+  const kept = linksIn(box.value.slice(0, box.selectionStart) + " " + box.value.slice(box.selectionEnd));
   const links = [...new Set([...kept, ...several])];
   if (several.length > 1 || (several.length && kept.length)) {
     event.preventDefault();
@@ -4934,20 +4978,23 @@ $("batch-go").addEventListener("click", async () => {
     ? batchPlaylist.entries.map((it, k) => ({ url: it.url, found: batchPlaylist.found, tool: ready[0].tool,
         title: it.title, group: { ...pl, group_index: k + 1 } }))
     : ready;
+  let lost = false;
   for (const item of jobs) {
     go.textContent = `Adding ${added + refused.length + 1} of ${jobs.length}…`;
-    const answer = await api("/api/download", {
+    const answer = await loopCall("/api/download", {
       url: item.url, mode: batchMode, title: item.title || "", target: "",
       quality: batchMode === "mp3" ? $("batch-quality").value : "best",
       tool: item.tool.id, platform: item.found.platform_id || "", folder,
       ...(item.group || {}),
     });
+    if (!answer) { lost = true; break; }
     if (answer.error) refused.push(`${shortLink(item.url)}: ${answer.error}`);
     else added++;
   }
   const whole = batchPlaylist ? batchPlaylist.count : 0;
   closeCard();
   refresh();
+  if (lost) { setStatus(lostSentence(added, jobs.length)); return; }
   // Every link accounted for: a refused one is said, never dropped (decision 34).
   const done = whole && added ? `${added} videos of the playlist added, one row each.`
     : added === 1 ? "1 download added." : `${added} downloads added.`;
@@ -4965,6 +5012,7 @@ async function downloadEach(ready) {
   const refused = [];
   const cancelled = [];
   let added = 0;
+  let lost = false;
   const pl = playlistGroup();         // a playlist's rows stay together, in order
   for (const [n, item] of ready.entries()) {
     const label = item.title || shortLink(item.url);
@@ -4978,15 +5026,16 @@ async function downloadEach(ready) {
       const own = namesItself(tool, item.fmt);
       setStatus(own ? `Choose the folder for “${label}” in the window that opens: ${tool.name} names the file itself…`
         : `Choose where to save “${label}” in the window that opens…`);
-      const chosen = own ? await api("/api/pick-folder", {})
-        : await api("/api/save-as", { suggested: item.title || "", mode: item.fmt });
+      const chosen = own ? await loopCall("/api/pick-folder", {})
+        : await loopCall("/api/save-as", { suggested: item.title || "", mode: item.fmt });
+      if (!chosen) { lost = true; break; }
       if (chosen.error) { refused.push(`${label}: ${chosen.error}`); continue; }
       if (chosen.cancelled || !(chosen.path || chosen.folder)) { cancelled.push(label); continue; }
       target = chosen.path || "";
       folder = chosen.folder || "";
     }
     go.textContent = `Adding ${n + 1} of ${ready.length}…`;
-    const answer = await api("/api/download", {
+    const answer = await loopCall("/api/download", {
       url: item.url, mode: item.fmt, title: item.title || "", target,
       quality: item.quality || "best",
       tool: tool.id, platform: item.found.platform_id || "", folder,
@@ -4995,11 +5044,13 @@ async function downloadEach(ready) {
       ...(item.fmt === "mp4" && item.subs && makesSubs(tool)
         ? { subs: item.subs, sub_lang: item.subLang } : {}),
     });
+    if (!answer) { lost = true; break; }
     if (answer.error) refused.push(`${label}: ${answer.error}`);
     else added++;
   }
   closeCard();
   refresh();
+  if (lost) { setStatus(lostSentence(added, ready.length)); return; }
   const done = added === 1 ? "1 download added." : `${added} downloads added.`;
   const said = [done,
     cancelled.length ? `Not added (Cancel pressed): ${cancelled.join(" · ")}` : "",
@@ -5547,7 +5598,11 @@ async function forgetCookies() {
   fillQualities();
   const settings = await api("/api/settings");
   // A damaged settings file: said, never a silent return to the defaults.
-  if (settings.load_problem) setStatus(settings.load_problem);
+  if (settings.load_problem) {
+    setStatus(settings.load_problem);
+    $("settings-problem").textContent = settings.load_problem;
+    $("settings-problem").classList.remove("hidden");
+  }
   $("folder").value = settings.download_folder || "";
   $("parallel").value = String(settings.max_parallel || 2);
   $("record-minutes").value = String(settings.record_minutes ?? 60);
