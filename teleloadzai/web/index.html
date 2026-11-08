@@ -151,6 +151,7 @@
   .batch-links li { display: flex; gap: 12px; justify-content: space-between; padding: 4px 0; }
   .batch-links .link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .batch-links .prog { flex: none; color: var(--soft); }
+  .batch-links .link.untitled { color: var(--soft); }
   #batch-row-mode { margin-top: 10px; }
   /* "Choose for each": a row of choices per video, so the list gets more
      room; Format and Quality for all are not drawn (each row has its own). */
@@ -4571,6 +4572,7 @@ async function readEach() {
       catch (problem) { info = { error: String(problem) }; }
       if (mine !== eachRead) return;
       item.info = info.error ? null : info;
+      item.titleFailed = Boolean(info.error);
       if (!item.title && info.title) {
         item.title = info.items && info.items.length > 1
           ? `${info.title} · ${info.items.length} videos` : info.title;
@@ -4696,7 +4698,10 @@ async function readMany(links) {
   setReadLabel();
   renderBatch();
   $("announce").textContent = $("batch-title").textContent + ". " + $("batch-sites").textContent;
-  if (severalMode === "each") readEach();
+  // The titles, under "Same for all" too: the card showed only addresses,
+  // and nobody could tell which video was which (the beginner's walk,
+  // 2026-11-06). Download is never held for them.
+  readEach();
 }
 
 function renderBatch() {
@@ -4734,19 +4739,28 @@ function renderBatch() {
   // "Choose for each": the rows wait for their video to be read (decision 33:
   // the count, never a frozen card).
   const pendingRows = each ? ready.filter((i) => i.info === undefined).length : 0;
+  // "Same for all": the titles being read (a playlist has its own already).
+  const titlesPending = !each && !list0
+    ? ready.filter((i) => i.info === undefined && i.found.read_by).length : 0;
+  const allTitled = ready.length > 0 && ready.every((i) => i.title);
 
   // While reading, a real count (decision 33); then how many will come down.
   $("batch-title").textContent = reading ? `Reading the links… ${read} of ${batch.length}`
     : pendingRows ? `Reading the videos… ${ready.length - pendingRows} of ${ready.length}`
     : list0 ? `${list0.title || "Playlist"} · ${list0.count} videos`
-    : ready.length === 1 ? "1 link" : `${ready.length} links`;
+    : `${ready.length} ${allTitled ? "video" : "link"}${ready.length === 1 ? "" : "s"}`;
   const sites = new Map();
   for (const item of ready) sites.set(item.found.platform, (sites.get(item.found.platform) || 0) + 1);
   // Reading takes about 5 s a video on YouTube (156 s for 29, four at a
   // time: yt-dlp's own work, not the wait), so Download is not held: what
   // a row not read yet will get is said instead.
-  $("batch-sites").textContent = [...sites].map(([name, n]) => `${name} ${n}`).join(" · ")
+  $("batch-sites").textContent = (sites.size === 1 ? [...sites.keys()][0]
+      : [...sites].map(([name, n]) => `${name} ${n}`).join(" · "))
+    + (titlesPending ? ` · reading the titles… ${ready.length - titlesPending} of ${ready.length}` : "")
     + (pendingRows ? " · Download now: videos not read yet come at their best size." : "");
+  // The program on each line only when they differ: "yt-dlp" on every line
+  // told a beginner nothing.
+  const oneProgram = new Set(ready.map((i) => i.tool.id)).size <= 1;
 
   // Text only, never HTML: these are whatever was pasted.
   const list = $("batch-links");
@@ -4764,12 +4778,17 @@ function renderBatch() {
     if (each && item.tool) { list.appendChild(eachRow(item)); continue; }
     const li = document.createElement("li");
     const link = document.createElement("span");
-    link.className = "link";
+    link.className = "link" + (item.title ? "" : " untitled");
     link.textContent = item.title || shortLink(item.url);
     link.title = item.url;
     const prog = document.createElement("span");
     prog.className = "prog";
-    prog.textContent = item.tool ? item.tool.name : "…";
+    const length = (item.info && item.info.duration) || item.duration;
+    prog.textContent = !item.tool ? "…"
+      : [item.title ? "" : item.titleFailed ? "title not read"
+          : item.info === undefined && item.found.read_by && !list0 ? "reading…" : "",
+         length ? formatTime(length) : "",
+         oneProgram ? "" : item.tool.name].filter(Boolean).join(" · ");
     li.append(link, prog);
     list.appendChild(li);
   }

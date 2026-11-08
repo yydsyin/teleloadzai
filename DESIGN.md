@@ -304,7 +304,7 @@ The button beside the link box says **Paste** while the box is empty and **Conti
 ### Several links (one card)
 One paste of several links gives **one card**, never a second list of "found links". It shows:
 - the title "3 links", and a meta line "YouTube 2 · TikTok 1";
-- the links, each with its program in soft ink: a short list that scrolls past about 4 lines, so Download stays in sight;
+- the videos, each **titled as soon as it is read** (the address in soft ink with "reading…" until then; "title not read" when it cannot be), with its length; the program in soft ink only when the lines use different programs (2026-11-08). A short list that scrolls past about 4 lines, so Download stays in sight;
 - "**Not added:**" with one reason per line;
 - the same rows as the single card: Format, Quality ("Best — each video at its own best size", or the kbps list for MP3), Folder: **the folder itself and a "Change…" button**, for this card only; Settings is not changed, and Download opens no window (the user, 2026-11-05: it said "You choose it when you press Download"). Not drawn when each video has its own window. A long path shows its drive and its end;
 - the yellow **Download N**.

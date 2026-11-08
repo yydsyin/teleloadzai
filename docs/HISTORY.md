@@ -221,3 +221,11 @@ Six Stops pressed through the running app's own API, each on a real download, th
 **Seen:** the real Bilibili failure and its row; N_m3u8DL-RE and gallery-dl real starts ("Working…", then bytes); both sizes measured, no overlap, no sideways scroll.
 
 ⚠️ **Not seen:** the real log-in window and Save windows, the real app window, a real Ctrl+V. **Not done:** titles in the card of several links (needs a model).
+
+### 2026-11-08 — the card of several links shows titles
+
+**From the walk, with a drawn model the user approved.** Under "Same for all" the card listed raw addresses and "yt-dlp" on every line. Now it reads each title as "Choose for each" already did (four at a time), and shows it with its length; a line waits grey with "reading…", and one that cannot be read keeps its address with "title not read". The heading says "N videos" once every title is in. The program shows on a line only when the lines use different programs.
+
+**Seen, in the test copy:** two YouTube links: "reading… 0 of 2", then "Me at the zoo · 0:19", "Big Buck Bunny … · 10:35", "2 videos", no program name. YouTube + Instagram post + a stream: the Instagram line "title not read", the stream's own name; with the stream forced to N_m3u8DL-RE, the names appear (yt-dlp, N_m3u8DL-RE) and go again with one program. Download pressed before any title: two real MP3s, 356,606 and 7,093,727 bytes, with their titles; 0 console errors. Both sizes: nothing cut, no sideways scroll.
+
+⚠️ **Not seen:** a playlist (its titles were there already; only its lengths are new), more than a few links at once, the real app window.
