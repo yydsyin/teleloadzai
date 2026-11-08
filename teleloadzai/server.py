@@ -79,6 +79,18 @@ MAX_PARALLEL_LIMIT = 5
 # settings
 # --------------------------------------------------------------------------
 
+def _settings_recovered() -> None:
+    """A good file again, or none at all: saving comes back, and a problem
+    that is no longer true stops being said -- the flag stayed on after the
+    damaged file was deleted, and every change was dropped until a restart
+    (hunt of 2026-11-08). "Was damaged, kept as …" stays: it still happened.
+    Called under the lock."""
+    global _settings_stuck, settings_problem
+    _settings_stuck = False
+    if settings_problem and "kept as" not in settings_problem:
+        settings_problem = ""
+
+
 def load_settings() -> dict:
     # Under the save's lock: on Windows a read during the save's replace is
     # refused (seen on this PC 2026-11-01), and a refused read would give the
@@ -93,7 +105,8 @@ def load_settings() -> dict:
         except ValueError:
             stored = _set_aside_settings()
         except FileNotFoundError:
-            stored = {}                 # the first start: nothing saved yet
+            stored = {}                 # the first start, or the file removed by hand
+            _settings_recovered()
         except OSError as problem:
             # Held by another program (an antivirus, OneDrive): the defaults
             # for now, but never saved over the real file (hunt of 2026-11-08).
@@ -103,22 +116,18 @@ def load_settings() -> dict:
                                 f"until it can be read.")
             stored = {}
         else:
-            _settings_stuck = False         # a good file again: saving comes back
-            if settings_problem.startswith("Your settings file could not be read"):
-                settings_problem = ""       # it passed: no longer true
+            _settings_recovered()
     # A value of the wrong kind (written by hand) is that setting's default:
     # `"record_minutes": "abc"` stopped the app at start, with no window
     # (hunt of 2026-11-08).
     # The page shows the value the app USES: "x" parallel downloads showed a
     # blank list while 2 ran, 5000 minutes a number the recorder cut to 1440.
-    try:
-        minutes = max(0, min(24 * 60, int(stored.get("record_minutes") or 60)))
-    except (TypeError, ValueError):
-        minutes = 60
-    try:
-        parallel = max(1, min(MAX_PARALLEL_LIMIT, int(stored.get("max_parallel") or MAX_PARALLEL_DEFAULT)))
-    except (TypeError, ValueError):
-        parallel = MAX_PARALLEL_DEFAULT
+    # 0 is a real value: "No limit". `or 60` made it 60, and a recording the
+    # user set to never stop stopped at 1 hour (hunt of 2026-11-08).
+    minutes = _number(stored.get("record_minutes", 60), 0, 24 * 60)
+    minutes = 60 if minutes is None else minutes
+    parallel = _number(stored.get("max_parallel", MAX_PARALLEL_DEFAULT), 1, MAX_PARALLEL_LIMIT)
+    parallel = MAX_PARALLEL_DEFAULT if parallel is None else parallel
     choices = stored.get("tool_choice")
     folder = stored.get("download_folder")
     return {
@@ -252,25 +261,43 @@ def tool_choices() -> list[dict]:
     return rows
 
 
-def save_settings(settings: dict) -> None:
+def save_settings(settings: dict) -> bool:
     """To a temporary file first, then put in place: a reader meeting half a
     file got the defaults, and its next save wrote them over every setting
-    (hunt of 2026-10-31)."""
+    (hunt of 2026-10-31). False when nothing was written (see below)."""
     ensure_dirs()
     with _settings_lock:
         if _settings_stuck:
-            return      # the file could not be read or set aside: said, kept
+            return False    # the file could not be read or set aside: said, kept
         temp = SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".tmp")
-        temp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-        os.replace(temp, SETTINGS_FILE)
+        try:
+            temp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+            os.replace(temp, SETTINGS_FILE)
+        except OSError:
+            # Refused by Windows: said by the caller, and no
+            # "settings.json.tmp" left beside it (seen 2026-11-08).
+            temp.unlink(missing_ok=True)
+            raise
+    return True
+
+
+def _not_saved(problem: OSError | None = None) -> dict:
+    """The answer to a settings change that could not be written: the page
+    said "Saved: …" and showed the new folder while nothing changed (hunt of
+    2026-11-08). `problem`: Windows refused the write itself."""
+    said = (f"Your settings could not be saved ({problem.strerror or problem}). Try again."
+            if problem else settings_problem or "Your settings could not be saved.")
+    return {"error": said, "not_saved": True}
 
 
 def _number(value, low: int, high: int) -> int | None:
     """A whole number in [low, high], or None: the page's list sends one,
     but a stored "x" showed a blank list while the app used 2."""
+    if isinstance(value, bool):
+        return None                 # true / false are not a number of anything
     try:
         return max(low, min(high, int(value)))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):     # 1e999 is infinity
         return None
 
 
@@ -348,18 +375,35 @@ def forget_if_once() -> bool:
     return gone
 
 
-def _login_saved(kept: int) -> None:
-    """A log-in window saved cookies by itself: switch them on.
+def _login_saved(kept: int) -> str:
+    """A log-in window saved cookies by itself: switch them on ("" when
+    done, else what to say -- `login._report` hands it to the page).
 
     The same rule as the "I have logged in" button and the file import --
     logging in IS the consent. Without this, a window that finished on its
     own would leave the switch off, and the next download would run without
     the cookies the user has just logged in for.
     """
+    return _switch_cookies_on()
+
+
+def _switch_cookies_on() -> str:
+    """Turn "Use my log-ins" on after cookies were saved. "" when done, else
+    the sentence to show: the cookies were saved, the switch stayed off, and
+    the next download ran without them in silence -- or the page called it
+    "an unexpected problem" after the cookies were already kept (hunt of
+    2026-11-08)."""
     with _settings_change:
         settings = load_settings()
         settings["cookies_enabled"] = True
-        save_settings(settings)
+        try:
+            if save_settings(settings):
+                return ""
+            reason = "your settings cannot be saved now"
+        except OSError as problem:
+            reason = problem.strerror or str(problem)
+    return (f"The cookies are saved, but “Use my log-ins” could not be switched on "
+            f"({reason}). Switch it on on the Sites page.")
 
 
 login.on_saved = _login_saved
@@ -1217,14 +1261,12 @@ class Handler(BaseHTTPRequestHandler):
                 # A refusal the user can act on, never a bare "failed".
                 self._json({"error": cookies.redact(str(problem))}, 400)
                 return
-            with _settings_change:
-                settings = load_settings()
-                settings["cookies_enabled"] = True      # importing IS the consent
-                save_settings(settings)
-            self._json({"imported": summary["total"],
+            switch_problem = _switch_cookies_on()      # importing IS the consent
+            self._json({"switch_problem": switch_problem,
+                        "imported": summary["total"],
                         "ignored": summary["ignored"],
                         "ignored_sites": summary["ignored_sites"],
-                        "cookies": cookies.state(True)})
+                        "cookies": cookies.state(not switch_problem)})
             return
 
         if path == "/api/cookies/clear":
@@ -1261,12 +1303,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": cookies.redact(
                     f"The log-in window could not be read: {problem}")}, 500)
                 return
-            if kept:
-                with _settings_change:
-                    settings = load_settings()
-                    settings["cookies_enabled"] = True
-                    save_settings(settings)
-            self._json({"kept": kept, "cookies": cookies.state(bool(kept))})
+            switch_problem = _switch_cookies_on() if kept else ""
+            self._json({"kept": kept, "cookies": cookies.state(bool(kept) and not switch_problem),
+                        "switch_problem": switch_problem})
             return
 
         if path == "/api/login/state":
@@ -1288,19 +1327,27 @@ class Handler(BaseHTTPRequestHandler):
             if chosen is None:
                 self._json({"cancelled": True})
                 return
+            refused = None
             with _settings_change:
                 settings = load_settings()
                 settings["download_folder"] = str(chosen)
-                save_settings(settings)
-            self._json(settings)
+                try:
+                    written = save_settings(settings)
+                except OSError as problem:      # Windows refused the write
+                    written, refused = False, problem
+            self._json(settings if written else _not_saved(refused), 200 if written else 409)
             return
 
         if path == "/api/settings":
+            refused = None
             with _settings_change:
                 settings = load_settings()
                 _apply_settings(settings, body)
-                save_settings(settings)
-            self._json(load_settings())
+                try:
+                    written = save_settings(settings)
+                except OSError as problem:      # Windows refused the write
+                    written, refused = False, problem
+            self._json(load_settings() if written else _not_saved(refused), 200 if written else 409)
             return
 
         self._json({"error": "not found"}, 404)

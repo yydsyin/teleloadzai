@@ -322,17 +322,21 @@ HISTORY_FILE = DATA_DIR / "logins.json"
 # which the next log-in would save as the whole history.
 _history_lock = threading.RLock()
 _history_said = False           # a damaged logins.json, said once
+_history_stuck = False          # not readable: never written over
 
 
 def _history() -> dict:
     import json
     import os
+    global _history_said, _history_stuck
     with _history_lock:
+        said = ""
         try:
             data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
                 raise ValueError("not a table")
-            return data
+        except FileNotFoundError:
+            data = {}
         except ValueError:
             # Damaged: kept under a name of its own and said in the Console,
             # never rebuilt from nothing in silence by the next log-in (hunt
@@ -340,19 +344,29 @@ def _history() -> dict:
             aside, number = HISTORY_FILE.with_name("logins (unreadable).json"), 2
             while aside.exists():
                 aside, number = HISTORY_FILE.with_name(f"logins (unreadable {number}).json"), number + 1
-            global _history_said
             try:
                 os.replace(HISTORY_FILE, aside)
-                said, again = f"was damaged. It was kept as {aside.name}; the Sites page forgets how you logged in.", False
             except OSError as problem:
-                said, again = f"is damaged and could not be set aside ({problem.strerror}).", _history_said
-                _history_said = True    # read often: this one said once, not each time
-            if not again:
+                said = f"is damaged and could not be set aside ({problem.strerror})"
+            else:
                 from . import console
-                console.add("app", f"Teleloadzai: {HISTORY_FILE.name} {said}", "err")
+                console.add("app", f"Teleloadzai: {HISTORY_FILE.name} was damaged. It was kept as "
+                            f"{aside.name}; the Sites page forgets how you logged in.", "err")
+                data = {}
+        except OSError as problem:
+            # Held by another program: an empty history now, never written
+            # over the real one by the next log-in (hunt of 2026-11-08).
+            said = f"could not be read ({problem.strerror})"
+        if said:
+            _history_stuck = True
+            if not _history_said:       # read often: said once, not each time
+                _history_said = True
+                from . import console
+                console.add("app", f"Teleloadzai: {HISTORY_FILE.name} {said}: the Sites page does "
+                            f"not show how you logged in, and new log-ins are not noted in it.", "err")
             return {}
-        except Exception:
-            return {}
+        _history_stuck = _history_said = False      # readable again: a later problem is said too
+        return data
 
 
 def _remember(platform_id: str, how: str) -> None:
@@ -360,6 +374,8 @@ def _remember(platform_id: str, how: str) -> None:
     import os
     with _history_lock:
         history = _history()
+        if _history_stuck:
+            return          # said by _history: the real file is kept as it is
         history[platform_id] = {"how": how, "at": time.time()}
         # To a temporary file first, then put in place, as every other file
         # of ours: written straight, a cut write would leave half a file.
@@ -606,22 +622,28 @@ _result_number = 0
 
 # Set by the server: what to do once cookies are saved (turn the switch on).
 # A plain hook, because the server imports this module and not the reverse.
-on_saved: Callable[[int], None] | None = None
+on_saved: Callable[[int], str | None] | None = None   # returns what to say, if anything
 
 
 def _report(platform_id: str, kept: int, how: str, error: str = "") -> None:
-    global _result_number
-    _result_number += 1
-    _result.clear()
-    _result.update(number=_result_number, platform=platform_id, kept=kept,
-                   how=how, error=error)
+    global _result_number, _result
     if kept:
         _remember(platform_id, how)
+    problem = ""
     if kept and on_saved is not None:
+        # The cookies ARE saved; the switch is second -- but a switch left
+        # off is said with the result, never swallowed (hunt of 2026-11-08).
         try:
-            on_saved(kept)
-        except Exception:
-            pass                # the cookies ARE saved; the switch is second
+            problem = on_saved(kept) or ""
+        except Exception as failure:
+            problem = (f"The cookies are saved, but “Use my log-ins” could not be switched on "
+                       f"({type(failure).__name__}).")
+    # Published last, in one step, with everything in it: published first,
+    # the page read it before the sentence above was added and never showed
+    # it (hunt of 2026-11-08, round 5).
+    _result_number += 1
+    _result = dict(number=_result_number, platform=platform_id, kept=kept,
+                   how=how, error=error, switch_problem=problem)   # one step: never half a result
 
 
 def state() -> dict:

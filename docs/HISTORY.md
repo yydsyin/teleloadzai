@@ -273,3 +273,20 @@ Six Stops pressed through the running app's own API, each on a real download, th
 **Not a real defect, put back:** "a finished video's subtitle rule is too loose" — yt-dlp writes video 2's subtitles only after video 1 is final, so the rule can never take them; the probe passed on the old code too.
 
 ⚠️ **My mistake, written in `mes-erreurs-recurrentes` (entry 16):** a probe pressed Download with the card left in "Choose for each" by an earlier test, and a real "Save as" window opened on the user's screen; closed by stopping the test copy. ⚠️ **Not seen:** any of this in the real app window.
+
+### 2026-11-08 — silent-failure hunt loop until no problem: 7 rounds, (1+7) → (1+2) → 2 → 2 → 2 → 1 → 0
+
+**The user's request: "loop silent hunter, until no problem found"** — big and small, on everything since cc864bf, today's two fix commits first. Each fix checked by a probe that fails on the old code where one could be built, with a real Windows refusal (a read-only settings file) for the settings cases, or in the test copy.
+
+- **Big, old: "No limit" for live recordings meant 60 minutes.** The page saves 0; `or 60` read it as "nothing set" (old: 60 used; new: 0, no limit). Then **big, from that fix:** the row said "of 60 min" with a bar filling to an end that does not exist — now the time so far, "Recording live, no time limit", no bar.
+- A value like `1e999` in settings.json stopped the app at start (OverflowError, seen on the old code); true / false are not numbers.
+- Settings that could not be saved: the flag stayed on after the damaged file was deleted (now saving comes back on a good read or no file); the page said "Saved: …" and showed the new folder while nothing was written — the server answers 409 "not saved" with the reason, the page says it, puts every control back to what is saved (the Sites program choice too) and stops before its "Saved"; a write Windows refuses (read-only file) is said the same way and leaves no `settings.json.tmp`. A "switching…" button comes back; the card's own mode is kept; the card-mode message is not said twice.
+- `logins.json` held by another program is never written over by the next log-in (said once).
+- A log-in whose settings save is refused: the cookies are kept, and the result now says *"The cookies are saved, but "Use my log-ins" could not be switched on (Access is denied). Switch it on on the Sites page."* — on the window that closes by itself, the "I have logged in" button and the import (old: silent, or "an unexpected problem"). The result is published last, in one step, so the page never reads it without that sentence (old: read before it was added).
+- A log-in window closed by hand could end with no message (the page stopped looking the moment the window closed, before its result was out): a few more looks. Then, from that fix: two log-ins close together announced the second under the first site's name — the newest watcher speaks, and the name comes from the result.
+- A failed "Download again" on a split post keeps its debt through a restart (`old_parts` in `jobs.json`): a later Retry no longer lists the post's files twice.
+- A paste with the cursor inside a link cut the link in two.
+
+Round 7: "No real problem found." Two narrow cases left as they are: a log-in reopened within 1 s of closing the window by hand replaces the "closed" sentence; a dead server leaves the "waiting" line.
+
+⚠️ **Not seen:** the real app window, a real log-in, a real live recording past 60 minutes.

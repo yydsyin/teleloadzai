@@ -50,7 +50,11 @@ def target_clashes(target: str, taken: set[str]) -> bool:
 _KEPT = ("id", "url", "mode", "quality", "title", "folder", "target", "tool",
          "platform", "skipped", "skip_reason", "state", "files", "error",
          "error_from_tool", "limit_minutes", "live", "interrupted", "note", "pieces",
-         "subs", "sub_lang", "items", "group", "group_title", "group_index", "post_part")
+         "subs", "sub_lang", "items", "group", "group_title", "group_index", "post_part",
+         # Kept through a restart: a failed "Download again" on a split post
+         # still owes the old rows their removal, else a later Retry listed
+         # every file twice (hunt of 2026-11-08).
+         "old_parts")
 # Rows kept; the oldest finished ones go first. Measured 2026-11-01 with the
 # page's own refresh(): each update while downloading took 14-19 ms at 200
 # rows, 40 ms at 500, 84-91 ms at 1,000 (felt as stutter), 177-217 ms at
@@ -294,7 +298,7 @@ class Job:
     # whole post -- so only the first row offers it.
     post_part: bool = False
     # "Download again" on a split post: the old post's group, whose other
-    # rows go only once the new run has the post (never kept in jobs.json).
+    # rows go only once the new run has the post (kept in jobs.json).
     old_parts: str = field(default="", repr=False)
     # A video failed on a bare "ERROR:" line: the next line is its reason.
     reason_for: dict | None = field(default=None, repr=False)

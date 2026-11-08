@@ -1481,8 +1481,29 @@ async function api(path, body) {
     tokenRefused = true;
     setStatus("Teleloadzai restarted. Reload this page (F5) to continue.");
   }
-  return response.json();
+  const answer = await response.json();
+  // A settings change the server could not write: said here, once for
+  // every caller, and the caller stops -- its "Saved: …" would be false
+  // (hunt of 2026-11-08).
+  if (answer && answer.not_saved) {
+    setStatus(answer.error);
+    // The controls back to what the server holds, and the pages that
+    // follow them (log-ins, the card, a "switching…" button).
+    api("/api/settings").then((held) => {
+      showSettings(held, false); loadCookies(); refreshNeeds(); loadTools(); refresh();
+      loadToolChoices();      // a program pressed on Sites stayed pressed
+    })
+      .catch(() => {});
+    const stop = new Error(answer.error);
+    stop.said = true;
+    throw stop;
+  }
+  return answer;
 }
+// Already said on the screen (just above): not an error left unexplained.
+window.addEventListener("unhandledrejection", (event) => {
+  if (event.reason && event.reason.said) event.preventDefault();
+});
 
 /** One request of a long loop (the card of several links): null when the
  *  app stopped answering -- its server gone, or this tab's token refused.
@@ -2692,6 +2713,12 @@ function jobProgress(job) {
   // A live recording has a real measure: the time against its limit
   // (decision 33's own example, "14 of 60 minutes" -- never shown until
   // loop round 2, 2026-10-23). The bar follows it.
+  else if (job.live && job.state === "running" && job.limit_minutes === 0) {
+    // "No limit": the time so far, and no bar -- "of 60 min" and a bar
+    // filling to an end that does not exist (hunt of 2026-11-08).
+    right = formatElapsed(job.elapsed || 0);
+    line = ["Recording live, no time limit", sizeText(job)].filter(Boolean).join(" · ");
+  }
   else if (job.live && job.state === "running") {
     const limit = (job.limit_minutes || 60) * 60;
     right = `${formatElapsed(job.elapsed || 0)} of ${job.limit_minutes || 60} min`;
@@ -3892,7 +3919,15 @@ function previewOffer(job, hopeless) {
 async function tryPreview(job, button) {
   button.disabled = true;
   button.textContent = "switching…";
-  await api("/api/settings", { ytdlp_channel: "preview" });
+  try {
+    await api("/api/settings", { ytdlp_channel: "preview" });
+  } catch (problem) {
+    // Not saved (said by api): the button comes back, never stuck on
+    // "switching…" (hunt of 2026-11-08).
+    button.disabled = false;
+    button.textContent = "Try a newer test version";
+    throw problem;
+  }
   $("ytdlp-channel").value = "preview";
   await api("/api/tools/check", { id: "yt-dlp" });
   await loadTools();
@@ -4281,7 +4316,9 @@ $("url").addEventListener("paste", (event) => {
   const box = $("url");
   // Only the selected part is replaced: with "A B" in the box and B
   // selected, two pasted links gave "C D", A lost (hunt of 2026-11-08).
-  const kept = linksIn(box.value.slice(0, box.selectionStart) + " " + box.value.slice(box.selectionEnd));
+  // No selection: the whole box (the caret inside a link cut it in two).
+  const kept = linksIn(box.selectionStart === box.selectionEnd ? box.value
+    : box.value.slice(0, box.selectionStart) + " " + box.value.slice(box.selectionEnd));
   const links = [...new Set([...kept, ...several])];
   if (several.length > 1 || (several.length && kept.length)) {
     event.preventDefault();
@@ -4932,7 +4969,8 @@ for (const b of document.querySelectorAll(".smode")) {
     severalMode = b.dataset.smode;
     // Kept for the next time (the user's pick); a failed save is said.
     api("/api/settings", { several_mode: severalMode })
-      .catch((problem) => setStatus("Could not save this choice: " + problem));
+      // Not saved: api() has said why -- said twice, "Error:" in front.
+      .catch((problem) => { if (!problem.said) setStatus("Could not save this choice: " + problem.message); });
     renderBatch();
     if (severalMode === "each") readEach();
   });
@@ -5436,32 +5474,40 @@ async function openLogin(platform) {
 // How the log-in window ended, said once, wherever the user is. Without this
 // a window closed by hand ended in silence (decision 34) -- and took nothing.
 let loginSeen = 0;
-let loginWatching = false;
+let loginWatch = 0;         // the newest watchLogin's number: older ones stop
 
 async function watchLogin(name) {
-  if (loginWatching) return;
-  loginWatching = true;
-  try {
-    // Start from the outcome already known, or a second log-in in the same
-    // session would announce the FIRST one's result.
-    const before = await api("/api/login/state", {});
-    loginSeen = (before.result || {}).number || 0;
-    for (;;) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      const state = await api("/api/login/state", {});
-      const result = state.result || {};
-      if (result.number && result.number !== loginSeen) {
-        loginSeen = result.number;
-        $("login-waiting").classList.add("hidden");
-        setStatus(loginMessage(result, name));
-        loadCookies();          // the card, the switch, and who can log in
-        refreshNeeds();         // and the line on the download card
-        return;
-      }
-      if (!state.open) return;  // finished by the button, or cancelled
+  // The newest log-in's watcher is the one that speaks: an older one still
+  // looking (its window closed a moment ago) stops, or it announced the next
+  // site's result under its own site's name (hunt of 2026-11-08, round 6).
+  const mine = ++loginWatch;
+  // Start from the outcome already known, or a second log-in in the same
+  // session would announce the FIRST one's result.
+  const before = await api("/api/login/state", {});
+  if (mine !== loginWatch) return;
+  loginSeen = (before.result || {}).number || 0;
+  let closedLooks = 0;
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (mine !== loginWatch) return;
+    const state = await api("/api/login/state", {});
+    if (mine !== loginWatch) return;
+    const result = state.result || {};
+    if (result.number && result.number !== loginSeen) {
+      loginSeen = result.number;
+      $("login-waiting").classList.add("hidden");
+      // Named by the result itself, and a switch that could not be turned
+      // on is said with it.
+      const site = loginablePlatforms[result.platform] || name;
+      setStatus([loginMessage(result, site), result.switch_problem || ""].filter(Boolean).join(" "));
+      loadCookies();          // the card, the switch, and who can log in
+      refreshNeeds();         // and the line on the download card
+      return;
     }
-  } finally {
-    loginWatching = false;
+    // Finished by the button, or cancelled. Closed by hand, the window is
+    // gone a moment before its result is out (the cookies are kept first):
+    // a few more looks, or it ended with no word (hunt of 2026-11-08).
+    if (!state.open && ++closedLooks > 5) return;
   }
 }
 
@@ -5493,7 +5539,7 @@ $("login-done").addEventListener("click", async () => {
     return;
   }
   renderCookies(result.cookies);
-  setStatus(result.kept + " cookies saved from the log-in.");
+  setStatus([result.kept + " cookies saved from the log-in.", result.switch_problem || ""].filter(Boolean).join(" "));
   refreshNeeds();
 });
 
@@ -5564,9 +5610,9 @@ $("cookies-import").addEventListener("click", async () => {
     renderCookies(result.cookies);
     // Say what was thrown away, not only what was kept. It is the proof that
     // the rest of the browser export never entered the app.
-    setStatus(result.ignored
+    setStatus((result.ignored
       ? `${result.imported} cookies kept. Teleloadzai left out ${result.ignored} from ${result.ignored_sites} other sites.`
-      : `${result.imported} cookies kept.`);
+      : `${result.imported} cookies kept.`) + (result.switch_problem ? " " + result.switch_problem : ""));
   } finally {
     $("cookies-import").disabled = false;
   }
@@ -5590,6 +5636,32 @@ async function forgetCookies() {
     : "Cookies forgotten.");
 }
 
+/** Every setting's control, from what the server holds: at start, and
+ *  after a change it could not save -- the switch or list kept the new
+ *  value the server did not take (hunt of 2026-11-08). */
+function showSettings(settings, start = true) {
+  $("folder").value = settings.download_folder || "";
+  $("parallel").value = String(settings.max_parallel || 2);
+  $("record-minutes").value = String(settings.record_minutes ?? 60);
+  updateMode = ["ask", "auto", "manual"].includes(settings.update_mode) ? settings.update_mode : "ask";
+  $("update-mode").value = updateMode;
+  $("ytdlp-channel").value = settings.ytdlp_channel === "preview" ? "preview" : "stable";
+  askWhere = settings.ask_where !== false;
+  $("cookies-keep").value = settings.cookies_keep === "once" ? "once" : "keep";
+  $("ask-where").checked = askWhere;
+  $("use-clipboard").checked = settings.use_clipboard !== false;
+  autoRead = settings.auto_read === true;
+  $("auto-read").checked = autoRead;
+  $("notify-done").checked = settings.notify_done !== false;
+  // The cards' own choices only at start: put back later, an open card
+  // drawn "Choose for each" would download "Same for all".
+  if (start) {
+    severalMode = settings.several_mode === "each" ? "each" : "same";
+    subsMode = ["embed", "file"].includes(settings.subs_mode) ? settings.subs_mode : "";
+  }
+  updateGoLabel();
+}
+
 (async function start() {
   qualityLists = await api("/api/qualities");
   const sites = (await api("/api/sites")).sites || [];
@@ -5603,14 +5675,7 @@ async function forgetCookies() {
     $("settings-problem").textContent = settings.load_problem;
     $("settings-problem").classList.remove("hidden");
   }
-  $("folder").value = settings.download_folder || "";
-  $("parallel").value = String(settings.max_parallel || 2);
-  $("record-minutes").value = String(settings.record_minutes ?? 60);
-  updateMode = ["ask", "auto", "manual"].includes(settings.update_mode) ? settings.update_mode : "ask";
-  $("update-mode").value = updateMode;
-  $("ytdlp-channel").value = settings.ytdlp_channel === "preview" ? "preview" : "stable";
-  askWhere = settings.ask_where !== false;
-  $("cookies-keep").value = settings.cookies_keep === "once" ? "once" : "keep";
+  showSettings(settings);
   // Loaded at startup, not only when Settings is opened: a download can fail
   // before the user has ever been in there, and the failure must already know
   // which log-in to offer.
@@ -5622,15 +5687,6 @@ async function forgetCookies() {
   loadTools().then(() => {
     if (updateMode === "auto" && pendingUpdates().length) updateAll();
   });
-  $("ask-where").checked = askWhere;
-  $("use-clipboard").checked = settings.use_clipboard !== false;
-  autoRead = settings.auto_read === true;
-  $("auto-read").checked = autoRead;
-  $("notify-done").checked = settings.notify_done !== false;
-  severalMode = settings.several_mode === "each" ? "each" : "same";
-  subsMode = ["embed", "file"].includes(settings.subs_mode) ? settings.subs_mode : "";
-  updateGoLabel();
-
   if (!settings.setup_done) {      // first launch: one line (decision 17)
     $("welcome").classList.remove("hidden");
   }
