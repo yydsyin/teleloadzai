@@ -195,7 +195,7 @@ The Console's box is the one dark surface of the light theme, so its colours hav
 
 ### Named Rules
 **The One Yellow Rule.** Only Download is filled yellow. A doubtful card turns Download into an outline ("Try anyway"), and then it is grey.
-**The One Filled Button Rule.** Only one filled button is visible at a time. Once a card shows, Continue becomes an outline: Download is the next step. The update band's **Update all** and the list's **Retry failed** are outlines; on Programs, **Update all** is the filled one and each row's Update an outline (review of 2026-10-25: three or four filled buttons on the Download page). Both **Update all** buttons say how many programs they will update: "Update all (2)" (the user, 2026-10-26).
+**The One Filled Button Rule.** Only one filled button is visible at a time. Once a card shows, the button beside the link becomes an outline, "Read again": Download is the next step. The update band's **Update all** and the list's **Retry failed** are outlines; on Programs, **Update all** is the filled one and each row's Update an outline (review of 2026-10-25: three or four filled buttons on the Download page). Both **Update all** buttons say how many programs they will update: "Update all (2)" (the user, 2026-10-26).
 **The Words-Too Rule.** A colour never speaks alone. A green or red sign always has words beside it, or in its accessible name.
 
 ## Typography
@@ -258,7 +258,7 @@ Icons are simple line drawings (24-unit grid, 2 px stroke, round ends). They are
 ### Buttons
 - **Download:** yellow, ink text, a download icon, 40 px high, padding 8px 24px. It is the only one of its kind. Its key is written after its words, "Ctrl+Enter", 12px, ink mixed 72 % into the yellow (5.3:1, measured) — only while the key works: not on a grey "Try anyway", not while disabled. Ctrl+Enter is the app's only shortcut (the user's rule: no useless keys); Enter (Read) and Esc (close) are not written.
 - **Filled:** ink fill with paper text, for main actions other than Download.
-- **Outline ("ghost"):** transparent, soft-ink text, a 1 px line border. Continue once a card shows, "Try anyway", and row actions.
+- **Outline ("ghost"):** transparent, soft-ink text, a 1 px line border. "Read again" once a card shows (and "Reading…" while it fills in, full opacity: half opacity read 2.1:1 and looked dead), "Try anyway", and row actions.
 - **Tiny:** 30 px high, 13px text, for actions inside a row.
 - **Settings button:** card background, line-strong border, a gear icon + "Settings". On the Settings screen it becomes an arrow + "Back".
 - **States:** colour changes in 0.15 s ease-out; pressed moves down 1 px; disabled at 50 % opacity; keyboard focus is a 2 px ochre outline 2 px outside.
@@ -283,7 +283,7 @@ A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the ti
 - **Marks:** waiting = an empty circle (1.5 px strong line); running = a ring that turns (still when the system asks for less motion); done ✓, failed ✕, stopped / gone / already there – (see Marks below).
 - **Status place** (right, before the button): running = the percentage, 13 px ink semibold ("51.0%"), else the seconds (a step, or a program that gives no percentage); waiting = "Waiting"; failed = "Failed" in bad red; stopped = "Stopped" / "Interrupted"; done = the size.
 - **A running row** has a second part under the name (from the name's x): a 4 px bar, then one 12 px soft line — "Downloading the picture · 70.2 MB / 138.1 MB · 8.1 MB/s · 8 s left", "Making the MP3…", "Starting the download…" (yt-dlp), "Working…" (a program that may say nothing until the end). With a real percentage the bar fills, by its width in 0.25 s, so it never sits behind the number; an MP4 counts its picture and sound as **one** download when yt-dlp gives both sizes. Without a percentage a 30 % piece slides (a soft full bar was tried first: it read as finished). Never a bar frozen at 0 (decision 33).
-- **A live recording** says "1 min 15 s of 60 min" in the status place and "Recording live · size" under the bar; its bar follows the time limit, the one real measure it has.
+- **A live recording** says "1 min 15 s of 60 min" in the status place and "Recording live · size" under the bar; its bar follows the time limit, the one real measure it has. With **No limit**, the time so far and "Recording live, no time limit", and no bar: there is no end to measure against (2026-11-08).
 - **Order, at rest:** failed, then the rest. **While something moves, a row that ends stays where it is** (a finished row jumped from place 1 to 18 of 30, 2026-11-05): new rows come on top, and only a download that starts may pass those waiting (the waiting rows stood above the running ones). The list sorts itself once everything has ended. A video that fails stays under its playlist's label until then; at rest it stands with the failed rows and says "From: <playlist>".
 - **One button and ⋯, every row.** "Already in your folder" keeps Download again; Open and Show in folder are in its ⋯. **A live recording you stopped is a success:** ✓, "Recorded", Open; Show in folder and Record again in its ⋯. *(Both had a second line of buttons; the recording said "Stopped" and offered "Download again". 2026-11-05.)*
 - **The button's place is 121 px wide** ("Download again"), so the status words line up; only a longer button ("Update yt-dlp and retry") pushes its own word.
@@ -299,14 +299,14 @@ A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the ti
 - **When the list is empty:** no box, just a parcel drawing and "Your downloads will appear here." — about 200 px down (`min(24vh, 200px)`), the drawing 96 px, the title 22 px, the line of sites 16 px (the user, 2026-10-26, model A: lower and bigger, still above the middle). While a card is open (one link or several), neither shows: the card is enough.
 
 ### Paste / Continue
-The button beside the link box says **Paste** while the box is empty and **Continue** once it holds text ("Read" until 2026-11-06: it told a beginner nothing): one place, never two buttons. It is ink-filled until a card shows, then an outline (the One Filled Button rule), beside both kinds of card. The box's placeholder says it beforehand: "https://…   One link, or several". **A link pasted beside another is added to it**, with a space. **A pasted link waits in the box** for Continue or Enter, so it can be changed first — Settings → "Read a link as soon as it is pasted", off by default (the user, 2026-10-26); on, it is read at once. The same for Paste and a link you copied.
+The button beside the link box says **Paste** while the box is empty and **Continue** once it holds text ("Read" until 2026-11-06: it told a beginner nothing): one place, never two buttons. It is ink-filled until a card shows, then an outline (the One Filled Button rule), beside both kinds of card — and under its own card it says **Read again**, which is what it does ("Continue" sent the eye away from Download; review of 2026-11-08). "Continue" comes back once the box text changes. The box's placeholder says it beforehand: "https://…   One link, or several". **A link pasted beside another is added to it**, with a space. **A pasted link waits in the box** for Continue or Enter, so it can be changed first — Settings → "Read a link as soon as it is pasted", off by default (the user, 2026-10-26); on, it is read at once. The same for Paste and a link you copied.
 
 ### Several links (one card)
 One paste of several links gives **one card**, never a second list of "found links". It shows:
 - the title "3 links", and a meta line "YouTube 2 · TikTok 1";
 - the videos, each **titled as soon as it is read** (the address in soft ink with "reading…" until then; "title not read" when it cannot be), with its length; the program in soft ink only when the lines use different programs (2026-11-08). A short list that scrolls past about 4 lines, so Download stays in sight;
 - "**Not added:**" with one reason per line;
-- the same rows as the single card: Format, Quality ("Best — each video at its own best size", or the kbps list for MP3), Folder: **the folder itself and a "Change…" button**, for this card only; Settings is not changed, and Download opens no window (the user, 2026-11-05: it said "You choose it when you press Download"). Not drawn when each video has its own window. A long path shows its drive and its end;
+- the same rows as the single card: Format, Quality ("Best — each video at its own best size", or the kbps list for MP3), Folder: **the folder itself and a "Change…" button**, for this card only; Settings is not changed, and Download opens no window (the user, 2026-11-05: it said "You choose it when you press Download"). When each video has its own window ("Choose for each" with Save as on), the row says "Each video asks where to save it" (it had said "Folder" and nothing, review of 2026-11-08). A long path shows its drive and its end;
 - the yellow **Download N**.
 
 Under its title, a **Choices** row (the stack icon, a two-way switch): **Same for all · Choose for each**. The user's pick is kept.
@@ -319,7 +319,7 @@ Under this card, the list shows all its rows and the page scrolls, as everywhere
 
 ### List tools
 Over the Downloads list:
-- **from 2 downloads under way together:** a 4 px green bar of how many of **them** have ended; rows from before do not count (no total in words since model D: the filters carry the counts);
+- **from 2 downloads under way together:** a 4 px bar of how many of **them** have ended — done green, failed red, stopped grey, never a failure counted green (hunt of 2026-11-08); rows from before do not count (no total in words since model D: the filters carry the counts);
 - **from 4 rows:** a two-way-switch style row of filters with counts (All · Running · Waiting · Done · Failed, in red when not chosen · Stopped). **The first five always show**; a filter at 0 is grey and cannot be pressed (they came and went as downloads moved, and the list jumped — 2026-11-01). **Stopped shows only when there are some** (2026-11-05: without it the counts gave 27 of 30);
 - **from 2 retryable failed rows:** "Retry failed", an outline in the header, left of "Clear finished".
 
