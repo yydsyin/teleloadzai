@@ -243,3 +243,14 @@ Six Stops pressed through the running app's own API, each on a real download, th
 **Not changed:** links glued in the box (the reviewer's typing tool; a real paste is split), layout A in full screen, subtitles only in "Choose for each", the reason under each failed row, "Best" as a word for one size (all decided before). Detector: the same 9 findings (DESIGN.md gaps, false positives); 0 sideways scroll, 0 cut text. On Programs, "Switch to Preview" in the test copy came from its empty data folder (no install record).
 
 ⚠️ **Not seen:** the real app window.
+
+### 2026-11-08 — silent-failure hunt on everything since 2026-10-31: 3 rounds, 0 → 2 → 0 big
+
+**The user's request: "run silent failure hunter until not finding big problems".** Scope: `git diff cc864bf` (34 commits). Round 1's hunter found no big problem; one of its small ones — a damaged `settings.json` read as "no settings" — was counted big by me, as `needs.json` was on 2026-10-31. Its "PowerShell returns 0 when the folder window fails" was false: run with the app's own first line (`$ErrorActionPreference = 'Stop'`), a broken window gives a DialogError (seen).
+
+**Fixed, each with a probe that fails on the old code:**
+- **A Stop deleted a finished video.** One yt-dlp run of several videos (a playlist link, a post of two): each finished video stayed in the job's "being written" list after its `[Merger]` / `[EmbedSubtitle]` step, so a Stop during video 2 deleted video 1 and its subtitles. Now yt-dlp's `after_move` line (the file is final) takes it off (`ytdlp.download(on_final=)`, `jobs` `on_final`). Fake yt-dlp feeding the lines: old → video1.mp4, video1.en.srt, video2.mp4 removed; new → video2.mp4 only.
+- **A failed video shown done.** Only "ERROR: [site] id: reason" failed a video of a run; "unable to download video data: HTTP Error 403", "Postprocessing: …", "fragment 1 not found" left it running, and the next video marked it done ("✓ In your folder", no file). Now any ERROR line fails the video it came during. Old: 3 of 4 shapes shown done; new: 4 of 4 failed, with the reason.
+- **A damaged settings file.** Read as "no settings" in silence, then the next save wrote the defaults over every choice. Now kept as "settings (unreadable).json" and said on the page (once in the Console); a value of the wrong kind (`"record_minutes": "abc"` stopped the app at start, no window) is that setting's default. Seen in the test copy: a cut file and a list instead of a table both said and set aside; a good file, nothing said.
+
+⚠️ **Not seen:** a real yt-dlp run of several videos stopped in the middle (the probe fakes yt-dlp and copies `on_final`'s rule).

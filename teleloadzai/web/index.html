@@ -5546,6 +5546,8 @@ async function forgetCookies() {
     ? `Works with ${sites.slice(0, 5).join(", ")} and ${sites.length - 5} other sites.` : "";
   fillQualities();
   const settings = await api("/api/settings");
+  // A damaged settings file: said, never a silent return to the defaults.
+  if (settings.load_problem) setStatus(settings.load_problem);
   $("folder").value = settings.download_folder || "";
   $("parallel").value = String(settings.max_parallel || 2);
   $("record-minutes").value = String(settings.record_minutes ?? 60);

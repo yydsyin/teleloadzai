@@ -689,6 +689,7 @@ def download(
     on_step: Callable[[str], None] | None = None,
     on_destination: Callable[[Path], None] | None = None,
     on_writing: Callable[[Path], None] | None = None,
+    on_final: Callable[[Path], None] | None = None,
     on_live: Callable[[], None] | None = None,
     on_title: Callable[[str], None] | None = None,
     subs: str = "",
@@ -781,7 +782,13 @@ def download(
             if on_title and title and title != "NA":
                 on_title(title)
         elif line.startswith(_FILE_TAG):
-            files.append(Path(line.split("\t", 1)[1].strip()))
+            finished = Path(line.split("\t", 1)[1].strip())
+            files.append(finished)
+            # Finished: no longer a piece a Stop may remove. Claimed while it
+            # was reworked, video 1 of a run stayed claimed, and a Stop during
+            # video 2 deleted it (hunt of 2026-11-08).
+            if on_final:
+                on_final(finished)
         elif line.strip():
             # The Console page (2026-10-25): every line but our own progress,
             # title and file lines -- the row already shows those.

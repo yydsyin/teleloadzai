@@ -34,6 +34,30 @@ from .platforms import PLATFORMS, tool_name
 
 SETTINGS_FILE = DATA_DIR / "settings.json"
 _settings_lock = threading.Lock()
+# A damaged settings file, said once on the page (GET /api/settings).
+settings_problem = ""
+
+
+def _set_aside_settings() -> dict:
+    """A damaged settings file is kept under a name of its own and said,
+    never read as "no settings" in silence: the next save wrote the defaults
+    over every choice -- the folder, the log-ins switch (hunt of 2026-11-08,
+    as needs.json and jobs.json on 2026-10-31). Called under the lock."""
+    global settings_problem
+    aside, number = SETTINGS_FILE.with_name("settings (unreadable).json"), 2
+    while aside.exists():
+        aside, number = SETTINGS_FILE.with_name(f"settings (unreadable {number}).json"), number + 1
+    try:
+        os.replace(SETTINGS_FILE, aside)
+    except OSError as problem:
+        settings_problem = (f"Your settings file is damaged and could not be set aside "
+                            f"({problem.strerror}): Teleloadzai uses its usual settings for now.")
+    else:
+        settings_problem = (f"Your settings file was damaged, so Teleloadzai went back to its "
+                            f"usual settings. The old file was kept as {aside.name}.")
+    # The page says it, and its own messages reach the Console: added here
+    # too, the Console showed it twice (seen).
+    return {}
 TOKEN = secrets.token_urlsafe(24)
 
 MAX_PARALLEL_DEFAULT = 2
@@ -52,17 +76,30 @@ def load_settings() -> dict:
     with _settings_lock:
         try:
             stored = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            if not isinstance(stored, dict):
+                raise ValueError("not a table")
+        except ValueError:
+            stored = _set_aside_settings()
         except Exception:
             stored = {}
+    # A value of the wrong kind (written by hand) is that setting's default:
+    # `"record_minutes": "abc"` stopped the app at start, with no window
+    # (hunt of 2026-11-08).
+    try:
+        minutes = int(stored.get("record_minutes") or 60)
+    except (TypeError, ValueError):
+        minutes = 60
+    choices = stored.get("tool_choice")
+    folder = stored.get("download_folder")
     return {
-        "download_folder": stored.get("download_folder") or str(DEFAULT_DOWNLOAD_DIR),
+        "download_folder": folder if isinstance(folder, str) and folder else str(DEFAULT_DOWNLOAD_DIR),
         "max_parallel": stored.get("max_parallel") or MAX_PARALLEL_DEFAULT,
         # Ask where to save each file, like a browser does. On by default.
         "ask_where": bool(stored.get("ask_where", True)),
         # False until the first-launch screen has been answered once.
         "setup_done": bool(stored.get("setup_done", False)),
         # A live stream never ends by itself: stop recording after this long.
-        "record_minutes": int(stored.get("record_minutes") or 60),
+        "record_minutes": minutes,
         # Log-in cookies. OFF by default (decision 9) -- they are as sensitive
         # as a password, and nothing here turns itself on.
         "cookies_enabled": bool(stored.get("cookies_enabled", False)),
@@ -73,7 +110,7 @@ def load_settings() -> dict:
         "cookies_keep": "once" if stored.get("cookies_keep") == "once" else "keep",
         # The user's own default tool per site, {platform id: tool id}
         # (decision 13, first level). Only sites where he changed it.
-        "tool_choice": {k: v for k, v in (stored.get("tool_choice") or {}).items()
+        "tool_choice": {k: v for k, v in (choices if isinstance(choices, dict) else {}).items()
                         if isinstance(k, str) and isinstance(v, str)},
         # Decision 19: "ask" (a bar, and "Update and retry" on a failed row)
         # is the default; "auto" updates and retries once by itself;
@@ -666,7 +703,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if path == "/api/settings":
-                self._json(load_settings())
+                settings = load_settings()
+                # Not one of the settings: never saved back with them.
+                self._json({**settings, "load_problem": settings_problem} if settings_problem else settings)
                 return
 
             if path == "/api/cookies":

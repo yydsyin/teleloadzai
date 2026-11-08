@@ -112,12 +112,17 @@ def _read_item_line(job: "Job", text: str) -> None:
                 if item["state"] == ITEM_RUNNING:
                     item["state"] = ITEM_DONE
             return
-        failed = _ITEM_ERROR.match(line)
-        if failed:
+        # Any ERROR line fails the video it came during. Only the
+        # "[site] id: reason" shape was read, and a video that failed with
+        # "unable to download video data: HTTP Error 403" or "Postprocessing:"
+        # was marked done when the next one began (hunt of 2026-11-08).
+        if line.startswith("ERROR:"):
+            failed = _ITEM_ERROR.match(line)
+            reason = failed.group(1) if failed else line[len("ERROR:"):].strip()
             for item in job.items:
                 if item["state"] == ITEM_RUNNING:
                     item["state"] = ITEM_FAILED
-                    item["error"] = cookies.redact(failed.group(1))[:200]
+                    item["error"] = cookies.redact(reason)[:200]
         return
     if len(job.items) >= ITEMS_KEPT:
         return
@@ -812,6 +817,17 @@ class Queue:
             with self._lock:
                 job.writing.append(path)
 
+        def on_final(path: Path) -> None:
+            """yt-dlp's last word on a file: it and its subtitle files are
+            the user's now, never a leftover (a Stop during the next video
+            of the same run deleted them, hunt of 2026-11-08)."""
+            def finished(piece: Path) -> bool:
+                return piece == path or (piece.parent == path.parent
+                    and piece.name.startswith(path.stem + ".")
+                    and piece.suffix.lower() in (".srt", ".vtt", ".ass"))
+            with self._lock:
+                job.writing = [p for p in job.writing if not finished(p)]
+
         def on_percent(percent: int) -> None:
             """The specialist tools give a bare number, not yt-dlp's three fields."""
             with self._lock:
@@ -840,7 +856,7 @@ class Queue:
                     on_progress=on_progress, quality=job.quality, on_start=on_start,
                     out_path=Path(job.target) if job.target else None,
                     force=job.force, cookie_file=cookie_file, on_step=on_step,
-                    on_destination=on_destination, on_writing=on_writing,
+                    on_destination=on_destination, on_writing=on_writing, on_final=on_final,
                     on_live=on_live, on_title=on_title, job_id=job.id,
                     subs=job.subs, sub_lang=job.sub_lang, on_line=on_line,
                 )
