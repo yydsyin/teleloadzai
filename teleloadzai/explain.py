@@ -37,7 +37,9 @@ class Known:
     # The button the words point to, filled on the failed row: "update",
     # "login", or "" (then Retry). "read": on the card, reading the link
     # again is the only step (no download offered); a row keeps Retry. A 403 said "Update it first" above a
-    # filled Retry (review of 2026-09-27).
+    # filled Retry (review of 2026-09-27). "reread": the failed row's button
+    # is "Read the link again", Retry waits in its menu -- a Retry cannot
+    # bring back a deleted video (the user's choice, 2026-11-08).
     action: str = ""
 
 
@@ -74,6 +76,7 @@ KNOWN: tuple[Known, ...] = (
         next_step=("YouTube gives this same message for a deleted video and "
                    "for a private one, so Teleloadzai cannot tell which. If "
                    "it is private, logging in to YouTube may help."),
+        action="reread",
         seen=("2026-09-22: a private video and a video id that does not "
               "exist both answered 'This video is unavailable', word for "
               "word."),

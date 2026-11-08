@@ -229,3 +229,17 @@ Six Stops pressed through the running app's own API, each on a real download, th
 **Seen, in the test copy:** two YouTube links: "reading… 0 of 2", then "Me at the zoo · 0:19", "Big Buck Bunny … · 10:35", "2 videos", no program name. YouTube + Instagram post + a stream: the Instagram line "title not read", the stream's own name; with the stream forced to N_m3u8DL-RE, the names appear (yt-dlp, N_m3u8DL-RE) and go again with one program. Download pressed before any title: two real MP3s, 356,606 and 7,093,727 bytes, with their titles; 0 console errors. Both sizes: nothing cut, no sideways scroll.
 
 ⚠️ **Not seen:** a playlist (its titles were there already; only its lengths are new), more than a few links at once, the real app window.
+
+### 2026-11-08 — impeccable review loop: 29 → 29/40, stopped when stable
+
+**The user's request: "relaunch impeccable until getting a stable score".** Two rounds, each with two separate reviewers (a design review, and the detector with in-page measures) on a test copy (port 8778, its own data). Scores **29 and 29** (after 26 → 28 → 29 on 2026-10-31): the loop stopped by its rule, a round that gains less than 1 point.
+
+**Fixed, each seen in the test copy at both sizes:**
+- Under its own card, the button beside the link said "Continue" and only read the link again. Now **"Read again"**; "Continue" comes back once the box text changes.
+- "Choose for each" with Save as on: the Folder row said "Folder" and nothing. Now **"Each video asks where to save it"**.
+- "Reading…" while the card fills in was a disabled outline at half opacity (2.1:1, measured by the detector reviewer) and looked dead. Now full opacity under a card (5.5:1).
+- **The user's choice:** a failed row "YouTube says this video is unavailable" (a deleted or a private video) led with Retry, which cannot help. Now **"Read the link again"** leads, Retry waits in ⋯, and "Retry failed" no longer counts that row (`explain.py` action `reread`). Pressed: the fresh card says the same failure.
+
+**Not changed:** links glued in the box (the reviewer's typing tool; a real paste is split), layout A in full screen, subtitles only in "Choose for each", the reason under each failed row, "Best" as a word for one size (all decided before). Detector: the same 9 findings (DESIGN.md gaps, false positives); 0 sideways scroll, 0 cut text. On Programs, "Switch to Preview" in the test copy came from its empty data folder (no install record).
+
+⚠️ **Not seen:** the real app window.

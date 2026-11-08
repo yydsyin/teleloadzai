@@ -447,6 +447,9 @@
   .wrap:has(#batch:not(.hidden)) #read {
     background: transparent; color: var(--soft); border: 1px solid var(--line); font-weight: 500;
   }
+  /* "Reading…" while the card fills in is a status, not a dead button: it
+     stays readable (2.1:1 at half opacity looked broken, review of 2026-11-08). */
+  .wrap:has(#result:not(.hidden)) #read:disabled, .wrap:has(#batch:not(.hidden)) #read:disabled { opacity: 1; }
   /* Read aloud by a screen reader, never drawn. */
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -2551,6 +2554,9 @@ function failChoice(job) {
   const canUpdate = !hopeless && updateReady(job.tool) && !(job.needs_login || ex.action === "login");
   const primary = (job.needs_login || ex.action === "login") && loginOffer(job) ? "login"
     : ex.action === "update" && canUpdate ? "update" : job.other_tool ? "switch"
+    // Its words say a Retry gets the same answer (a deleted or private
+    // video): "Read the link again" leads, Retry waits in "⋯" (2026-11-08).
+    : ex.action === "reread" ? ""
     : !ex.known && job.error_from_tool && canUpdate ? "update"
     // An unknown error from a tool already the newest: a Retry will most
     // likely get the same answer, so nothing is pushed (loop round 2: a
@@ -4134,7 +4140,11 @@ $("thumb").addEventListener("error", () => $("thumb").classList.add("hidden"));
 /** Read's label follows the box -- never while a read is running. */
 function setReadLabel() {
   if ($("read").disabled) return;
-  $("read").textContent = $("url").value.trim() ? "Continue" : "Paste";
+  const text = $("url").value;
+  // Under its own card the button only reads the link again: "Continue"
+  // sent the eye back up, away from Download (review of 2026-11-08).
+  const card = ["result", "batch", "unsupported"].some((id) => !$(id).classList.contains("hidden"));
+  $("read").textContent = !text.trim() ? "Paste" : card && text === cardBox ? "Read again" : "Continue";
 }
 $("url").addEventListener("input", () => {
   setReadLabel();
@@ -4850,12 +4860,13 @@ function renderBatch() {
   $("batch-quality-why").classList.toggle("hidden", mp3);
   // The folder itself, and a way to change it: the row said "You choose it
   // when you press Download" (the user, 2026-11-05). Not drawn when each
-  // video has its own window: nothing here would decide anything.
+  // video has its own window: no folder to show, so the row says that --
+  // it had stayed as "Folder" and nothing (review of 2026-11-08).
   const folderNow = batchFolder || $("folder").value;
-  $("batch-folder").textContent = shortFolder(folderNow);
-  $("batch-folder").title = folderNow;
-  $("batch-folder").classList.toggle("hidden", each && askWhere);
-  $("batch-folder-change").classList.toggle("hidden", each && askWhere);
+  const ownWindow = each && askWhere;
+  $("batch-folder").textContent = ownWindow ? "Each video asks where to save it" : shortFolder(folderNow);
+  $("batch-folder").title = ownWindow ? "" : folderNow;
+  $("batch-folder-change").classList.toggle("hidden", ownWindow);
 
   const go = $("batch-go");
   const count = list0 && !each && ready.length ? list0.count : ready.length;
