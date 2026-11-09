@@ -36,8 +36,13 @@ SEEN_BEFORE = {
     "instagram|gallery-dl": ("account", "2026-09-26"),
     # KS-Downloader: "Failed to retrieve posts data"; worked with a log-in.
     "kuaishou|ks-downloader": ("account", "2026-09-26"),
-    # yt-dlp: "Unable to extract initial state" without; read with one (§4).
-    "bilibili|yt-dlp": ("account", "2026-10-24"),
+    # yt-dlp: "Unable to extract initial state" without a log-in on
+    # 2026-10-24; on 2026-11-09 (2026.11.04) 11 of 12 qualities came whole
+    # with NO cookies (docs/HISTORY.md) -- nothing is needed any more.
+    "bilibili|yt-dlp": ("none", "2026-11-09"),
+    # yutto 2.3.1 with no cookies: a whole 480p video, 2026-11-09 (1080p
+    # needs the log-in, said on the card: runners.TOP_WITHOUT_LOGIN).
+    "bilibili|yutto": ("none", "2026-11-09"),
 }
 
 _lock = threading.Lock()

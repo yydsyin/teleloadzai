@@ -282,6 +282,34 @@ def _n_m3u8dl_re(exe: Path, r: Request) -> list[str]:
     return command
 
 
+# Our heights as yutto's quality codes (its own `-q` list, 2.3.1: 16 360p,
+# 32 480p, 64 720p, 80 1080p, 112 1080p+, 116 1080p60, 120 4K, 127 8K). It
+# takes the best it has at or below the code: asked 1080p without a log-in,
+# it gave 480p (seen 2026-11-09) -- hence `TOP_WITHOUT_LOGIN`.
+_YUTTO_QUALITY = {"best": "127", "1080": "116", "720": "64", "480": "32", "360": "16"}
+
+
+def _yutto(_exe: Path, r: Request) -> list[str]:
+    # Every flag read from its own --help (2.3.1) and seen 2026-11-09.
+    # `--no-progress`: through a pipe it prints no percentage anyway; the row
+    # measures the bytes in the folder. No comments overlay (danmaku), no
+    # subtitles, no cover picture, no chapters: one video file, as asked.
+    command = [r.url, "-d", str(r.out_dir), "--tmp-dir", str(r.out_dir),
+               "-q", _YUTTO_QUALITY.get(r.quality, "127"),
+               "--no-color", "--no-progress", "--no-danmaku", "--no-subtitle",
+               "--no-cover", "--no-chapter-info"]
+    # Our name ("Save as", else the card's title). yutto fills `-tp` with
+    # Python's str.format, so a brace in a title is doubled to stay a brace.
+    # With no title, yutto's own (it reads the video's) beats "unknown".
+    if r.out_name or r.title:
+        command += ["-tp", _file_name(r).replace("{", "{{").replace("}", "}}")]
+    # The log-in, from yutto's own file made for this run (cookies.yutto_auth,
+    # handed in as `cookie_file` by `run`). Never on the command line.
+    if r.cookie_file:
+        command += ["--auth-file", str(r.cookie_file), "--auth-profile", "default"]
+    return command
+
+
 def _repackage_to_mp4(files: list[Path]) -> list[Path]:
     """Turn a .ts recording into a .mp4, without touching the video itself.
 
@@ -397,7 +425,35 @@ RECIPES: dict[str, Recipe] = {
     # "Live stream found": read on a real YouTube live, 2026-10-21.
     "n-m3u8dl-re": Recipe("n-m3u8dl-re", _n_m3u8dl_re, encoding="oem",
                           live_sign="Live stream found"),
+    "yutto": Recipe("yutto", _yutto, module="yutto"),
 }
+
+# Tools that read only some of their platform's links. yutto read none of
+# bilibili.tv (an international video: "url 不正确", exit 14, 2026-11-09), so
+# it is not offered there (decision 40). A short link is resolved first.
+READS_ONLY: dict[str, tuple[str, ...]] = {
+    "yutto": ("bilibili.com",),
+}
+
+
+def reads_link(tool_id: str, url: str) -> bool:
+    """False when this tool is known NOT to read this link's site."""
+    hosts = READS_ONLY.get(tool_id)
+    if not hosts:
+        return True
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in hosts)
+
+
+# The highest picture a tool gives without a log-in, when it is lower than
+# what the video has. yutto: 480p asked for 720p or 1080p, no word, exit 0
+# (seen 2026-11-09); 1080p with the user's log-in. The card offers no more.
+TOP_WITHOUT_LOGIN: dict[str, int] = {"yutto": 480}
+
+
+def top_height(tool_id: str, logged_in: bool) -> int:
+    """The highest height this tool can give now, or 0 for no limit known."""
+    return 0 if logged_in else TOP_WITHOUT_LOGIN.get(tool_id, 0)
 
 
 def _read_unless_stopped(read: Callable[[], dict], request: Request) -> dict:
@@ -808,7 +864,10 @@ LIVE_RECORDERS = ("streamlink", "n-m3u8dl-re")
 
 # Pieces a tool leaves while it works -- never a finished file. `.mark` are
 # our own notes in the work folder (which tool, and whether it is live).
-_PIECES = ("*.part", "*.tmp", "*.ytdl", "*.mark")
+# "*.m4s": yutto's picture and sound before it joins them. A failed run
+# moved `<title>_video.m4s` and `<title>_audio.m4s` into the user's folder as
+# "saved before it failed" (a Bilibili timeout, 2026-11-09, real run).
+_PIECES = ("*.part", "*.tmp", "*.ytdl", "*.mark", "*.m4s")
 _LIVE_MARK = "teleloadzai-live.mark"
 
 # The work folders that exist right now, one path per line. A crash or a
@@ -1160,6 +1219,10 @@ CHOICES: dict[str, dict] = {
     # Subtitles: its -M / --select-subtitle, the three choices seen on the
     # disk 2026-10-25 (_n_m3u8dl_re).
     "n-m3u8dl-re": {"mp3": "kbps", "mp4": "", "label": "Original file", "subs": True},
+    # MP4 only (the plan of 2026-11-09): MP3 and subtitles move the card to
+    # yt-dlp. Heights seen 2026-11-09: 360p and 480p without a log-in, 1080p
+    # with one -- capped by `top_height`.
+    "yutto": {"mp4": "height"},
 }
 
 
@@ -1239,7 +1302,7 @@ def _grown(folder: Path, before: dict[Path, tuple[int, float]],
     return total
 
 
-def _child_environment(module: str) -> dict:
+def _child_environment(module: str, work: Path | None = None) -> dict:
     """UTF-8 forced, and our own package folder when we run a module."""
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
@@ -1247,6 +1310,13 @@ def _child_environment(module: str) -> dict:
     if module:
         libs = str(tools.libs_dir())
         env["PYTHONPATH"] = libs + os.pathsep + env.get("PYTHONPATH", "")
+    if module == "yutto" and work is not None:
+        # yutto reads `yutto.toml` from where it runs, else from
+        # XDG_CONFIG_HOME (or ~/.config) -- and its saved log-in from there
+        # too (its 2.3.1 code). Pointed at our empty work folder, a yutto the
+        # user set up outside Teleloadzai never changes our downloads, and
+        # its log-in is never used without the user's "Use my log-ins".
+        env["XDG_CONFIG_HOME"] = str(work)
     return env
 
 
@@ -1297,6 +1367,13 @@ def run(
             pass            # only the crash sweep reads it
     keep = False
     try:
+        if tool_id in cookies.AUTH_FILE_CAPABLE:
+            # yutto: Bilibili's log-in in a file of its own, for this run
+            # only, handed in as `cookie_file` (`_yutto`), gone afterwards.
+            with cookies.yutto_auth(request.cookie_header) as auth:
+                return _run_in(work, recipe, exe, head, tool_id,
+                               dataclasses.replace(request, cookie_file=auth),
+                               on_progress, on_start, on_step, on_bytes, on_line)
         return _run_in(work, recipe, exe, head, tool_id, request,
                        on_progress, on_start, on_step, on_bytes, on_line)
     except Exception as problem:
@@ -1347,7 +1424,7 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         encoding=_encoding(recipe.encoding),
         errors="replace",
         bufsize=1,
-        env=_child_environment(recipe.module),
+        env=_child_environment(recipe.module, work),
         # A program run from our own folder drops its logs there: f2 wrote a
         # `logs/` folder straight into the project (2026-09-21). A module has
         # no folder of its own, so it works from the work folder instead.

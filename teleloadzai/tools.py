@@ -134,6 +134,15 @@ SPECS: tuple[ToolSpec, ...] = (
              pip_name="gallery-dl", module="gallery_dl", needs_python=True,
              requires=("Python",)),
 
+    # The second Bilibili tool, the user's choice 2026-11-09: with a log-in
+    # it saved the whole 1080p video where yt-dlp's "Best" got a file
+    # Bilibili's main server cuts. Needs Python 3.11 or newer (its own
+    # "Requires-Python", read from 2.3.1).
+    ToolSpec("yutto", "yutto", "yutto-dev/yutto", "pip",
+             what_for="Bilibili: 1080p with your log-in, 480p without.",
+             pip_name="yutto", module="yutto", needs_python=True,
+             requires=("Python",)),
+
 )
 
 BY_ID: dict[str, ToolSpec] = {s.id: s for s in SPECS}

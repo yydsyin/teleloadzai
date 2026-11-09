@@ -223,14 +223,16 @@ def clipboard_links() -> list[str]:
     return list(dict.fromkeys(_LINK.findall(text)))
 
 
-def usable_tools(platform) -> list:
+def usable_tools(platform, url: str = "") -> list:
     """The tools we can drive for this site, the user's choice first.
 
     Order is the whole mechanism: the first one is what the download page
     picks. A saved choice that is no longer usable (removed from the table,
-    or blocked) is ignored rather than obeyed into a dead end.
+    or blocked) is ignored rather than obeyed into a dead end. With a link,
+    a tool known not to read it (yutto on bilibili.tv) is left out.
     """
-    offered = [o for o in platform.tools if runners.unavailable_reason(o.tool_id) is None]
+    offered = [o for o in platform.tools if runners.unavailable_reason(o.tool_id) is None
+               and (not url or runners.reads_link(o.tool_id, url))]
     chosen = load_settings()["tool_choice"].get(platform.id)
     return sorted(offered, key=lambda o: o.tool_id != chosen)
 
@@ -486,6 +488,14 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
         return {"error": f"{tool_name(tool)} cannot make an MP3. Choose MP4, or another program."}, 400
     if not can[mode]:
         quality = "best"
+    # A height the tool would silently lower (yutto without a log-in gives
+    # 480p for 1080p): refused in words, never carried as if it would happen.
+    top = runners.top_height(tool, login.logged_in(platform, bool(load_settings()["cookies_enabled"])))
+    if mode == "mp4" and top and quality != "best" and int(quality) > top:
+        return {"error": f"{tool_name(tool)} gives {top}p at most without your log-in "
+                         f"to this site. Choose {top}p or less, or log in on the Sites page."}, 400
+    if not runners.reads_link(tool, url):
+        return {"error": f"{tool_name(tool)} cannot read this link. Choose another program."}, 400
     if tools.installed_path(tool) is None:
         return {"error": f"{tool} is not installed"}, 400
     # Subtitles (Phase 2 item 7): only in MP4, only for a program that makes
@@ -515,7 +525,8 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
                         cookie_file=cookies.path_for(tool, on),
                         cookie_note=cookies.unusable_reason(tool, on) or "",
                         platform=platform,
-                        cookie_header=on and tool in cookies.HEADER_CAPABLE,
+                        # One site's cookies: a request body, or yutto's file.
+                        cookie_header=on and cookies.takes_site_cookies(tool),
                         replace=replace, subs=subs, sub_lang=sub_lang, items=items,
                         group=group)
     except TargetInUse as taken:
@@ -542,6 +553,7 @@ def other_tool(job: dict) -> dict | None:
         tid = option.tool_id
         if (tid != job.get("tool") and runners.unavailable_reason(tid) is None
                 and tools.installed_path(tid) is not None
+                and runners.reads_link(tid, job.get("url", ""))
                 # an MP3 job is never sent to a tool that makes no MP3
                 and job.get("mode") in runners.CHOICES.get(tid, {})):
             return {"id": tid, "name": tool_name(tid)}
@@ -733,8 +745,9 @@ def tool_probe(platform_id: str, url: str) -> dict:
 def detection_json(result: Detection) -> dict:
     platform = result.platform
     # The user's saved choice first: the page picks the first one.
-    offered = usable_tools(platform)
+    offered = usable_tools(platform, result.final_url)
     cookies_on = bool(load_settings()["cookies_enabled"])
+    site_logged_in = login.logged_in(platform.id, cookies_on)
     blocked = [
         {"name": tool_name(o.tool_id), "why": runners.unavailable_reason(o.tool_id)}
         for o in platform.tools if runners.unavailable_reason(o.tool_id) is not None
@@ -783,6 +796,9 @@ def detection_json(result: Detection) -> dict:
                 "need": login.need(platform.id, option.tool_id, cookies_on),
                 # The buttons the window may show for this tool, and no other.
                 "choices": runners.CHOICES.get(option.tool_id, {"mp4": ""}),
+                # The highest height it can give NOW (yutto: 480 without a
+                # log-in), 0 for no limit known: the Quality list stops there.
+                "top": runners.top_height(option.tool_id, site_logged_in),
                 # Formats where it names the file itself: asked a folder.
                 "names_itself": list(runners.NAMES_ITSELF.get(option.tool_id, ())),
             }

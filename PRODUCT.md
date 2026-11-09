@@ -18,7 +18,7 @@ One window that groups the best download programs behind a single box. The user 
 
 ## Positioning
 
-- It **chooses the tool for each site by itself** (yt-dlp, gallery-dl, streamlink, N_m3u8DL-RE, TikTokDownloader, KS-Downloader, XHS-Downloader), where other apps drive one engine or make the user write rules.
+- It **chooses the tool for each site by itself** (yt-dlp, gallery-dl, streamlink, N_m3u8DL-RE, TikTokDownloader, KS-Downloader, XHS-Downloader, yutto), where other apps drive one engine or make the user write rules.
 - It **logs in inside the app** (one site's cookies only), where free apps ask for an exported file or a password.
 - It **manages its own tools**: install, update, "Update and retry".
 - It speaks in plain sentences: what happened, and what to do — and says "unknown" when it does not know (decisions 33, 34, 38).

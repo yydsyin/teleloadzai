@@ -45,6 +45,7 @@ day, does not rewrite. yt-dlp does.)
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -192,6 +193,64 @@ COMMAND_LINE_ONLY = {
 # file, which is what `header_for` is for. KS-Downloader (2026-09-23) is the
 # same: `/detail/` has a `cookies` field, read from its own /openapi.json.
 HEADER_CAPABLE = ("tiktokdownloader", "ks-downloader")
+
+# yutto takes ONE site's log-in from a file of its own format (`--auth-file`,
+# TOML: `[profiles.default]` with `sessdata` and `bili_jct`), read from its
+# 2.3.1 code and seen 2026-11-09: 1080p with the file, 480p without. Its
+# `-c SESSDATA` / `--auth` take the cookie on the command line -- never used.
+AUTH_FILE_CAPABLE = ("yutto",)
+
+
+def takes_site_cookies(tool_id: str) -> bool:
+    """True for the tools given one site's cookies rather than our file:
+    as a request body (TikTokDownloader, KS-Downloader) or a file of their
+    own made for one run (yutto)."""
+    return tool_id in HEADER_CAPABLE or tool_id in AUTH_FILE_CAPABLE
+
+
+def _toml_string(value: str) -> str:
+    """A TOML basic string. A JSON string is one, as long as nothing in it
+    needs an escape TOML lacks; a cookie value is printable ASCII."""
+    return json.dumps(value, ensure_ascii=True)
+
+
+@contextmanager
+def yutto_auth(enabled: bool) -> Iterator[Path | None]:
+    """yutto's log-in file for ONE run, or None when there is no Bilibili
+    log-in to give (cookies off, no file, or no `SESSDATA`): yutto then runs
+    as a visitor, 480p at most.
+
+    Only the two fields yutto reads, from Bilibili's cookies only, in
+    `data/cookie-runs/` (emptied at every start by `clear_run_copies`, so a
+    crash leaves nothing behind for long), deleted when the run ends.
+    ⚠️ The file IS secret: its path goes on yutto's command line, its
+    contents never do, and they are never printed (hard rule 1).
+    """
+    pairs = {}
+    for part in header_for("bilibili.com", enabled).split("; "):
+        name, _, value = part.partition("=")
+        if name in ("SESSDATA", "bili_jct") and value:
+            pairs[name] = value
+    if "SESSDATA" not in pairs:
+        yield None
+        return
+    lines = ["[profiles.default]", "sessdata = " + _toml_string(pairs["SESSDATA"])]
+    if "bili_jct" in pairs:
+        lines.append("bili_jct = " + _toml_string(pairs["bili_jct"]))
+    path = RUN_DIR / f"{uuid.uuid4().hex}.toml"
+    try:
+        RUN_DIR.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError as problem:
+        path.unlink(missing_ok=True)
+        # Never run on as a visitor without saying so: the user turned them on.
+        raise CookieFileError(
+            f"The Bilibili log-in could not be prepared for yutto: {problem.strerror}"
+        ) from problem
+    try:
+        yield path
+    finally:
+        path.unlink(missing_ok=True)
 
 _MAX_BYTES = 8 * 1024 * 1024        # a real export is a few kB; 8 MB is absurd
 
@@ -728,7 +787,7 @@ def unusable_reason(tool_id: str, enabled: bool) -> str | None:
         return None
     if tool_id in COMMAND_LINE_ONLY:
         return COMMAND_LINE_ONLY[tool_id]
-    if tool_id not in FILE_CAPABLE and tool_id not in HEADER_CAPABLE:
+    if tool_id not in FILE_CAPABLE and not takes_site_cookies(tool_id):
         return f"Teleloadzai cannot give cookies to {tool_id} yet"
     return None
 
@@ -768,7 +827,7 @@ def state(enabled: bool) -> dict:
         # this named the file tools only, while TikTokDownloader and
         # KS-Downloader received the cookies too (seen by the critique).
         # Their display names, not our ids.
-        "used_by": [_tool_name(t) for t in FILE_CAPABLE + HEADER_CAPABLE],
+        "used_by": [_tool_name(t) for t in FILE_CAPABLE + HEADER_CAPABLE + AUTH_FILE_CAPABLE],
     }
 
 

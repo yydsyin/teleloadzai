@@ -297,7 +297,7 @@ KNOWN: tuple[Known, ...] = (
     Known(
         words=("folder's path is too long for windows",),
         tools=("yt-dlp", "gallery-dl", "streamlink", "n-m3u8dl-re", "xhs-downloader",
-               "tiktokdownloader", "ks-downloader"),
+               "tiktokdownloader", "ks-downloader", "yutto"),
         title="This folder's path is too long for Windows.",
         retry=False,
         next_step=("Choose a folder with a shorter path in Settings → Download folder, "
@@ -309,7 +309,8 @@ KNOWN: tuple[Known, ...] = (
     ),
     Known(
         words=("chosen in \"save as\" is too long for windows",),
-        tools=("yt-dlp", "streamlink", "n-m3u8dl-re", "tiktokdownloader", "ks-downloader"),
+        tools=("yt-dlp", "streamlink", "n-m3u8dl-re", "tiktokdownloader", "ks-downloader",
+               "yutto"),
         title="The name chosen in \"Save as\" is too long for Windows.",
         retry=False,
         next_step=("Paste the link again and choose a shorter name, or a folder "
@@ -325,6 +326,36 @@ KNOWN: tuple[Known, ...] = (
         seen=("Proxy pointed at a closed port: at startup it printed 'curl: "
               "(7) Failed to connect to 127.0.0.1:9 over proxy' and never "
               "reached its menu."),
+    ),
+
+    # ---- yutto 2.3.1, 2026-11-09 (its words are Chinese).
+    Known(
+        # "url 不正确，也许该 url 仅支持批量下载" -- "the url is not correct,
+        # maybe it only supports batch download".
+        words=("url 不正确",),
+        tools=("yutto",),
+        title="yutto cannot read this Bilibili link.",
+        retry=False,
+        next_step=("If the link has a language in it (…/zh-Hans/video/… or "
+                   "…/en/video/…), remove that part so it reads "
+                   "bilibili.com/video/BV…, then paste it again."),
+        seen=("2026-11-09, exit 14 on bilibili.com/zh-Hans/video/BV1DLnJ6xEKC/ "
+              "and bilibili.com/en/video/BV1Gsnj6XE9M; the same video's "
+              "bilibili.com/video/ link downloaded whole. Also on a bilibili.tv "
+              "link, where yutto is no longer offered."),
+    ),
+    Known(
+        # "媒体下载失败：range … failed after 3 attempts: Timeout: error
+        # sending request" (or "Transport: error sending request") --
+        # "media download failed".
+        words=("媒体下载失败", "error sending request"),
+        tools=("yutto",),
+        title="yutto lost its connection to Bilibili's server, and gave up.",
+        next_step="Press Retry. The same video downloaded whole on the next try.",
+        seen=("2026-11-09, 3 times in 15 yutto runs of one video, with and "
+              "without a log-in: 'Timeout: error sending request' twice, "
+              "'Transport: error sending request' once, exit 16; each time "
+              "the next run of the same video came whole."),
     ),
 
 )

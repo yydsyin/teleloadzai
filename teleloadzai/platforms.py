@@ -38,6 +38,7 @@ _TOOL_LIST = (
     Tool("xhs-downloader", "XHS-Downloader", "JoeanAmier/XHS-Downloader", "python"),
     Tool("ks-downloader", "KS-Downloader", "JoeanAmier/KS-Downloader", "exe"),
     Tool("n-m3u8dl-re", "N_m3u8DL-RE", "nilaoda/N_m3u8DL-RE", "exe"),
+    Tool("yutto", "yutto", "yutto-dev/yutto", "python"),
 )
 
 TOOLS: dict[str, Tool] = {t.id: t for t in _TOOL_LIST}
@@ -90,7 +91,13 @@ PLATFORMS: tuple[Platform, ...] = (
              _only_ytdlp()),
     Platform("bilibili", "Bilibili",
              ("bilibili.com", "bilibili.tv", "b23.tv"),
-             _only_ytdlp("works well; BBDown is archived since 2026-05")),
+             # Seen 2026-11-09 on one video, with and without the user's
+             # log-in: yt-dlp up to 1080p without one; yutto 480p without,
+             # the whole 1080p with -- where yt-dlp's "Best" took an AV1 file
+             # Bilibili's main server cuts. yutto reads bilibili.com only
+             # (runners.READS_ONLY).
+             (ToolOption("yt-dlp", "up to 1080p, no log-in needed"),
+              ToolOption("yutto", "1080p with your Bilibili log-in, 480p without"))),
     Platform("instagram", "Instagram",
              ("instagram.com", "instagr.am"),
              (ToolOption("gallery-dl", "photos, carousels, stories"),

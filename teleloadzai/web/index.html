@@ -1715,6 +1715,13 @@ function unknownNameText(tool) {
  */
 function applyChoices(tool) {
   const can = (tool && tool.choices) || { mp3: "kbps", mp4: "height" };
+  // The sizes depend on the program too (yutto: 480p at most without a
+  // log-in): drawn again, the user's size kept while it is still offered.
+  if (mode === "mp4") {
+    const was = $("quality").value;
+    fillQualities();
+    if ([...$("quality").options].some((o) => o.value === was)) $("quality").value = was;
+  }
   const mp3 = document.querySelector('.choice[data-mode="mp3"]');
   const mp4 = document.querySelector('.choice[data-mode="mp4"]');
   // MP3 shows when ANY tool of this site makes one: pressing it picks that
@@ -2125,8 +2132,13 @@ function fillQualities() {
   // request and 576p to the next (3 of 5 / 2 of 5, measured 2026-09-27), so
   // no number read beforehand is a promise the download can keep.
   if (mode === "mp4") {
+    // And never above what the chosen program can give now: yutto without
+    // a log-in gives 480p when asked 1080p, and says nothing (seen
+    // 2026-11-09; server: runners.top_height). "Best" is then its top.
+    const top = (chosenTool() || {}).top || 0;
+    const ceiling = top && maxHeight ? Math.min(top, maxHeight) : maxHeight;
     list = maxHeight
-      ? list.filter((v) => v === "best" || (Number(v) < maxHeight && videoHeights.includes(Number(v))))
+      ? list.filter((v) => v === "best" || (Number(v) < ceiling && videoHeights.includes(Number(v))))
       : ["best"];
   }
   $("quality").innerHTML = list
@@ -4491,8 +4503,10 @@ function rowQualities(item) {
   if (item.fmt === "mp3") return takes === "kbps" ? (qualityLists.mp3 || ["best"]) : ["best"];
   const info = item.info || {};
   if (takes !== "height" || !info.max_height) return ["best"];
+  // Never above what the program gives now (yutto without a log-in: 480p).
+  const ceiling = tool.top ? Math.min(tool.top, info.max_height) : info.max_height;
   return (qualityLists.mp4 || ["best"]).filter((v) => v === "best"
-    || (Number(v) < info.max_height && (info.heights || []).includes(Number(v))));
+    || (Number(v) < ceiling && (info.heights || []).includes(Number(v))));
 }
 
 /** A row's own starting choices: what "Same for all" would give it. */

@@ -216,6 +216,18 @@ def need(platform_id: str, tool_id: str, cookies_on: bool) -> dict | None:
             "visited": visited, "met": logged_in and cookies_on}
 
 
+def logged_in(platform_id: str, cookies_on: bool) -> bool:
+    """The site is logged in by the rule of its sign (`_sign`) AND the user's
+    log-ins are on -- what decides yutto's highest quality on the card."""
+    if not cookies_on:
+        return False
+    platform = next((p for p in PLATFORMS if p.id == platform_id), None)
+    if platform is None:
+        return False
+    state = _sign(platform, cookies.site_dates(), _history().get(platform_id, {}), time.time())[0]
+    return state == "logged_in"
+
+
 _lock = threading.Lock()        # one login window at a time, never two
 
 # How long we wait for a page WE asked for to finish loading. pywebview's own
