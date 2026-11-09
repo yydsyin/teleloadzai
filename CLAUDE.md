@@ -208,7 +208,7 @@ The proofs (sizes, ffprobe results, links, dates) are in `docs/HISTORY.md` §4.
 | Weibo | **gallery-dl** (default) or **yt-dlp** | ✅ the same video from both, 2026-09-26. |
 | **Kuaishou** | **KS-Downloader** | ✅ proven 2026-09-23 — the only tool that works (decision 39). Server `main.exe api`, port **5557**. ⚠️ Kuaishou sometimes refuses every program for a while. |
 | Bilibili 4K/HDR | ~~BBDown~~ | ⛔ archived 2026-05-14 — yt-dlp instead |
-| ⚠️ *Bilibili, 2026-10-24* | | ⚠️ **Fails in every program**: links now carry a language (`/en/video/…`), yt-dlp fix #17898 not merged; the 1080p **AV1** picture stops at 1,432,959 bytes (H.264 comes whole). **Nothing added on our side** (decision 41). Pretending to be another browser was tried once and stopped: Teleloadzai does not trick a site's protection. |
+| ⚠️ *Bilibili, 2026-11-09* | | ⚠️ **Normal links read again** (yt-dlp 2026.11.04); links with a language (`/zh-Hans/video/…`) still do not — fix #17898 not merged. **One video's AV1 1080p is cut by Bilibili's main server** (seen without yt-dlp), so "Best" and "1080p" fail on it; its backup server sends it whole, and yutto, which reads the backups, gets it — yt-dlp reads only the main one. Its 11 other qualities, and 3 other videos' AV1 1080p, come whole, with or without a log-in. To be reported to yt-dlp by the user. **Nothing added on our side** (decision 41). Pretending to be another browser was tried once and stopped: Teleloadzai does not trick a site's protection. |
 | WeChat Channels (视频号) | **wx_channels_download** (ltaoo) | ✅ alive, but not driven: MITM proxy, root certificate, Administrator rights, no link to paste (§6). Licence NOASSERTION → never bundled. |
 
 **No-log-in audit, 2026-09-26** (one public link per site, no cookies):

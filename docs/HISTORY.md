@@ -290,3 +290,17 @@ Six Stops pressed through the running app's own API, each on a real download, th
 Round 7: "No real problem found." Two narrow cases left as they are: a log-in reopened within 1 s of closing the window by hand replaces the "closed" sentence; a dead server leaves the "waiting" line.
 
 ⚠️ **Not seen:** the real app window, a real log-in, a real live recording past 60 minutes.
+
+### 2026-11-09 — Bilibili checked again: links read, one file cut by Bilibili's main server
+
+**The user's question: "does Bilibili work well right now?"**, then: try every quality, with and without the log-in, try other tools, and collect what a report to yt-dlp needs. yt-dlp nightly 2026.11.04.232659 (the newest), test video `BV1Gsnj6XE9M`, everything in the scratchpad — never in Teleloadzai's folders, the log-in used from a copy of `data/cookies.txt`, no cookie value printed.
+
+- **Reading:** a normal link (`/video/BV…`) is read again, without a log-in — "Unable to extract initial state" (2026-10-24) is gone. A link with a language (`/zh-Hans/video/…`) is still read by the generic reader only: fix #17898 is still open.
+- **Every video quality, without and with the log-in (24 downloads):** 11 of 12 whole, each checked with ffprobe — H.264, HEVC and AV1 at 360p, 480p, 720p, and H.264 and HEVC at 1080p (88,840,962 bytes, 1920×1080, 257 s). Only **AV1 1080p** (format 100026) fails: 1,309,696 bytes without the log-in, 1,405,952 with it, "Giving up after 10 retries". Teleloadzai's "Best" and "1080p" both choose that file, so on this video they fail; 720p and lower work.
+- **Who cuts — Bilibili's main server.** Fetched straight from it, without yt-dlp, with yt-dlp's headers: it announces 23,632,722 bytes and stops after 1,432,959 (a second try: 1,048,576). Its copy of AV1 720p comes whole (11,823,218). The first backup server Bilibili lists (`upos-sz-mirrorcosov.bilivideo.com`) answers 567 without a `Range` header (as in yt-dlp issue #17847) and sends the **whole** 23,632,722 bytes with one.
+- **yt-dlp reads only the main address** (`baseUrl`) and never the backup list — seen in its source on master, and #17898 does not add it.
+- **Other tools:** **yutto** 2.3.1 (alive, pushed 2026-11-08) gets the whole AV1 1080p with the log-in — 23,634,898 bytes, ffprobe 1920×1080, 257 s; its code reads the backup list (`backup_url` → `mirrors`). Without a log-in it offers 480p at most. **you-get** 0.4.1743 lists the formats with and without the log-in (720p and up need the log-in); not downloaded. lux left out (no change since 2026-03).
+- **3 other videos** from the same page's suggestions: AV1 1080p whole on all three (15.8, 26.9, 15.2 MB). So one damaged file on the main server, not every video — but the same cut, at the same 1,432,959 bytes, since at least 2026-10-25.
+- **To report to yt-dlp, by the user** (decision 41, and yt-dlp's no-AI rule): it does not fall back to Bilibili's backup servers when the main one fails. The facts and the verbose log: `reports/Bilibili AV1 cut - facts for the yt-dlp report.md`.
+
+⚠️ **Not seen:** Teleloadzai's own row for this failure (its sentence); the video played in a browser at 1080p AV1 (yt-dlp's checklist asks it — the user's check).
