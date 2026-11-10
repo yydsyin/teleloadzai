@@ -3638,7 +3638,9 @@ function toolRow(tool, progress) {
     // installed tool whose need is met said "needs FFmpeg" next to an
     // installed FFmpeg (review of 2026-09-28).
     if (tool.installed && !missing) continue;
-    badges.push(`<span class="badge ${missing ? "alert" : ""}">needs ${need}</span>`);
+    // yutto: "needs Python 3.11+" -- an older Python cannot install it.
+    const least = need === "Python" && tool.python_min ? ` ${tool.python_min}+` : "";
+    badges.push(`<span class="badge ${missing ? "alert" : ""}">needs ${need}${least}</span>`);
   }
 
   const running = progress && progress.state === "running";
@@ -3722,9 +3724,15 @@ function renderTools() {
   const needed = toolsData.tools.some((t) => t.blocked);
   $("python-help").classList.toggle("hidden", !needed);
   if (needed) {
+    // The programs that need it, by name: since 2026-11-09 not only
+    // gallery-dl (yutto too).
+    const names = toolsData.tools.filter((t) => t.blocked).map((t) => t.name);
+    const who = names.length > 1
+      ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} are Python programs.`
+      : `${names[0]} is a Python program.`;
     $("python-help-text").textContent = python.winget
-      ? "gallery-dl is a Python program. Python is not on this PC. Windows can install it for you."
-      : "gallery-dl is a Python program. Python is not on this PC, and this PC has no winget, so you must install it yourself.";
+      ? `${who} Python is not on this PC. Windows can install it for you.`
+      : `${who} Python is not on this PC, and this PC has no winget, so you must install it yourself.`;
     $("python-install").classList.toggle("hidden", !python.winget);
   }
 }

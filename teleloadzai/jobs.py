@@ -960,6 +960,8 @@ class Queue:
                 # Subtitles asked: are they in the file / beside it (item 7)?
                 made = [f for f in result.files if f not in getattr(result, "skipped", [])]
                 note = ytdlp.subs_note(made, job.subs)
+            # The run's own sentence (yutto without the log-in it was given).
+            note = " ".join(filter(None, [note, getattr(result, "note", "")]))
 
             with self._lock:
                 # A stopped row keeps files only for a live recording, which

@@ -70,6 +70,9 @@ class ToolSpec:
     pip_name: str = ""
     module: str = ""                # run with: python -m <module>
     needs_python: bool = False
+    # The oldest Python it installs on (its own "Requires-Python"), said on
+    # the Programs row and checked before pip runs: () = any.
+    python_min: tuple[int, ...] = ()
     version_args: tuple[str, ...] = ("--version",)
     # Shown to the user BEFORE he installs, never discovered afterwards.
     requires: tuple[str, ...] = ()
@@ -141,7 +144,7 @@ SPECS: tuple[ToolSpec, ...] = (
     ToolSpec("yutto", "yutto", "yutto-dev/yutto", "pip",
              what_for="Bilibili: 1080p with your log-in, 480p without.",
              pip_name="yutto", module="yutto", needs_python=True,
-             requires=("Python",)),
+             python_min=(3, 11), requires=("Python",)),
 
 )
 
@@ -730,10 +733,46 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
         on_progress(f"unpacking {tool.name}", 100)
 
 
+_PYTHON_VERSIONS: dict[str, tuple[float, tuple[int, ...]]] = {}
+
+
+def python_version(python: str) -> tuple[int, ...]:
+    """(3, 13) for that Python, () when it cannot say. Asked once per file
+    (its date): a new Python installed over it is asked again."""
+    try:
+        stamp = os.stat(python).st_mtime
+    except OSError:
+        return ()
+    known = _PYTHON_VERSIONS.get(python)
+    if known and known[0] == stamp:
+        return known[1]
+    try:
+        said = subprocess.run([python, "-c", "import sys; print(*sys.version_info[:2])"],
+                              capture_output=True, text=True, timeout=20,
+                              creationflags=_NO_WINDOW).stdout.split()
+        version = tuple(int(part) for part in said[:2])
+    except (OSError, subprocess.SubprocessError, ValueError):
+        version = ()
+    _PYTHON_VERSIONS[python] = (stamp, version)
+    return version
+
+
 def _install_pip(tool: ToolSpec, on_progress: ProgressFn | None) -> None:
     python = find_python()
     if not python:
         raise InstallError("python_missing")      # the UI shows the help screen
+    # Too old: said in words before pip runs -- pip's own answer was "No
+    # matching distribution found" (yutto needs 3.11; decision 28).
+    have = python_version(python)
+    if tool.python_min and have and have < tool.python_min:
+        need = ".".join(map(str, tool.python_min))
+        # No button named: the "Install Python" block shows only when Python
+        # is missing. A newly installed Python is seen after a restart (the
+        # PATH Teleloadzai started with).
+        raise InstallError(
+            f"{tool.name} needs Python {need} or newer, and this PC has Python "
+            f"{'.'.join(map(str, have))}. Install a newer one from {PYTHON_DOWNLOAD_PAGE}, "
+            "then close and reopen Teleloadzai.")
     if on_progress:
         on_progress(f"installing {tool.name} with pip", 10)
 
@@ -910,6 +949,67 @@ def unneeded_packages() -> list[str]:
     return sorted(packages[k].metadata["Name"] for k in set(packages) - needed)
 
 
+def _record_entries(package) -> list[str]:
+    """Every path in the package's RECORD, as written. Not `package.files`:
+    Python 3.13 drops the entries whose file is not at the recorded place, and
+    `../../bin/biliass.exe` read from bin/pylibs is not there -- 19 lines, 18
+    entries, the launcher never deleted (seen 2026-11-10)."""
+    import csv
+    import io
+    text = package.read_text("RECORD") or ""
+    return [row[0] for row in csv.reader(io.StringIO(text)) if row and row[0]]
+
+
+def _package_files(package) -> list[Path]:
+    """The files of one installed package, from its own file list -- each one
+    where our `pip install --target` really put it, and ONLY inside
+    bin/pylibs. Its list names the launchers and manual pages
+    `../../bin/x.exe` and `../../share/…`, from pip's temporary folder; read
+    from bin/pylibs that is Teleloadzai's own bin/ -- where yt-dlp.exe lives.
+    `pip uninstall` deleted a file there (a dummy, on a copy, 2026-11-10) and
+    left the real launchers in bin/pylibs/bin. Anything else outside is kept."""
+    libs = libs_dir().resolve()
+    found: list[Path] = []
+    for entry in _record_entries(package):
+        text = entry.replace("\\", "/")
+        for outside in ("../../bin/", "../../share/"):
+            if text.startswith(outside):
+                text = text[len("../../"):]
+        path = (libs / text).resolve()
+        if path != libs and path.is_relative_to(libs):
+            found.append(path)
+            if path.suffix == ".py":        # its compiled copies, made later
+                found.extend(path.parent.glob(f"__pycache__/{path.stem}.*.pyc"))
+    return found
+
+
+def _record_folder(package) -> Path | None:
+    """The package's `<name>-<version>.dist-info`, directly in bin/pylibs."""
+    libs = libs_dir().resolve()
+    for entry in _record_entries(package):
+        parts = entry.replace("\\", "/").split("/")
+        if len(parts) == 2 and parts[0].endswith(".dist-info"):
+            folder = (libs / parts[0]).resolve()
+            if folder.parent == libs:
+                return folder
+    return None
+
+
+def _delete_package(package) -> bool:
+    """Delete one package's files and its record, inside bin/pylibs only.
+    True when its record is gone (it no longer counts as installed)."""
+    record = _record_folder(package)
+    for path in _package_files(package):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass                        # held by Windows: the record decides
+    if record is None:
+        return False
+    shutil.rmtree(record, ignore_errors=True)
+    return not record.exists()
+
+
 def _drop_empty_folders() -> None:
     """The empty folders pip leaves behind (protobuf left `google/`, empty,
     2026-11-10). `os.rmdir` refuses a folder with anything in it."""
@@ -922,19 +1022,19 @@ def _drop_empty_folders() -> None:
                     pass                # not empty: kept
 
 
-def remove_unneeded(python: str | None = None) -> list[str]:
-    """Uninstall what `unneeded_packages` names, through pip (each package's
-    own file list). Returns the names really gone, judged by what is left."""
+def remove_unneeded() -> list[str]:
+    """Delete what `unneeded_packages` names, each from its own file list and
+    only inside bin/pylibs (`_delete_package` -- never `pip uninstall`, which
+    follows `../../bin/` out of it). Returns the names really gone, judged by
+    what is left."""
     names = unneeded_packages()
-    python = python or find_python()
-    if not names or not python:
+    if not names:
         return []
-    subprocess.run(
-        [python, "-m", "pip", "uninstall", "-y", *names],
-        capture_output=True, text=True, timeout=600,
-        env=dict(os.environ, PYTHONPATH=str(libs_dir())),
-        creationflags=_NO_WINDOW,
-    )
+    packages = _pip_packages()
+    for name in names:
+        package = packages.get(_package_key(name))
+        if package is not None:
+            _delete_package(package)
     left = _pip_packages()
     gone = [n for n in names if _package_key(n) not in left]
     _drop_empty_folders()
@@ -955,19 +1055,17 @@ def remove(tool_id: str) -> bool:
         return False
 
     if tool.kind == "pip":
-        python = find_python()
-        if python:
-            subprocess.run(
-                [python, "-m", "pip", "uninstall", "-y", tool.pip_name],
-                capture_output=True, text=True, timeout=300,
-                env=dict(os.environ, PYTHONPATH=str(libs_dir())),
-                creationflags=_NO_WINDOW,
-            )
+        # Its own files from its own list, inside bin/pylibs only -- not
+        # `pip uninstall`, which follows `../../bin/` into Teleloadzai's bin/
+        # (`_package_files`, 2026-11-10).
+        package = _pip_packages().get(_package_key(tool.pip_name))
+        if package is not None:
+            _delete_package(package)
         for leftover in libs_dir().glob(f"{tool.module}*"):
             shutil.rmtree(leftover, ignore_errors=True) if leftover.is_dir() else leftover.unlink(missing_ok=True)
         # And what it brought with it, if nothing else needs it now.
-        if python and installed_path(tool_id) is None:
-            remove_unneeded(python)
+        if installed_path(tool_id) is None:
+            remove_unneeded()
         # Judged by what is left, not by what this loop found: pip had
         # already deleted f2, the loop found nothing, and a real removal
         # answered False (seen 2026-09-26).
@@ -1033,8 +1131,13 @@ def status(tool_id: str, check_online: bool = True) -> dict:
     # yt-dlp installed from the other channel: "Update" switches it over --
     # a preview build is newer than stable, so numbers alone would never
     # take the user back to stable.
-    switch = bool(path) and bool(tool.preview_repo) \
-        and installed_from.get("channel", "stable") != channel(tool_id)
+    # Only when the channel it came from is KNOWN: a tools.json lost or reset
+    # read as "stable", and a user on Preview was offered a false Update
+    # (seen in a fresh test copy, 2026-11-10) -- decision 30: no proof, say
+    # nothing.
+    came_from = installed_from.get("channel", "")
+    switch = bool(path) and bool(tool.preview_repo) and bool(came_from) \
+        and came_from != channel(tool_id)
 
     return {
         "id": tool.id,
@@ -1043,6 +1146,7 @@ def status(tool_id: str, check_online: bool = True) -> dict:
         "essential": tool.essential,
         "kind": tool.kind,
         "needs_python": tool.needs_python,
+        "python_min": ".".join(map(str, tool.python_min)),
         # What this tool cannot work without, shown BEFORE the user installs.
         "requires": list(tool.requires),
         "blocked": tool.needs_python and not find_python(),

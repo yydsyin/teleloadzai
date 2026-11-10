@@ -118,6 +118,9 @@ class RunResult:
     # When nothing was written: the tool's OWN reason for skipping, in plain
     # words. Never inferred from "no new file" alone (decision 38).
     skip_reason: str = ""
+    # A sentence for the finished row, when the run worked but not quite as
+    # asked (yutto ran without the log-in it was given).
+    note: str = ""
 
     @property
     def nothing_downloaded(self) -> bool:
@@ -287,6 +290,7 @@ def _n_m3u8dl_re(exe: Path, r: Request) -> list[str]:
 # takes the best it has at or below the code: asked 1080p without a log-in,
 # it gave 480p (seen 2026-11-09) -- hence `TOP_WITHOUT_LOGIN`.
 _YUTTO_QUALITY = {"best": "127", "1080": "116", "720": "64", "480": "32", "360": "16"}
+_YUTTO_NO_LOGIN = "未提供登录认证信息"
 
 
 def _yutto(_exe: Path, r: Request) -> list[str]:
@@ -1450,6 +1454,7 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         threading.Thread(target=watch, daemon=True).start()
 
     assert process.stdout is not None
+    no_login = False
     for line in _lines(process.stdout):
         if not line.strip():
             continue
@@ -1472,6 +1477,12 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         if not line.strip().startswith(("at ", "--- End of")):
             tail.append(line)
             del tail[:-40]
+        # yutto's own words when it has no log-in ("未提供登录认证信息" -- "no
+        # log-in information was provided"; with the file it says
+        # "以非大会员身份登录", seen 2026-11-10). Said only when we GAVE it one:
+        # "Forget them" at its start deletes the file, and it then gives 480p.
+        if tool_id == "yutto" and request.cookie_file and _YUTTO_NO_LOGIN in line:
+            no_login = True
         if recipe.live_sign and not live and recipe.live_sign in line:
             live = True
             try:
@@ -1574,7 +1585,9 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         return RunResult([], tail, skip_reason=(
             f"\"{already[0]}\" is already in this folder, and Teleloadzai never "
             "replaces a file without asking."))
-    return RunResult(moved, tail)
+    note = (f"yutto said it had no Bilibili log-in, so this video is {TOP_WITHOUT_LOGIN['yutto']}p "
+            "at most." if no_login else "")
+    return RunResult(moved, tail, note=note)
 
 
 def _short_error(tail: list[str]) -> str:

@@ -9,7 +9,7 @@ questions:
 
 Short links hide the real site, so they are resolved first by following the
 redirect (CLAUDE.md, decision 14). If the site is unknown we do NOT refuse:
-we fall back to yt-dlp, which knows 1752 sites.
+we fall back to yt-dlp, which knows more than 1,700 sites.
 
 Test it by hand::
 

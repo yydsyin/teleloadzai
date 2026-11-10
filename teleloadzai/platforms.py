@@ -189,10 +189,12 @@ STREAM = Platform(
      ToolOption("n-m3u8dl-re", "faster, and opens streams locked with a key")),
 )
 
-# Nothing matched. yt-dlp still knows 1752 sites (checked 2026-09-20), so we try it.
+# Nothing matched. yt-dlp still knows more than 1,700 sites, so we try it.
+# No exact number on screen: it moves with each version (1752 on 2026-09-20,
+# 1747 loaded / 1755 listed by 2026.11.04 on 2026-11-10).
 UNKNOWN = Platform(
     "unknown", "Unknown site", (),
-    _only_ytdlp("unknown site, but yt-dlp knows 1752 of them - worth trying"),
+    _only_ytdlp("unknown site, but yt-dlp knows more than 1,700 - worth trying"),
 )
 
 STREAM_EXTENSIONS = (".m3u8", ".mpd")
