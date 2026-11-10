@@ -148,6 +148,11 @@ def open_window(port: int, httpd=None) -> int:
         for server in toolservers.ALL:
             if server.stop_now():
                 print(f"{server.name}'s server stopped.")
+        # The per-run cookie copies of reads and downloads still running:
+        # their own clean-up never runs once the app is closing. A title read
+        # left a whole jar there on 2026-11-05, kept 4 days until the next
+        # start (found 2026-11-10). Downloads are stopped above, first.
+        cookies.clear_run_copies()
         try:
             forget_if_once()
         except Exception as problem:            # never block the shutdown

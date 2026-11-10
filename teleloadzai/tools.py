@@ -776,6 +776,178 @@ def _drop_old_records() -> None:
                 pass    # the version shown stays old; the package itself is new
 
 
+# The app's own packages in bin/pylibs (requirements.txt, decision 20): kept
+# whatever the tools need.
+APP_PACKAGES = ("pywebview",)
+
+_MARKER_TOKEN = re.compile(
+    r"""\(|\)|"[^"]*"|'[^']*'|===|==|!=|<=|>=|~=|<|>|not\s+in\b|in\b|and\b|or\b"""
+    r"""|[A-Za-z_][A-Za-z0-9_.]*""")
+
+
+def _marker_env() -> dict[str, str]:
+    """This PC, as a package's requirement conditions name it."""
+    import platform
+    return {"sys_platform": sys.platform, "os_name": os.name,
+            "platform_system": platform.system(), "platform_machine": platform.machine(),
+            "python_version": "%d.%d" % sys.version_info[:2],
+            "python_full_version": platform.python_version(),
+            "implementation_name": sys.implementation.name,
+            "platform_python_implementation": platform.python_implementation(),
+            "extra": ""}
+
+
+def _marker_true(marker: str, env: dict[str, str]) -> bool:
+    """A requirement's condition (`sys_platform == "win32"`, `extra == "dev"`,
+    `python_version < "3.9"`), for this PC. Raises ValueError on anything it
+    does not understand -- the caller then KEEPS the package: a wrong answer
+    here may only keep files, never delete one that is needed."""
+    tokens, pos, text = [], 0, marker.strip()
+    while pos < len(text):
+        if text[pos].isspace():
+            pos += 1
+            continue
+        found = _MARKER_TOKEN.match(text, pos)
+        if not found:
+            raise ValueError(marker)
+        tokens.append(found.group())
+        pos = found.end()
+    at = 0
+
+    def value(token: str) -> str:
+        if token[:1] in "\"'":
+            return token[1:-1]
+        if token in env:
+            return env[token]
+        raise ValueError(token)
+
+    def compare() -> bool:
+        nonlocal at
+        if tokens[at] == "(":
+            at += 1
+            result = either()
+            if tokens[at] != ")":
+                raise ValueError(marker)
+            at += 1
+            return result
+        left, op, right = value(tokens[at]), " ".join(tokens[at + 1].split()), value(tokens[at + 2])
+        at += 3
+        if op in ("in", "not in"):
+            return (left in right) == (op == "in")
+        if op in ("==", "!=") and not (left[:1].isdigit() and right[:1].isdigit()):
+            return (left == right) == (op == "==")
+        a, b = _numbers(left), _numbers(right)
+        if not a or not b or op not in ("==", "!=", "<", "<=", ">", ">="):
+            raise ValueError(marker)
+        size = max(len(a), len(b))
+        a, b = a + (0,) * (size - len(a)), b + (0,) * (size - len(b))
+        return {"==": a == b, "!=": a != b, "<": a < b, "<=": a <= b,
+                ">": a > b, ">=": a >= b}[op]
+
+    def both() -> bool:
+        nonlocal at
+        result = compare()
+        while at < len(tokens) and tokens[at] == "and":
+            at += 1
+            result = compare() and result
+        return result
+
+    def either() -> bool:
+        nonlocal at
+        result = both()
+        while at < len(tokens) and tokens[at] == "or":
+            at += 1
+            result = both() or result
+        return result
+
+    try:
+        result = either()
+    except IndexError:
+        raise ValueError(marker) from None
+    if at != len(tokens):
+        raise ValueError(marker)
+    return result
+
+
+def _package_key(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _pip_packages() -> dict:
+    """The packages in bin/pylibs, by normalised name."""
+    from importlib.metadata import distributions
+    return {_package_key(d.metadata["Name"]): d
+            for d in distributions(path=[str(libs_dir())]) if d.metadata["Name"]}
+
+
+def unneeded_packages() -> list[str]:
+    """The packages in bin/pylibs that neither Teleloadzai nor any installed
+    pip tool needs, following each package's own requirements. Removing a
+    pip tool used to remove its own package only: f2's 43 stayed for weeks,
+    94 MB (found 2026-11-10)."""
+    packages = _pip_packages()
+    roots = [*APP_PACKAGES] + [t.pip_name for t in SPECS
+                               if t.kind == "pip" and installed_path(t.id)]
+    env = _marker_env()
+    needed: set[str] = set()
+    waiting = [_package_key(r) for r in roots]
+    while waiting:
+        key = waiting.pop()
+        if key in needed or key not in packages:
+            continue
+        needed.add(key)
+        for line in packages[key].requires or []:
+            requirement, _, marker = line.partition(";")
+            name = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", requirement)
+            if not name:
+                continue
+            try:
+                if marker.strip() and not _marker_true(marker, env):
+                    continue            # another system, an old Python, an extra
+            except ValueError:
+                pass                    # not understood: kept
+            waiting.append(_package_key(name.group(1)))
+    return sorted(packages[k].metadata["Name"] for k in set(packages) - needed)
+
+
+def _drop_empty_folders() -> None:
+    """The empty folders pip leaves behind (protobuf left `google/`, empty,
+    2026-11-10). `os.rmdir` refuses a folder with anything in it."""
+    for entry in libs_dir().iterdir():
+        if entry.is_dir() and not entry.is_symlink():
+            for root, _dirs, _files in os.walk(entry, topdown=False):
+                try:
+                    os.rmdir(root)
+                except OSError:
+                    pass                # not empty: kept
+
+
+def remove_unneeded(python: str | None = None) -> list[str]:
+    """Uninstall what `unneeded_packages` names, through pip (each package's
+    own file list). Returns the names really gone, judged by what is left."""
+    names = unneeded_packages()
+    python = python or find_python()
+    if not names or not python:
+        return []
+    subprocess.run(
+        [python, "-m", "pip", "uninstall", "-y", *names],
+        capture_output=True, text=True, timeout=600,
+        env=dict(os.environ, PYTHONPATH=str(libs_dir())),
+        creationflags=_NO_WINDOW,
+    )
+    left = _pip_packages()
+    gone = [n for n in names if _package_key(n) not in left]
+    _drop_empty_folders()
+    from . import console
+    if gone:
+        console.add("app", f"Teleloadzai: removed {len(gone)} package(s) no program needs any more: "
+                           + ", ".join(gone), "end")
+    if len(gone) < len(names):
+        console.add("app", "Teleloadzai: these packages no program needs could not be removed: "
+                           + ", ".join(n for n in names if n not in gone), "err")
+    return gone
+
+
 def remove(tool_id: str) -> bool:
     """Delete a tool from our folder. Never touches anything outside it."""
     tool = spec(tool_id)
@@ -793,6 +965,9 @@ def remove(tool_id: str) -> bool:
             )
         for leftover in libs_dir().glob(f"{tool.module}*"):
             shutil.rmtree(leftover, ignore_errors=True) if leftover.is_dir() else leftover.unlink(missing_ok=True)
+        # And what it brought with it, if nothing else needs it now.
+        if python and installed_path(tool_id) is None:
+            remove_unneeded(python)
         # Judged by what is left, not by what this loop found: pip had
         # already deleted f2, the loop found nothing, and a real removal
         # answered False (seen 2026-09-26).
