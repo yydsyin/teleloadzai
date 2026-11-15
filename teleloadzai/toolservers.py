@@ -396,8 +396,8 @@ def video_id(url: str, douyin: bool) -> str:
     found = _ID_IN_URL.search(full)
     if not found:
         raise ToolServerError(
-            "No video could be found in that link. Copy the address of the "
-            "video itself, not of a profile or a search.")
+            "No video in that link. Paste the video's own link, "
+            "not a profile or a search.")
     return found.group(1)
 
 

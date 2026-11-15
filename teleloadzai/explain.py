@@ -49,9 +49,8 @@ KNOWN: tuple[Known, ...] = (
         tools=("yt-dlp",),
         title="TikTok does not show this video on your internet connection.",
         retry=False,
-        next_step=("Other TikTok videos can still work. Try another one. "
-                   "TikTok does not say why; it may be a video limited to "
-                   "some countries."),
+        next_step=("Other videos can still work. This one may be limited "
+                   "to some countries."),
         seen=("2026-09-22/23, Telecom Malagasy (Madagascar): two videos gave "
               "TikTok code 10204, which yt-dlp prints as this sentence. A "
               "normal browser on the same PC got the same code. Another "
@@ -61,7 +60,7 @@ KNOWN: tuple[Known, ...] = (
         words=("only works when logged-in",),
         tools=("yt-dlp",),
         title="Vimeo shows this video only to a logged-in account.",
-        next_step="Log in to Vimeo, then try again: it may help.",
+        next_step="Log in to Vimeo, then try again.",
         action="login",
         seen=("2026-09-26: vimeo.com/56015672 and vimeo.com/68375962, no "
               "cookies -- yt-dlp: 'The web client only works when "
@@ -73,9 +72,8 @@ KNOWN: tuple[Known, ...] = (
         words=("this video is unavailable",),
         tools=("yt-dlp",),
         title="YouTube says this video is unavailable.",
-        next_step=("YouTube gives this same message for a deleted video and "
-                   "for a private one, so Teleloadzai cannot tell which. If "
-                   "it is private, logging in to YouTube may help."),
+        next_step=("It may be deleted or private. If it is private, logging "
+                   "in to YouTube may help."),
         action="reread",
         seen=("2026-09-22: a private video and a video id that does not "
               "exist both answered 'This video is unavailable', word for "
@@ -86,10 +84,8 @@ KNOWN: tuple[Known, ...] = (
         tools=("yt-dlp",),
         title="Instagram gave nothing for this post without a log-in.",
         action="login",
-        next_step=("It may be private, or it may not exist: we have seen "
-                   "this answer for a post that does not exist. If you can "
-                   "see it in your browser while logged in, log in to "
-                   "Instagram here, then press Retry."),
+        next_step=("It may be private, or not exist. If you can see it while "
+                   "logged in, log in to Instagram here, then press Retry."),
         seen=("2026-09-22: post C1234567890 -- an id I INVENTED, so a post "
               "that does not exist. Until 2026-09-23 this entry called it 'a "
               "private post' and claimed a log-in was needed; that was never "
@@ -104,8 +100,7 @@ KNOWN: tuple[Known, ...] = (
         title="yt-dlp found no video in this post.",
         # Updating does not change it: yt-dlp builds nothing for a photo.
         retry=False,
-        next_step=("If the post holds photos, gallery-dl may save them. It "
-                   "needs you to be logged in to Instagram."),
+        next_step="For photos, try gallery-dl (it needs your Instagram log-in).",
         seen=("2026-09-27, no cookies: instagram.com/p/DDhF_64RGd9 and "
               "/p/DGDRzmvALJW (named in gallery-dl issue 6688 and yt-dlp "
               "issue 12439) -- 'There is no video in this post'. The card offered "
@@ -123,8 +118,7 @@ KNOWN: tuple[Known, ...] = (
         # (loop round 5, 2026-10-18). A failed ROW keeps Retry: after an
         # internet hiccup it is the way out (decision 15; grids, same day).
         action="read",
-        next_step=("Check your internet connection, then read the link again. "
-                   "If you typed the link by hand, check its spelling too."),
+        next_step="Check your internet connection and the link, then read it again.",
         seen=("2026-10-05, the review agent, in the app: Instagram "
               "BQ0eAlwhDrw failed once with 'Could not resolve host: "
               "www.instagram.com'; curl reached the site seconds later. The "
@@ -140,8 +134,7 @@ KNOWN: tuple[Known, ...] = (
         # (loop round 5, 2026-10-18). A failed ROW keeps Retry: after an
         # internet hiccup it is the way out (decision 15; grids, same day).
         action="read",
-        next_step=("Check your internet connection, then read the link again. "
-                   "If you typed the link by hand, check its spelling too."),
+        next_step="Check your internet connection and the link, then read it again.",
         seen=("2026-10-05: three made-up addresses (…tlz-4821.invalid, "
               "…tlz-4821.com, instagram.invalid) -- 'Failed to resolve '…' "
               "([Errno 11001] getaddrinfo failed)'. The other wording of the "
@@ -151,8 +144,7 @@ KNOWN: tuple[Known, ...] = (
         words=("http error 403",),
         tools=("yt-dlp",),
         title="The site refused the download.",
-        next_step=("Update yt-dlp, then try again: the one time this was "
-                   "seen, that fixed it."),
+        next_step="Update yt-dlp, then try again.",
         action="update",
         seen=("2026-09-20: HTTP 403 with a six-week-old yt-dlp; after "
               "updating to 2026.08.19 the same link downloaded."),
@@ -161,10 +153,8 @@ KNOWN: tuple[Known, ...] = (
         words=("failed to retrieve data",),
         tools=("tiktokdownloader",),
         title="TikTokDownloader could not read this video.",
-        next_step=("We have seen this in three cases: not logged in to the "
-                   "site (log in to it on the Sites page); a video the site does "
-                   "not show on your connection; and a video that does not "
-                   "exist. Check the link, or try another video."),
+        next_step=("Check the link, log in to the site on the Sites page, "
+                   "or try another video."),
         seen=("2026-09-22: /douyin/detail without a cookie failed this way, "
               "and worked with one. 2026-09-23, WITH cookies: a NASA video "
               "that gives code 10204 in a normal browser, and an id that "
@@ -178,8 +168,7 @@ KNOWN: tuple[Known, ...] = (
         tools=("yt-dlp", "gallery-dl"),
         title="This program found nothing it can download on this page.",
         retry=False,
-        next_step=("Check that the link opens the video or the post itself, "
-                   "not a home page, a profile or a search."),
+        next_step="Paste the link of the video itself, not a home page or a profile.",
         seen=("https://example.com/ -- a page that exists and has no video. "
               "yt-dlp: 'ERROR: Unsupported URL'; gallery-dl: 'Unsupported URL'."),
     ),
@@ -215,10 +204,8 @@ KNOWN: tuple[Known, ...] = (
         tools=("gallery-dl",),
         title="Instagram sent gallery-dl to its log-in page.",
         action="login",
-        next_step=("The post may be private, or it may not exist: we have "
-                   "seen this answer for a post that does not exist. If you "
-                   "can see it while logged in, log in to Instagram here, "
-                   "then press Retry."),
+        next_step=("It may be private, or not exist. If you can see it while "
+                   "logged in, log in to Instagram here, then press Retry."),
         seen="Instagram post C1234567890, an invented id that does not exist.",
     ),
     Known(
@@ -226,17 +213,14 @@ KNOWN: tuple[Known, ...] = (
         tools=("streamlink",),
         title="Streamlink cannot read this page.",
         retry=False,
-        next_step=("Streamlink records live streams. Check that the link "
-                   "opens a live channel, for example on Twitch."),
+        next_step="Streamlink records live streams: paste a live channel's link.",
         seen="https://example.com/: 'error: No plugin can handle URL'.",
     ),
     Known(
         words=("no playable streams found",),
         tools=("streamlink",),
         title="There is no live stream at this link right now.",
-        next_step=("We have seen this for channels that are offline and for "
-                   "a channel that does not exist. Check the name, or try "
-                   "again when the channel is live."),
+        next_step="The channel may be offline, or its name wrong.",
         seen=("Same words for twitch.tv/twitch, /nasa, /riotgames (exist, "
               "offline at the time) and for a channel name that does not "
               "exist. So the message cannot tell the two apart."),
@@ -254,9 +238,7 @@ KNOWN: tuple[Known, ...] = (
         words=("获取数据失败",),
         tools=("xhs-downloader",),
         title="XHS-Downloader could not get this note.",
-        next_step=("We have seen this in two cases: the note does not exist, "
-                   "and no internet connection. Check the link and your "
-                   "connection."),
+        next_step="Check the link and your internet connection.",
         seen=("'<id> 获取数据失败' (could not get the data) for a note id "
               "that does not exist, AND for a real note with the proxy "
               "pointed at a closed port. Same words, two causes."),
@@ -275,18 +257,14 @@ KNOWN: tuple[Known, ...] = (
         tools=("n-m3u8dl-re",),
         title="N_m3u8DL-RE cannot read this link.",
         retry=False,
-        next_step=("It reads stream playlists: links ending in .m3u8 or "
-                   ".mpd. Check that the link is one."),
+        next_step="It reads links ending in .m3u8 or .mpd.",
         seen="https://example.com/, a web page: 'Unhandled exception: ...: Input not supported'.",
     ),
     Known(
         words=("(10061)",),
         tools=("n-m3u8dl-re",),
         title="The connection was refused (Windows code 10061).",
-        next_step=("The computer it tried to reach did not accept the "
-                   "connection. We have seen this when a proxy was set on "
-                   "this PC and was not running: if you use a VPN or a proxy "
-                   "program, check that it is running."),
+        next_step="If you use a VPN or a proxy program, check that it is running.",
         seen=("Proxy pointed at a closed port: 'SocketException (10061)', in "
               "the language of Windows. Matched on the code, not the words, "
               "because the words change with the language of Windows."),
@@ -321,7 +299,7 @@ KNOWN: tuple[Known, ...] = (
     Known(
         words=("did not start", "over proxy"),
         tools=("tiktokdownloader",),
-        title="TikTokDownloader could not start: it could not reach the internet through the proxy set on this PC.",
+        title="TikTokDownloader could not reach the internet through this PC's proxy.",
         next_step="If you use a VPN or a proxy program, check that it is running.",
         seen=("Proxy pointed at a closed port: at startup it printed 'curl: "
               "(7) Failed to connect to 127.0.0.1:9 over proxy' and never "
@@ -336,8 +314,7 @@ KNOWN: tuple[Known, ...] = (
         tools=("yutto",),
         title="yutto cannot read this Bilibili link.",
         retry=False,
-        next_step=("If the link has a language in it (…/zh-Hans/video/… or "
-                   "…/en/video/…), remove that part so it reads "
+        next_step=("Remove the language part (…/zh-Hans/…) so the link reads "
                    "bilibili.com/video/BV…, then paste it again."),
         seen=("2026-11-09, exit 14 on bilibili.com/zh-Hans/video/BV1DLnJ6xEKC/ "
               "and bilibili.com/en/video/BV1Gsnj6XE9M; the same video's "
@@ -351,7 +328,7 @@ KNOWN: tuple[Known, ...] = (
         words=("媒体下载失败", "error sending request"),
         tools=("yutto",),
         title="yutto lost its connection to Bilibili's server, and gave up.",
-        next_step="Press Retry. The same video downloaded whole on the next try.",
+        next_step="Press Retry: it usually works the next time.",
         seen=("2026-11-09, 3 times in 15 yutto runs of one video, with and "
               "without a log-in: 'Timeout: error sending request' twice, "
               "'Transport: error sending request' once, exit 16; each time "

@@ -81,7 +81,7 @@ _DRM = ("This site protects its videos and music against copying (DRM). "
         "Teleloadzai does not download protected content.")
 
 
-def _only_ytdlp(why: str = "the only serious option for this site") -> tuple[ToolOption, ...]:
+def _only_ytdlp(why: str = "") -> tuple[ToolOption, ...]:
     return (ToolOption("yt-dlp", why),)
 
 
@@ -96,33 +96,33 @@ PLATFORMS: tuple[Platform, ...] = (
              # the whole 1080p with -- where yt-dlp's "Best" took an AV1 file
              # Bilibili's main server cuts. yutto reads bilibili.com only
              # (runners.READS_ONLY).
-             (ToolOption("yt-dlp", "up to 1080p, no log-in needed"),
-              ToolOption("yutto", "1080p with your Bilibili log-in, 480p without"))),
+             (ToolOption("yt-dlp", "1080p, no log-in needed"),
+              ToolOption("yutto", "1080p with your log-in, 480p without"))),
     Platform("instagram", "Instagram",
              ("instagram.com", "instagr.am"),
-             (ToolOption("gallery-dl", "photos, carousels, stories"),
-              ToolOption("yt-dlp", "video only"))),
+             (ToolOption("gallery-dl", "Photos, videos and stories"),
+              ToolOption("yt-dlp", "Videos only"))),
     Platform("tiktok", "TikTok",
              ("tiktok.com",),
              # Measured 2026-09-25 on the same video: TikTokDownloader
              # 1280x720 (27.0 MB), yt-dlp 1024x576 (18.3 MB) -- and NEITHER
              # had a watermark. These lines said "no watermark" / "may keep
              # the watermark" until then, never checked (decision 38).
-             (ToolOption("tiktokdownloader", "higher quality"),
-              ToolOption("yt-dlp", "smaller file"))),
+             (ToolOption("tiktokdownloader", "Better quality"),
+              ToolOption("yt-dlp", "Smaller file"))),
     Platform("douyin", "Douyin",
              ("douyin.com", "iesdouyin.com"),
-             (ToolOption("tiktokdownloader", "no watermark"),)),
+             (ToolOption("tiktokdownloader", ""),)),
     # One tool, and the only one that works (decision 39). Tested 2026-09-23
     # on the same video: KS-Downloader downloaded it; yt-dlp ("Unsupported
     # URL"), lux and you-get failed. f2, listed here until 2026-09-22, has no
     # Kuaishou at all ("the ks app was not found").
     Platform("kuaishou", "Kuaishou",
              ("kuaishou.com", "gifshow.com"),
-             (ToolOption("ks-downloader", "the only program that works on Kuaishou today"),)),
+             (ToolOption("ks-downloader", ""),)),
     Platform("xiaohongshu", "Xiaohongshu",
              ("xiaohongshu.com", "xhslink.com"),
-             (ToolOption("xhs-downloader", "video and photos, no watermark"),)),
+             (ToolOption("xhs-downloader", ""),)),
     # f2 was listed first here until 2026-09-26, and never ran once: with
     # the user's Weibo cookies, through its own config file, it saved only
     # the post's text (329 B, 77 B) on two posts where gallery-dl and yt-dlp
@@ -130,27 +130,27 @@ PLATFORMS: tuple[Platform, ...] = (
     # Removed from Teleloadzai (decision 39).
     Platform("weibo", "Weibo",
              ("weibo.com", "weibo.cn"),
-             (ToolOption("gallery-dl", "the post's own files, video and photos"),
-              ToolOption("yt-dlp", "video, or MP3"))),
+             (ToolOption("gallery-dl", "Videos and photos, as posted"),
+              ToolOption("yt-dlp", "Videos, or MP3"))),
     Platform("twitter", "X (Twitter)",
              ("twitter.com", "x.com"),
-             (ToolOption("yt-dlp", "video"),
-              ToolOption("gallery-dl", "images and whole threads"))),
+             (ToolOption("yt-dlp", "Videos"),
+              ToolOption("gallery-dl", "Images and threads"))),
     Platform("facebook", "Facebook",
              ("facebook.com", "fb.watch", "fb.com"),
-             _only_ytdlp("public video works; private needs cookies")),
+             _only_ytdlp("Private videos need your log-in")),
     Platform("reddit", "Reddit",
              ("reddit.com", "redd.it"),
-             (ToolOption("yt-dlp", "the video with its sound"),
-              ToolOption("gallery-dl", "images and galleries"))),
+             (ToolOption("yt-dlp", "Videos"),
+              ToolOption("gallery-dl", "Images and galleries"))),
     Platform("twitch", "Twitch",
              ("twitch.tv",),
-             (ToolOption("streamlink", "records a live stream as it plays"),
-              ToolOption("yt-dlp", "past videos and clips"))),
+             (ToolOption("streamlink", "Live streams"),
+              ToolOption("yt-dlp", "Past videos and clips"))),
     Platform("pinterest", "Pinterest",
              ("pinterest.com", "pin.it"),
-             (ToolOption("gallery-dl", "boards and pins"),
-              ToolOption("yt-dlp", "video pins"))),
+             (ToolOption("gallery-dl", "Boards and pins"),
+              ToolOption("yt-dlp", "Video pins"))),
     Platform("vimeo", "Vimeo", ("vimeo.com",), _only_ytdlp()),
     Platform("dailymotion", "Dailymotion", ("dailymotion.com", "dai.ly"), _only_ytdlp()),
     Platform("rumble", "Rumble", ("rumble.com",), _only_ytdlp()),
@@ -185,8 +185,8 @@ PLATFORMS: tuple[Platform, ...] = (
 # A link that points straight at a stream manifest, whatever the site is.
 STREAM = Platform(
     "stream", "Direct stream link", (),
-    (ToolOption("yt-dlp", "simple, works most of the time"),
-     ToolOption("n-m3u8dl-re", "faster, and opens streams locked with a key")),
+    (ToolOption("yt-dlp", "Works most of the time"),
+     ToolOption("n-m3u8dl-re", "Faster, opens locked streams")),
 )
 
 # Nothing matched. yt-dlp still knows more than 1,700 sites, so we try it.
@@ -194,7 +194,7 @@ STREAM = Platform(
 # 1747 loaded / 1755 listed by 2026.11.04 on 2026-11-10).
 UNKNOWN = Platform(
     "unknown", "Unknown site", (),
-    _only_ytdlp("unknown site, but yt-dlp knows more than 1,700 - worth trying"),
+    _only_ytdlp("Unknown site: yt-dlp may still work"),
 )
 
 STREAM_EXTENSIONS = (".m3u8", ".mpd")

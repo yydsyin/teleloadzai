@@ -354,8 +354,7 @@ def kbps_note(files: list[Path], asked: str) -> str:
     for f in files:
         real = _kbps(f) if f.suffix.lower() == ".mp3" else None
         if real and real < int(asked) * 0.9:
-            return (f"Saved at {real} kbps, not {asked}: the site already gave an MP3, "
-                    "kept as it is. Converting it cannot add quality.")
+            return (f"Saved at {real} kbps, not {asked}: the site's own MP3, kept as it is.")
     return ""
 
 
@@ -531,8 +530,8 @@ def _output_arguments(
         # The user's name is never cut (Windows asked about that one); one
         # that leaves no room for yt-dlp's endings is said in words.
         if units(str(out_path.with_suffix(""))) + NAME_ENDING > PATH_LIMIT:
-            raise PathTooLong("The name chosen in \"Save as\" is too long for Windows once "
-                              "Teleloadzai adds its working endings. Choose a shorter name "
+            raise PathTooLong("The name chosen in \"Save as\" is too long for Windows. "
+                              "Choose a shorter name "
                               "or folder.")
         # The user's name is text, not a template: a "%" in it is doubled.
         target = str(out_path.with_suffix("")).replace("%", "%%") + number + tag + ".%(ext)s"

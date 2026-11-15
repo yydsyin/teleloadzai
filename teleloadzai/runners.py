@@ -414,9 +414,8 @@ def _xhs_skipped(tail: list[str]) -> str:
     of every note it ever downloaded. Saying "already there" would be false.
     """
     if any("存在下载记录" in line for line in tail):
-        return ("XHS-Downloader skipped this note: it keeps a history of every "
-                "note it has downloaded, and this one is in it. The file may be "
-                "in another folder. Press \"Download again\" to get it here.")
+        return ("XHS-Downloader already downloaded this note once. Press "
+                "\"Download again\" to get it here.")
     return ""
 
 
@@ -536,8 +535,8 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
     address = data.get("downloads") or ""
     if not isinstance(address, str) or not address.startswith("http"):
         raise RunnerError(
-            "TikTokDownloader found the work but gave no file to download. "
-            "It may be a photo post, or a live stream that has ended.")
+            "TikTokDownloader found no file to download. "
+            "It may be a photo post, or an ended live stream.")
 
     name = _file_name(request, _clean_name(data))
     name = _reserve(request, name)
@@ -697,8 +696,7 @@ def _already_there(target: Path, request: Request) -> str:
     """
     if request.force or request.out_name or not target.exists():
         return ""
-    return (f"\"{target.name}\" is already in this folder, and Teleloadzai "
-            "never replaces a file without asking.")
+    return (f"\"{target.name}\" is already in this folder.")
 
 
 def _cover(address: object, beside: Path, site: str) -> Path | None:
@@ -1043,8 +1041,7 @@ def _move_out(pairs: list[tuple[Path, str]], request: Request,
                     pass
                 failure = RunnerError(
                     f"\"{name}\" was downloaded, but could not be put in the folder: "
-                    f"{problem.strerror or problem}. It is kept aside, and Teleloadzai "
-                    "puts it in the folder the next time it starts.")
+                    f"{problem.strerror or problem}. It is moved there at the next start.")
                 failure.saved = moved       # the files before it ARE there: said
                 failure.keep_work = True    # never deleted with the work folder
                 raise failure from problem
@@ -1113,8 +1110,8 @@ def _file_name(request: Request, found: str = "") -> str:
     if request.out_name:
         # The user's own name is never cut: Windows asked about that one.
         if units(request.out_name) > name_room(request.out_dir):
-            raise PathTooLong("The name chosen in \"Save as\" is too long for Windows once "
-                              "Teleloadzai adds its working endings. Choose a shorter name "
+            raise PathTooLong("The name chosen in \"Save as\" is too long for Windows. "
+                              "Choose a shorter name "
                               "or folder.")
         return request.out_name
     # Cut to what the folder leaves (a deep folder + a long caption went over
@@ -1583,8 +1580,7 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
     moved, already = _move_out(pairs, request, own_names)
     if not moved:
         return RunResult([], tail, skip_reason=(
-            f"\"{already[0]}\" is already in this folder, and Teleloadzai never "
-            "replaces a file without asking."))
+            f"\"{already[0]}\" is already in this folder."))
     note = (f"yutto said it had no Bilibili log-in, so this video is {TOP_WITHOUT_LOGIN['yutto']}p "
             "at most." if no_login else "")
     return RunResult(moved, tail, note=note)

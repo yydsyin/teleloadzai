@@ -95,7 +95,7 @@ SPECS: tuple[ToolSpec, ...] = (
              asset_exclude=("shared",), extract_only=("ffmpeg.exe", "ffprobe.exe")),
 
     ToolSpec("n-m3u8dl-re", "N_m3u8DL-RE", "nilaoda/N_m3u8DL-RE", "zip",
-             what_for="For stream links (.m3u8, .mpd), when yt-dlp is not enough.",
+             what_for="Stream links (.m3u8, .mpd).",
              exe_name="N_m3u8DL-RE.exe", asset_keywords=("win-x64",),
              extract_only=("N_m3u8DL-RE.exe",)),
 
@@ -129,11 +129,11 @@ SPECS: tuple[ToolSpec, ...] = (
              exe_name="XHS-Downloader.exe", asset_keywords=("Windows", "X64")),
 
     ToolSpec("streamlink", "Streamlink", "streamlink/windows-builds", "zip",
-             what_for="Records a live stream while it happens.",
+             what_for="Records live streams.",
              exe_name="streamlink.exe", asset_keywords=(".zip",)),
 
     ToolSpec("gallery-dl", "gallery-dl", "mikf/gallery-dl", "pip",
-             what_for="Instagram and Pinterest: photos, carousels, stories.",
+             what_for="Instagram and Pinterest photos and videos.",
              pip_name="gallery-dl", module="gallery_dl", needs_python=True,
              requires=("Python",)),
 
@@ -664,8 +664,8 @@ def _install_exe(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
         except PermissionError:
             time.sleep(1)
     temporary.unlink(missing_ok=True)
-    raise InstallError(f"{tool.name} is in use by another program, so it could not be "
-                       "replaced. The installed one was kept: try again in a moment.")
+    raise InstallError(f"{tool.name} is in use by another program. "
+                       "The installed one was kept: try again in a moment.")
 
 
 def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> None:
