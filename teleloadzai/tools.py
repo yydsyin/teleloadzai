@@ -38,6 +38,12 @@ from .paths import BIN_DIR, DATA_DIR, ensure_dirs
 
 CACHE_FILE = DATA_DIR / "tools.json"
 _cache_lock = threading.RLock()
+# bin/pylibs: a pip install and the clean-up of unused packages must not
+# overlap (hunt, 2026-11-15). The lock covers only the counter and the
+# clean-up's quick file work, never pip's minutes (a lock around something
+# slow is what the grids' pass 2 forbids).
+_pylibs_lock = threading.Lock()
+_pip_running = 0
 # Decision 18, changed by the user 2026-10-21: every 6 hours, not 24. A site
 # that breaks gets its fix in yt-dlp within hours, and the app knew of it a
 # day later. 8 tools x 4 checks = 32 requests a day; GitHub allows 60 an hour.
@@ -776,16 +782,23 @@ def _install_pip(tool: ToolSpec, on_progress: ProgressFn | None) -> None:
     if on_progress:
         on_progress(f"installing {tool.name} with pip", 10)
 
-    finished = subprocess.run(
-        [python, "-m", "pip", "install", "--upgrade", "--no-input",
-         "--target", str(libs_dir()), tool.pip_name],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=900, creationflags=_NO_WINDOW,
-    )
-    if finished.returncode != 0:
-        last = (finished.stderr or finished.stdout or "").strip().splitlines()
-        raise InstallError(last[-1] if last else "pip failed")
-    _drop_old_records()
+    global _pip_running
+    with _pylibs_lock:                  # waits only for a clean-up's file work
+        _pip_running += 1
+    try:
+        finished = subprocess.run(
+            [python, "-m", "pip", "install", "--upgrade", "--no-input",
+             "--target", str(libs_dir()), tool.pip_name],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=900, creationflags=_NO_WINDOW,
+        )
+        if finished.returncode != 0:
+            last = (finished.stderr or finished.stdout or "").strip().splitlines()
+            raise InstallError(last[-1] if last else "pip failed")
+        _drop_old_records()
+    finally:
+        with _pylibs_lock:
+            _pip_running -= 1
 
 
 def _drop_old_records() -> None:
@@ -999,12 +1012,22 @@ def _delete_package(package) -> bool:
     """Delete one package's files and its record, inside bin/pylibs only.
     True when its record is gone (it no longer counts as installed)."""
     record = _record_folder(package)
+    held = False
     for path in _package_files(package):
+        # The record's own files (METADATA, RECORD) go last, with the record,
+        # only if nothing was held: deleted here they broke a kept record.
+        if record is not None and record in path.parents:
+            continue
         try:
             path.unlink(missing_ok=True)
         except OSError:
-            pass                        # held by Windows: the record decides
+            held = True                 # held by Windows (a program using it)
     if record is None:
+        return False
+    if held:
+        # Its record stays, so it still counts as installed and a later
+        # Remove tries again. Deleting the record anyway left orphan files no
+        # list could ever name again, and said "removed" (hunt, 2026-11-15).
         return False
     shutil.rmtree(record, ignore_errors=True)
     return not record.exists()
@@ -1027,6 +1050,19 @@ def remove_unneeded() -> list[str]:
     only inside bin/pylibs (`_delete_package` -- never `pip uninstall`, which
     follows `../../bin/` out of it). Returns the names really gone, judged by
     what is left."""
+    with _pylibs_lock:                  # fast file work only, never pip itself
+        if _pip_running:
+            # A pip install is filling bin/pylibs: the packages it has put
+            # there are not yet named by any record, and would look unneeded
+            # (hunt, 2026-11-15).
+            from . import console
+            console.add("app", "Teleloadzai: a program is installing, so unused packages are "
+                               "kept for now. They go the next time a program is removed.", "note")
+            return []
+        return _remove_unneeded()
+
+
+def _remove_unneeded() -> list[str]:
     names = unneeded_packages()
     if not names:
         return []
@@ -1059,10 +1095,16 @@ def remove(tool_id: str) -> bool:
         # `pip uninstall`, which follows `../../bin/` into Teleloadzai's bin/
         # (`_package_files`, 2026-11-10).
         package = _pip_packages().get(_package_key(tool.pip_name))
-        if package is not None:
-            _delete_package(package)
-        for leftover in libs_dir().glob(f"{tool.module}*"):
-            shutil.rmtree(leftover, ignore_errors=True) if leftover.is_dir() else leftover.unlink(missing_ok=True)
+        # No package, or one whose record cannot be found: the leftovers by
+        # the module's name are all there is to delete (hunt round 2).
+        gone = (_delete_package(package)
+                if package is not None and _record_folder(package) is not None else True)
+        # Its leftovers only once it is really gone: the glob also matches its
+        # record (`gallery_dl-1.32.19.dist-info`), and deleting that while a
+        # file was held made the package an orphan (hunt, 2026-11-15).
+        if gone:
+            for leftover in libs_dir().glob(f"{tool.module}*"):
+                shutil.rmtree(leftover, ignore_errors=True) if leftover.is_dir() else leftover.unlink(missing_ok=True)
         # And what it brought with it, if nothing else needs it now.
         if installed_path(tool_id) is None:
             remove_unneeded()

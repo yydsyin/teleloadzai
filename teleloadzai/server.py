@@ -633,14 +633,17 @@ def start_install(tool_id: str) -> dict:
             console.add(line_id, f"{'Updating' if tools.status(tool_id, check_online=False)['installed'] else 'Installing'} {name}", "head")
             # Never while this tool downloads (decision 19): it waits, and
             # says so. Its new downloads do not start meanwhile.
-            while QUEUE.busy(tool_id) or commands.busy(tool_id):
-                count = QUEUE.busy(tool_id)
-                _set_install(tool_id, stage=(f"waits for {count} download"
-                             f"{'s' if count > 1 else ''} to finish") if count
-                             else "waits for the Console's command to finish", percent=0)
-                time.sleep(2)
+            # Held FIRST, then the wait: a Console command checks `held`, so
+            # none can start between the wait and the install (hunt,
+            # 2026-11-15; the route also checks again after starting).
             QUEUE.hold(tool_id)
             try:
+                while QUEUE.busy(tool_id) or commands.busy(tool_id):
+                    count = QUEUE.busy(tool_id)
+                    _set_install(tool_id, stage=(f"waits for {count} download"
+                                 f"{'s' if count > 1 else ''} to finish") if count
+                                 else "waits for the Console's command to finish", percent=0)
+                    time.sleep(2)
                 before = tools.status(tool_id, check_online=False)
                 tools.install(tool_id, step)
                 after = tools.status(tool_id, check_online=False)
@@ -1144,14 +1147,27 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/console/run":
             # One of our tools with the user's own arguments (decision 42):
             # no shell, split in commands.split, run in the download folder.
-            if QUEUE.held(str(body.get("tool") or "")):
-                self._json({"error": "This program is being updated. Run the command when it is done."}, 400)
+            tool_id = str(body.get("tool") or "")
+            typed = str(body.get("args") or "")
+            busy_words = "This program is being updated. Run the command when it is done."
+            if len(typed) > 8000:
+                # Cut, it would run a different command than the one typed.
+                self._json({"error": "This command is too long (8,000 characters at most)."}, 400)
+                return
+            if QUEUE.held(tool_id):
+                self._json({"error": busy_words}, 400)
                 return
             try:
-                commands.run(str(body.get("tool") or ""), str(body.get("args") or "")[:8000],
-                             download_folder())
+                commands.run(tool_id, typed, download_folder())
             except commands.CommandError as problem:
                 self._json({"error": str(problem)}, 400)
+                return
+            # An update that began in the instant between the check and the
+            # start: the command gives way (the update holds first, then
+            # waits for commands -- hunt, 2026-11-15).
+            if QUEUE.held(tool_id):
+                commands.stop()
+                self._json({"error": busy_words}, 400)
                 return
             self._json({"ok": True, "command": commands.state()})
             return

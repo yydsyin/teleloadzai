@@ -121,6 +121,7 @@ class RunResult:
     # A sentence for the finished row, when the run worked but not quite as
     # asked (yutto ran without the log-in it was given).
     note: str = ""
+    no_login_given: bool = False    # cookies were allowed, but none could be given
 
     @property
     def nothing_downloaded(self) -> bool:
@@ -1372,9 +1373,14 @@ def run(
             # yutto: Bilibili's log-in in a file of its own, for this run
             # only, handed in as `cookie_file` (`_yutto`), gone afterwards.
             with cookies.yutto_auth(request.cookie_header) as auth:
-                return _run_in(work, recipe, exe, head, tool_id,
-                               dataclasses.replace(request, cookie_file=auth),
-                               on_progress, on_start, on_step, on_bytes, on_line)
+                result = _run_in(work, recipe, exe, head, tool_id,
+                                 dataclasses.replace(request, cookie_file=auth),
+                                 on_progress, on_start, on_step, on_bytes, on_line)
+                # No Bilibili log-in to give (none saved): yutto ran as a
+                # visitor, whatever the switch said -- what needs.py learns
+                # from this run must say so (hunt, 2026-11-15).
+                result.no_login_given = auth is None
+                return result
         return _run_in(work, recipe, exe, head, tool_id, request,
                        on_progress, on_start, on_step, on_bytes, on_line)
     except Exception as problem:

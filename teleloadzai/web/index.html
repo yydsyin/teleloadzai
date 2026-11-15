@@ -2802,7 +2802,9 @@ function jobProgress(job) {
   else if (job.state === "error") right = "Failed";
   else if (recordedRow(job)) right = "Recorded";
   else if (job.state === "cancelled") right = job.interrupted ? "Interrupted" : "Stopped";
-  else if (job.state === "waiting") right = "Waiting";
+  // True in both stages of an update: while it runs, and while it still
+  // waits for a recording or a Console command (hunt round 3, 2026-11-15).
+  else if (job.state === "waiting") right = job.updating ? "Waiting: its program updates first" : "Waiting";
   // A live recording has a real measure: the time against its limit
   // (decision 33's own example, "14 of 60 minutes" -- never shown until
   // loop round 2, 2026-10-23). The bar follows it.
@@ -4197,8 +4199,13 @@ let commandRunning = false;
 
 async function loadConsoleTools() {
   let data;
-  try { data = await api("/api/console/tools"); } catch { return; }
-  if (data.error) return;
+  try { data = await api("/api/console/tools"); } catch { data = null; }
+  if (!data || data.error) {
+    // Not "no program installed": the list could not be asked at all
+    // (hunt, 2026-11-15). The page says why, the next visit asks again.
+    setStatus("The Console's program list could not be loaded. Open the Console again.");
+    return;
+  }
   consoleTools = data.tools || [];
   const select = $("con-tool");
   const keep = select.value;
@@ -4260,14 +4267,20 @@ function showCommand(state) {
 $("con-tool").addEventListener("change", renderGuide);
 $("con-bar").addEventListener("submit", async (event) => {
   event.preventDefault();
+  // No answer at all (Teleloadzai stopped): said, never a button that does
+  // nothing -- above all Stop (hunt round 5, 2026-11-15).
+  const silent = `${APP_NAME} did not answer. Restart ${APP_NAME}.`;
   if (commandRunning) {
-    await api("/api/console/stop", {});
+    try { await api("/api/console/stop", {}); }
+    catch { setStatus(silent); return; }
     pollConsole();
     return;
   }
   const tool = $("con-tool").value;
   if (!tool) { setStatus("Install a program on Programs first."); return; }
-  const answer = await api("/api/console/run", { tool, args: $("con-args").value });
+  let answer;
+  try { answer = await api("/api/console/run", { tool, args: $("con-args").value }); }
+  catch { setStatus(silent); return; }
   if (answer.error) { setStatus(answer.error); return; }
   showCommand(answer.command);
   pollConsole();

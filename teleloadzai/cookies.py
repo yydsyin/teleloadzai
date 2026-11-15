@@ -214,6 +214,22 @@ def _toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=True)
 
 
+def _yutto_pairs(enabled: bool) -> dict[str, str]:
+    """The two Bilibili fields yutto reads, when saved. Values stay here."""
+    pairs = {}
+    for part in header_for("bilibili.com", enabled).split("; "):
+        name, _, value = part.partition("=")
+        if name in ("SESSDATA", "bili_jct") and value:
+            pairs[name] = value
+    return pairs
+
+
+def yutto_login_saved(enabled: bool) -> bool:
+    """Would `yutto_auth` give yutto a log-in now? Asked before a run, so a
+    failed or stopped run says the truth too (hunt round 2, 2026-11-15)."""
+    return "SESSDATA" in _yutto_pairs(enabled)
+
+
 @contextmanager
 def yutto_auth(enabled: bool) -> Iterator[Path | None]:
     """yutto's log-in file for ONE run, or None when there is no Bilibili
@@ -226,11 +242,7 @@ def yutto_auth(enabled: bool) -> Iterator[Path | None]:
     ⚠️ The file IS secret: its path goes on yutto's command line, its
     contents never do, and they are never printed (hard rule 1).
     """
-    pairs = {}
-    for part in header_for("bilibili.com", enabled).split("; "):
-        name, _, value = part.partition("=")
-        if name in ("SESSDATA", "bili_jct") and value:
-            pairs[name] = value
+    pairs = _yutto_pairs(enabled)
     if "SESSDATA" not in pairs:
         yield None
         return

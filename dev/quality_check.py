@@ -80,8 +80,10 @@ EXTRACTORS = {
 _MISSING = re.compile(r"Format\(s\) (.+?) are missing; (.+?)\.")
 
 
-def _cookies_on() -> bool:
-    """The app's "Use my log-ins" switch, read from its settings file."""
+def _cookies_on() -> bool | None:
+    """The app's "Use my log-ins" switch, read from its settings file. None
+    when the file cannot be read: said as such, never taken for "off"
+    (hunt, 2026-11-15)."""
     for _ in range(5):          # the app may be replacing the file this instant
         try:
             return json.loads(SETTINGS_FILE.read_text(encoding="utf-8")).get("cookies_enabled") is True
@@ -89,7 +91,7 @@ def _cookies_on() -> bool:
             return False
         except (OSError, ValueError):
             time.sleep(0.2)
-    return False
+    return None
 
 
 def _error_of(text: str) -> str:
@@ -154,7 +156,7 @@ def with_my_cookies(url: str) -> dict:
         copy.unlink(missing_ok=True)
 
 
-def check_site(site: str, links: list[str], cookies_on: bool) -> dict:
+def check_site(site: str, links: list[str], cookies_on: bool | None) -> dict:
     result: dict = {"checked": time.strftime("%Y-%m-%d %H:%M"), "failed_links": []}
     sign = login.site_state(site)
     result["sign"] = sign
@@ -168,7 +170,9 @@ def check_site(site: str, links: list[str], cookies_on: bool) -> dict:
         result["broken"] = True
         return result
 
-    if not cookies_on:
+    if cookies_on is None:
+        result["your_cookies"] = {"skipped": "the app's settings file could not be read"}
+    elif not cookies_on:
         result["your_cookies"] = {"skipped": "“Use my log-ins” is off in the app"}
     elif not cookies.COOKIE_FILE.is_file():
         result["your_cookies"] = {"skipped": "no cookie file"}
@@ -186,12 +190,16 @@ def _tag(text: str) -> tuple[int, ...]:
     return tuple(int(part) for part in re.findall(r"\d+", text or ""))
 
 
-def releases_since(seen: str) -> list[tuple[str, set[str]]]:
-    """yt-dlp releases newer than `seen`, each with the sites its notes name."""
+def releases_since(seen: str) -> tuple[list[tuple[str, set[str]]], bool]:
+    """yt-dlp releases newer than `seen`, each with the sites its notes name,
+    and whether the list reaches back to `seen` -- False when more releases
+    came out than the page holds (30): the older ones' notes were not read."""
     request = urllib.request.Request(NOTES_URL, headers={
         "User-Agent": "quality-check", "Accept": "application/vnd.github+json"})
     with urllib.request.urlopen(request, timeout=30) as answer:
         rows = json.load(answer)
+    tags = [_tag(row.get("tag_name") or "") for row in rows]
+    complete = not tags or not _tag(seen) or min(tags) <= _tag(seen)
     found = []
     for row in rows:
         tag, body = row.get("tag_name") or "", row.get("body") or ""
@@ -205,7 +213,7 @@ def releases_since(seen: str) -> list[tuple[str, set[str]]]:
         sites = {site for site, pattern in EXTRACTORS.items()
                  if any(re.search(pattern, name.strip().lower()) for name in names)}
         found.append((tag, sites))
-    return sorted(found, key=lambda pair: _tag(pair[0]))
+    return sorted(found, key=lambda pair: _tag(pair[0])), complete
 
 
 def due_sites(sites: list[str], table: dict, notes_seen: str) -> tuple[dict[str, str], str, list[str]]:
@@ -214,9 +222,15 @@ def due_sites(sites: list[str], table: dict, notes_seen: str) -> tuple[dict[str,
     problems: list[str] = []
     old = table.get("sites", {})
     for site in sites:
-        checked = (old.get(site) or {}).get("checked")
+        entry = old.get(site) or {}
+        checked = entry.get("checked")
         if not checked:
             due[site] = "never read"
+            continue
+        if entry.get("retry") or entry.get("broken"):
+            # Its last read failed (no network, links gone): the reason it was
+            # due is not spent by a failure (hunt, 2026-11-15).
+            due[site] = "its last read failed"
             continue
         days = (time.time() - time.mktime(time.strptime(checked, "%Y-%m-%d %H:%M"))) / 86400
         if days > FLOOR_DAYS:
@@ -224,7 +238,13 @@ def due_sites(sites: list[str], table: dict, notes_seen: str) -> tuple[dict[str,
 
     newest = notes_seen
     try:
-        for tag, named in releases_since(notes_seen):
+        releases, complete = releases_since(notes_seen)
+        if not complete:
+            # More releases than one page of notes: the older ones were not
+            # read, so any site may have changed -- all of them are read.
+            for site in sites:
+                due.setdefault(site, "more than 30 yt-dlp releases since the last run")
+        for tag, named in releases:
             newest = tag
             for site in sorted(named & set(sites)):
                 due.setdefault(site, f"yt-dlp {tag} changed its code for this site")
@@ -263,19 +283,25 @@ def tell(title: str, text: str, report_file: Path | None) -> None:
         time.sleep(12)          # the icon lives only with its box: closing ends it
         notify.close()
     except Exception as problem:
+        # Under pythonw.exe a print goes nowhere: the log keeps it (hunt,
+        # 2026-11-15). Not a "PROBLEM" line -- a lost message is no reason
+        # to read the sites again.
         print(f"The Windows message could not be shown: {problem}")
+        log_run(f"MESSAGE NOT SHOWN ({title}): {type(problem).__name__}: {problem}")
 
 
 def _ran_today() -> bool:
     """A finished run is already in today's log. The task starts at each log-on
     (the PC is off at any fixed hour, 2026-11-15): once a day is enough. A crash
-    does not count -- the next log-on tries again."""
+    does not count, nor a run that met a problem (release notes unreadable,
+    no network) -- the next log-on tries again (hunt, 2026-11-15)."""
     try:
         lines = RUNS_LOG.read_text(encoding="utf-8").splitlines()
     except OSError:
         return False
     today = time.strftime("%Y-%m-%d")
-    return any(line.startswith(today) and "CRASHED" not in line for line in lines)
+    return any(line.startswith(today) and "CRASHED" not in line and "PROBLEM:" not in line
+               and "MESSAGE NOT SHOWN" not in line for line in lines)
 
 
 def log_run(line: str) -> None:
@@ -382,26 +408,45 @@ def main() -> int:
     missing_links = sorted(served - set(links))
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    problems: list[str] = []
+    # A copy of the whole cookie file left by a run cut off mid-read (log-off,
+    # shut-down): deleted before anything else (hunt, 2026-11-15).
+    if RUN_COPIES.is_dir():
+        for leftover in RUN_COPIES.iterdir():
+            try:
+                leftover.unlink()
+            except OSError as problem:
+                problems.append(f"a cookie copy from an earlier run could not be deleted: {problem.strerror}")
     table: dict = {}
     if TABLE_FILE.is_file():
         table = json.loads(TABLE_FILE.read_text(encoding="utf-8"))
     old: dict = table.get("sites", {})
 
-    version = subprocess.run([str(ytdlp.require_ytdlp()), "--version"], capture_output=True,
-                             text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
+    asked = subprocess.run([str(ytdlp.require_ytdlp()), "--version"], capture_output=True,
+                           text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    version = (asked.stdout or "").strip()
+    if asked.returncode != 0 or not _tag(version):
+        # Never go on with an empty version: every release would look new
+        # (hunt, 2026-11-15). The crash path says it in the log and a message.
+        raise RuntimeError(f"yt-dlp --version answered code {asked.returncode}: "
+                           f"{cookies.redact((asked.stderr or asked.stdout or '').strip())[:160]}")
     # The release notes already taken into account: at first, the yt-dlp the
     # table was made with.
     notes_seen = table.get("notes_seen") or table.get("ytdlp") or version
-    problems: list[str] = []
     reasons: dict[str, str] = {}
     if args.due and _ran_today():
         print("Already ran today.")
         return 0
     if args.due:
-        reasons, notes_seen, problems = due_sites(sites, table, notes_seen)
+        reasons, newest, found = due_sites(sites, table, notes_seen)
+        problems += found
+        # With --site, the other sites a release named were not read: their
+        # release stays unspent for the next full run (hunt round 2).
+        if not args.site:
+            notes_seen = newest
         sites = [s for s in sites if s in reasons]
         if not sites:
-            log_run("nothing due" + "".join(f" · {p}" for p in problems))
+            log_run("nothing due" + "".join(f" · PROBLEM: {p}" for p in problems))
             table["notes_seen"] = notes_seen
             _write(TABLE_FILE, json.dumps({**table, "sites": old}, ensure_ascii=False, indent=1))
             if problems:
@@ -409,6 +454,8 @@ def main() -> int:
             print("Nothing due." + "".join(f"\n{p}" for p in problems))
             return 0
     cookies_on = _cookies_on()
+    if cookies_on is None:
+        problems.append("the app's settings file could not be read, so no read used your cookies")
     new: dict = {}
     for site in sites:
         started = time.monotonic()
@@ -418,7 +465,8 @@ def main() -> int:
               f"{'BROKEN' if now.get('broken') else _said(now.get('no_cookies'))}"
               f"{'' if now.get('broken') else '  |  ' + _said(now.get('your_cookies'))}", flush=True)
 
-    header = [f"- yt-dlp {version} · “Use my log-ins” {'on' if cookies_on else 'off'} · {len(sites)} sites read"]
+    switch = "unknown (settings unreadable)" if cookies_on is None else ("on" if cookies_on else "off")
+    header = [f"- yt-dlp {version} · “Use my log-ins” {switch} · {len(sites)} sites read"]
     if missing_links:
         header.append(f"- No test link yet for: {', '.join(missing_links)}")
     if reasons:
@@ -427,11 +475,21 @@ def main() -> int:
     text, changed, broken = report(new, {s: old[s] for s in new if s in old}, header)
     report_file = OUT_DIR / f"report-{time.strftime('%Y-%m-%d-%H%M%S')}.md"
     _write(report_file, text)
-    merged = {**old, **new}
+    merged = dict(old)
+    for site, now in new.items():
+        before = old.get(site)
+        if now.get("broken") and before and not before.get("broken"):
+            # A failed read never replaces the last good one: that baseline
+            # is what the next read is compared with, and the site stays due
+            # until a read works (hunt, 2026-11-15).
+            merged[site] = {**before, "retry": True,
+                            "last_failure": {"checked": now["checked"], "failed_links": now["failed_links"]}}
+        else:
+            merged[site] = now
     _write(TABLE_FILE, json.dumps({"ytdlp": version, "notes_seen": notes_seen, "sites": merged},
                                   ensure_ascii=False, indent=1))
     log_run(f"{len(sites)} read ({', '.join(sites)}) · {changed} changed · {broken} broken"
-            + "".join(f" · {p}" for p in problems) + f" · {report_file.name}")
+            + "".join(f" · PROBLEM: {p}" for p in problems) + f" · {report_file.name}")
     print(f"\nReport: {report_file}")
     if changed or broken or problems:
         parts = [f"{changed} change{'s' if changed != 1 else ''} to review"] if changed else []

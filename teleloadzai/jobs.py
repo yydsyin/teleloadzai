@@ -266,6 +266,7 @@ class Job:
     # never given them (decision 34).
     cookie_note: str = ""
     cookie_header: bool = False   # may this job use cookies as a header?
+    no_login_given: bool = False  # allowed, but the run had none to give (yutto)
     platform: str = ""          # which site, so a failure can offer its log-in
     # Subtitles (Phase 2 item 7): "" off, "embed" inside the MP4, "file" a
     # .srt beside it; `sub_lang` the track's code ("en", "fr", "en-orig").
@@ -379,7 +380,7 @@ class Job:
             # used, and the reason when they were not.
             # Either road counts. Saying "no cookies" after a job that used
             # them as a header would be a small lie the user cannot check.
-            "with_cookies": bool(self.cookie_file) or self.cookie_header,
+            "with_cookies": bool(self.cookie_file) or (self.cookie_header and not self.no_login_given),
             "cookie_note": self.cookie_note,
             "platform": self.platform,
             # Did the tool itself blame a missing log-in? Only then may the
@@ -652,7 +653,14 @@ class Queue:
     def all(self) -> list[dict]:
         """Newest first, which is the order the UI shows."""
         with self._lock:
-            return [self._jobs[i].as_dict() for i in reversed(self._order)]
+            rows = [self._jobs[i].as_dict() for i in reversed(self._order)]
+            # A waiting download whose program is being updated says so: it
+            # sat as a bare "Waiting" while the update waited (hunt round 2,
+            # 2026-11-15). FFmpeg serves every download (`_pump`).
+            for row in rows:
+                row["updating"] = row["state"] == WAITING and (
+                    row["tool"] in self._held or "ffmpeg" in self._held)
+            return rows
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
@@ -942,6 +950,14 @@ class Queue:
                     on_bytes=on_bytes, on_line=on_line,
                 )
 
+        # yutto with the switch on but no Bilibili log-in saved runs with
+        # nothing: decided BEFORE the run, so a failed or stopped row says it
+        # too, not only a finished one (hunt round 2, 2026-11-15).
+        if job.tool == "yutto" and job.cookie_header:
+            try:
+                job.no_login_given = not cookies.yutto_login_saved(True)
+            except Exception:
+                job.no_login_given = False
         try:
             # Each run gets its own copy of the cookie file: yt-dlp and
             # gallery-dl write their jar back when they exit (cookies.py).
@@ -967,6 +983,8 @@ class Queue:
                 note = ytdlp.subs_note(made, job.subs)
             # The run's own sentence (yutto without the log-in it was given).
             note = " ".join(filter(None, [note, getattr(result, "note", "")]))
+            # The run's own answer wins when it has one (the file it really got).
+            job.no_login_given = bool(getattr(result, "no_login_given", job.no_login_given))
 
             with self._lock:
                 # A stopped row keeps files only for a live recording, which
@@ -1077,7 +1095,9 @@ class Queue:
             # program asked for a log-in -> "account". Logged in proves
             # nothing about the need, so nothing is written then.
             try:
-                given = bool(job.cookie_file) or job.cookie_header
+                # yutto with the switch on but no Bilibili log-in saved ran
+                # with nothing: "none", not what the site's sign says.
+                given = bool(job.cookie_file) or (job.cookie_header and not job.no_login_given)
                 if state == DONE and not skipped and job.platform:
                     seen = login.site_state(job.platform) if given else "none"
                     if seen in ("none", "visited"):
