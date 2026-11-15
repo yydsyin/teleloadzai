@@ -74,6 +74,18 @@
   .side button:not([aria-current="page"]):hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
   .side button[aria-current="page"] { color: var(--ink); font-weight: 600; background: color-mix(in srgb, var(--go) 24%, var(--card)); }
   .side .side-bottom { margin-top: auto; }
+  /* An update is ready (the user, 2026-11-15: "a red ! on the Programs
+     button"). Still there after "Later" and in Manual mode. The card's
+     colour on the red: readable in both themes. */
+  .side button { position: relative; }
+  .side-badge {
+    /* Beside the 22 px icon, never on it: at 50% + 6px it covered the
+       wrench's top corner (the user's screenshot, 2026-11-15). */
+    position: absolute; top: 2px; left: calc(50% + 12px); min-width: 17px; height: 17px; padding: 0 4px;
+    border-radius: 99px; background: var(--bad); color: var(--card);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 4%, var(--bg));
+    font-size: 12px; font-weight: 700; line-height: 17px; text-align: center;
+  }
   /* 48 px above every page's title: at 16 the title touched the top of the
      window (the user, 2026-10-26, model A of three). */
   .wrap { padding-top: 48px; }
@@ -921,7 +933,7 @@
 <nav class="side" aria-label="Pages">
   <button type="button" data-go="main" aria-current="page"><span class="nav-icon icon-download" aria-hidden="true"></span>Download</button>
   <button type="button" data-go="console"><span class="nav-icon icon-terminal" aria-hidden="true"></span>Console</button>
-  <button type="button" data-go="programs"><span class="nav-icon icon-tool" aria-hidden="true"></span>Programs</button>
+  <button type="button" data-go="programs" id="nav-programs"><span class="nav-icon icon-tool" aria-hidden="true"></span>Programs<span class="side-badge hidden" id="programs-badge" aria-hidden="true">!</span><span class="sr-only" id="programs-badge-words"></span></button>
   <button type="button" data-go="sites"><span class="nav-icon icon-globe" aria-hidden="true"></span>Sites</button>
   <button type="button" data-go="settings" class="side-bottom"><span class="nav-icon icon-gear" aria-hidden="true"></span>Settings</button>
 </nav>
@@ -3904,6 +3916,12 @@ function renderUpdateBar() {
   // How many it will update, said on the button (the user, 2026-10-26):
   // the same list updateAll() goes through.
   for (const id of ["tools-update-all", "update-bar-all"]) $(id).textContent = `Update all (${list.length})`;
+  // The red "!" on the menu's Programs button: whatever the mode, and after
+  // "Later" too -- the reminder never goes away by itself.
+  const ready = list.length ? `${list.length} update${list.length > 1 ? "s" : ""} ready` : "";
+  $("programs-badge").classList.toggle("hidden", !ready);
+  $("programs-badge-words").textContent = ready ? `, ${ready}` : "";
+  $("nav-programs").title = ready;
   const show = updateMode === "ask" && (working.length > 0 || (!updateBarLater && list.length > 0));
   $("update-bar").classList.toggle("hidden", !show);
   if (!show) return;

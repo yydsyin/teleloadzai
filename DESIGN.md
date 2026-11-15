@@ -159,6 +159,8 @@ Each link is a parcel. Before Download it gets a **label**: the card with its ti
 
 The layout is **A**. There is one column. The link box sits under its title "Paste a link", and Settings sits alone in the top corner. The card comes under the link box, and the list under it shows all its rows; the page scrolls when they need more room. No name band: the window title already says "Teleloadzai". Settings copies the **Windows 11 Settings app** (model S2): a side menu, and every setting a row.
 
+**The update sign** (the user, 2026-11-15): a red "!" beside the Programs icon in the left menu while an update is ready — 17 px round, `--bad` with the card colour on it, a 2 px ring in the menu's colour, never on the icon itself. Shown in every update mode and after "Later"; its tooltip and screen-reader words say "2 updates ready".
+
 **Key Characteristics:**
 - Warm paper page, a lighter card on top, dark ink text.
 - **One yellow on screen: Download.** Everything else is ink, grey or ochre.
