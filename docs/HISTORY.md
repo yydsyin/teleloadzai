@@ -335,3 +335,13 @@ Round 7: "No real problem found." Two narrow cases left as they are: a log-in re
 - **The notes:** decisions 13 (the Quality ceiling), 17 and 26 and step 6 (yutto beside gallery-dl: Python, on demand) brought up to date (the user's yes).
 
 ⚠️ **Not seen:** the user's real window; the scrollbar control at both sizes (no layout change); a real PC with Python older than 3.11.
+
+### 2026-11-15 — The quality check (developer side only)
+
+The user's plan: our own table of what each site gives, with and without a log-in, kept true by checks that run **on our side only**, cost no tokens, and are reviewed before anything reaches the app.
+
+- **`dev/quality_check.py`** reads one public link per site (the app's own title-read rule, nothing downloaded), with no cookies and with the developer's cookies (a throwaway copy, never written back), and writes `data/quality-check/table.json` + a report (git ignores `data/`: the report shows which sites are logged in, and the repo is public). Test links: `dev/quality_links.json`, mostly yt-dlp's own `_TESTS`, tried in order.
+- **First table, 20 yt-dlp sites:** a log-in changes nothing on 11 sites (YouTube up to 2160p, Instagram, TikTok, Weibo, X, Facebook, Pinterest, SoundCloud, Bandcamp, Niconico, Archive.org); Bilibili's `1080P 高码率` is missing even with a non-premium log-in; **Reddit and Vimeo: yt-dlp asks for a log-in** on every link; Rumble refused both links (403). **Reddit changed** since 2026-09-26 → `login._NEEDS` gained `("reddit", "yt-dlp"): "asked"` and §4 a dated note (the user's yes).
+- **Found, not fixed:** a site whose sign is green only because the log-in window saw a log-in finish (Vimeo: no known log-in cookie) can be refused by yt-dlp as not logged in — to re-check after a new log-in.
+- **The daily run (`--due`)**, started by a Task Scheduler task at each log-on + 15 min (the PC is off at any fixed hour), at most once a day: a site is read when it was never read or not for 90 days, when a yt-dlp release's notes changed its code, or when a download on this PC learned a need that disagrees. One line per run in `runs.log`; a change, a broken check or a crash is said in a Windows message (a click opens the report). Each trigger was made to fire once: the real nightly 2026.11.14 (YouTube), a June date (Archive.org, on a copy), a fake disagreeing need (Twitch, on a copy), a missing links file (crash: file, log line, message — seen by the user, exit 1); the "changed" section with a planted 720p (Twitch). Two flaws found while running it: "asks for a log-in" was filed as a broken check; under `pythonw.exe` the first line crashed.
+- **Not checked:** yutto (no way to list its qualities without downloading), Streamlink (live only), Douyin / Kuaishou / Xiaohongshu (no Quality choice).

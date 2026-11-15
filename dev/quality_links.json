@@ -1,0 +1,23 @@
+{
+  "_about": "Public test links per site for dev/quality_check.py, tried in order: the first that reads is used. Most come from yt-dlp's own tests (_TESTS in yt_dlp/extractor/, read 2026-11-15), picked by its developers to stay up.",
+  "youtube": ["https://www.youtube.com/watch?v=aqz-KE-bpKQ", "https://www.youtube.com/watch?v=a9LDPn-MO4I", "https://www.youtube.com/watch?v=IB3lcPjvWLA", "https://www.youtube.com/watch?v=jNQXAC9IVRw"],
+  "bilibili": ["https://www.bilibili.com/video/BV1Gsnj6XE9M", "https://www.bilibili.com/video/BV13x41117TL", "https://www.bilibili.com/video/BV1bK411W797", "https://www.bilibili.com/video/BV1wP4y1P72h"],
+  "instagram": ["https://www.instagram.com/reel/Chunk8-jurw/", "https://www.instagram.com/p/BQ0eAlwhDrw/", "https://www.instagram.com/reel/CDUMkliABpa/"],
+  "tiktok": ["https://www.tiktok.com/@barudakhb_/video/6984138651336838402", "https://www.tiktok.com/@leenabhushan/video/6748451240264420610", "https://www.tiktok.com/@pokemonlife22/video/7059698374567611694", "https://www.tiktok.com/@denidil6/video/7065799023130643713"],
+  "weibo": ["https://weibo.com/7827771738/N4xlMvjhI", "https://m.weibo.cn/status/4189191225395228", "https://weibo.com/0/4224132150961381", "https://m.weibo.cn/detail/5120561132606436"],
+  "twitter": ["https://twitter.com/captainamerica/status/719944021058060289", "https://twitter.com/starwars/status/665052190608723968", "https://twitter.com/freethenipple/status/643211948184596480", "https://twitter.com/BTNBrentYarina/status/705235433198714880"],
+  "facebook": ["https://www.facebook.com/cnn/videos/10155529876156509/", "https://www.facebook.com/radiokicksfm/videos/3676516585958356/", "https://www.facebook.com/yaroslav.korpan/videos/1417995061575415/", "https://www.facebook.com/onlycleverentertainment/videos/1947995502095005/"],
+  "reddit": ["https://www.reddit.com/r/videos/comments/6rrwyj/that_small_heart_attack/", "https://www.reddit.com/r/aww/comments/90bu6w/heat_index_was_110_degrees_so_we_offered_him_a/", "https://www.reddit.com/r/Unexpected/comments/1cl9h0u/the_insurance_claim_will_be_interesting/", "https://www.reddit.com/r/soccer/comments/1cxwzso/tottenham_1_0_newcastle_united_james_maddison_31/"],
+  "twitch": ["https://www.twitch.tv/videos/635475444", "https://www.twitch.tv/videos/1536751224", "https://www.twitch.tv/xqc/clip/CulturedAmazingKuduDatSheffy-TiZ_-ixAGYR3y2Uy", "https://www.twitch.tv/videos/6528877"],
+  "pinterest": ["https://www.pinterest.com/pin/664281013778109217/", "https://www.pinterest.com/pin/1084663891475263837/", "https://www.pinterest.ca/pin/441282463481903715/"],
+  "vimeo": ["https://vimeo.com/33951933", "https://vimeo.com/393756517", "https://vimeo.com/73445910", "https://vimeo.com/109815029"],
+  "dailymotion": ["http://www.dailymotion.com/video/x5kesuj_office-christmas-party-review-jason-bateman-olivia-munn-t-j-miller_news", "https://www.dailymotion.com/video/x2iuewm_steam-machine-models-pricing-listed-on-steam-store-ign-news_videogames", "http://www.dailymotion.com/video/xhza0o"],
+  "rumble": ["https://rumble.com/vdmum1-moose-the-dog-helps-girls-dig-a-snow-fort.html", "https://rumble.com/v2ea9qb-the-u.s.-cannot-hide-this-in-ukraine-anymore-redacted-with-natali-and-clayt.html"],
+  "odysee": ["https://odysee.com/@gardeningincanada:b/plants-i-will-never-grow-again.-the:e", "https://odysee.com/@BrodieRobertson:5/apple-is-tracking-everything-you-do-on:e", "https://odysee.com/@wickedtruths:2/Biotechnological-Invasion-of-Skin-(April-2023):4"],
+  "soundcloud": ["https://soundcloud.com/the80m/the-following", "https://soundcloud.com/garyvee/sideways-prod-mad-real", "https://soundcloud.com/giovannisarani/mezzo-valzer"],
+  "bandcamp": ["https://relapsealumni.bandcamp.com/track/hail-to-fire", "https://diskotopia.bandcamp.com/track/safehouse"],
+  "mixcloud": ["https://www.mixcloud.com/dholbach/cryptkeeper/", "https://www.mixcloud.com/gillespeterson/caribou-7-inch-vinyl-mix-chat/"],
+  "niconico": ["https://www.nicovideo.jp/watch/sm8628149", "https://www.nicovideo.jp/watch/nm14296458", "https://www.nicovideo.jp/watch/so38016254"],
+  "archive": ["https://archive.org/details/Cops1922", "https://archive.org/details/Election_Ads", "https://archive.org/details/irelandthemakingofarepublic"],
+  "ted": ["https://www.ted.com/talks/candace_parker_how_to_break_down_barriers_and_not_accept_limits", "https://embed.ted.com/talks/janet_stovall_how_to_get_serious_about_diversity_and_inclusion_in_the_workplace"]
+}

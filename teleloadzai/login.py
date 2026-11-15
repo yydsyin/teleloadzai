@@ -189,6 +189,12 @@ _NEEDS = {
     # "Use --username and --password ... (vimeo) to provide account
     # credentials", on 2 links of 2. Never tried with a log-in.
     ("vimeo", "yt-dlp"): "asked",
+    # "Account authentication is required. Use --cookies-from-browser or
+    # --cookies", on 4 public links of 4, with no cookies AND with a visit's
+    # cookies (yt-dlp 2026.11.04.232659, dev/quality_check.py, 2026-11-15).
+    # It worked with no log-in on 2026-09-26: Reddit changed. Never tried
+    # with a log-in; gallery-dl not tried.
+    ("reddit", "yt-dlp"): "asked",
 }
 
 

@@ -217,6 +217,7 @@ The proofs (sizes, ffprobe results, links, dates) are in `docs/HISTORY.md` §4.
 - **Works:** YouTube, Bilibili (then), Facebook, Dailymotion, Odysee, SoundCloud, Bandcamp, Niconico, Archive.org, Pinterest, Weibo (gallery-dl), Reddit / Instagram / TikTok (yt-dlp), Twitch (streamlink), X, Xiaohongshu.
 - **Needs something:** Instagram / gallery-dl (a log-in) · TikTok / TikTokDownloader and Douyin (a **visit**) · Kuaishou (a log-in) · Vimeo (an account, never tried with one).
 - **Not proven:** Rumble, TED, Mixcloud, Twitch with yt-dlp, Reddit / gallery-dl.
+- ⚠️ **Changed 2026-11-15** (`dev/quality_check.py`, yt-dlp 2026.11.04): **Reddit / yt-dlp now asks for an account** ("Account authentication is required", 4 links of 4, with no cookies and with a visit's) — the card says so before Download (`login._NEEDS`). Read without a log-in the same day: TED, Mixcloud and Twitch (yt-dlp) work; Rumble refused both links (403).
 
 Re-verify this table before trusting it. Tools die fast in this field.
 
