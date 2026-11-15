@@ -43,7 +43,32 @@ SEEN_BEFORE = {
     # yutto 2.3.1 with no cookies: a whole 480p video, 2026-11-09 (1080p
     # needs the log-in, said on the card: runners.TOP_WITHOUT_LOGIN).
     "bilibili|yutto": ("none", "2026-11-09"),
+    # The quality check (dev/quality_check.py), 2026-11-15, reviewed by the
+    # user: yt-dlp asked for an account on every public link, with no cookies
+    # and with a visit's ("Account authentication is required" / "only works
+    # when logged-in"). Reddit worked with none on 2026-09-26.
+    "reddit|yt-dlp": ("account", "2026-11-15"),
+    "vimeo|yt-dlp": ("account", "2026-11-15"),
 }
+
+# What a log-in does NOT unlock in the qualities a site offers -- one line
+# under Quality on the card. Filled ONLY from quality-check results the user
+# reviewed (dev/quality_check.py, data/quality-check/), each with its date:
+# sites change what they offer, and the date says how fresh the line is.
+QUALITY_SEEN = {
+    # yt-dlp, BV1Gsnj6XE9M: "Format(s) 1080P 高码率 are missing; you have to
+    # become a premium member", with no cookies AND with a non-premium
+    # log-in; 360p to 1080p came either way. yutto: not checked.
+    "bilibili|yt-dlp": ("Bilibili keeps “1080p high bitrate” for its premium members: "
+                        "a normal log-in did not unlock it.", "2026-11-15"),
+}
+
+
+def quality_note(site: str, program: str) -> str:
+    """The card's line under Quality for this site and program, or ""."""
+    seen = QUALITY_SEEN.get(f"{site}|{program}")
+    return f"{seen[0]} (checked {seen[1]})" if seen else ""
+
 
 _lock = threading.Lock()
 

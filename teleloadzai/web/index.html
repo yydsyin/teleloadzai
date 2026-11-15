@@ -439,7 +439,8 @@
     align-items: center; justify-content: center; align-self: center;
   }
   #result.dead-end .choice, #result.dead-end #quality,
-  #result.dead-end #quality-label, #result.dead-end #quality-why { display: none; }
+  #result.dead-end #quality-label, #result.dead-end #quality-why,
+  #result.dead-end #quality-note { display: none; }
   #status-close:hover, #status-close:focus-visible { opacity: 1; }
   #status-close:focus-visible { outline: 2px solid var(--card); outline-offset: 2px; }
 
@@ -725,6 +726,7 @@
   }
   .controls select { height: 36px; min-width: 130px; padding: 0 10px; font-size: 14px; }
   #quality-why { text-align: right; }
+  #quality-note { margin: 2px 0 6px; font-size: 13px; color: var(--soft); text-align: right; }
 
   .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .head-tools { display: inline-flex; gap: 6px; }
@@ -1006,6 +1008,9 @@
           <span class="hint hidden" id="quality-why"></span>
         </span>
       </div>
+      <!-- What a log-in does not unlock on this site (needs.QUALITY_SEEN,
+           from the reviewed quality check, dated), 2026-11-15. -->
+      <p class="hint hidden" id="quality-note"></p>
       <!-- Subtitles (Phase 2 item 7, drawn and chosen 2026-10-25): only in
            MP4, only when the video HAS subtitles -- otherwise not a word
            (the user: "if there isn't subtitle, it shouldn't be mentioned"). -->
@@ -1810,6 +1815,11 @@ function applyChoices(tool) {
   // The row already says "Quality" (style H, 2026-10-23): not twice.
   $("quality-why").textContent = why.replace(/^Quality: /, "");
   $("quality-why").classList.toggle("hidden", !why);
+  // A quality this site keeps behind more than a log-in (MP4 only: an MP3's
+  // sound is not concerned).
+  const note = mode === "mp4" && tool && !deadEnd(tool) ? tool.quality_note || "" : "";
+  $("quality-note").textContent = note;
+  $("quality-note").classList.toggle("hidden", !note);
   paintSubs(tool);
 }
 

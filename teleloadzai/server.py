@@ -800,6 +800,9 @@ def detection_json(result: Detection) -> dict:
                 # The highest height it can give NOW (yutto: 480 without a
                 # log-in), 0 for no limit known: the Quality list stops there.
                 "top": runners.top_height(option.tool_id, site_logged_in),
+                # What a log-in does not unlock here, from the reviewed
+                # quality check, with its date ("" for nothing known).
+                "quality_note": needs.quality_note(platform.id, option.tool_id) if platform else "",
                 # Formats where it names the file itself: asked a folder.
                 "names_itself": list(runners.NAMES_ITSELF.get(option.tool_id, ())),
             }

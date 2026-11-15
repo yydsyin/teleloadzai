@@ -354,3 +354,10 @@ The user's request: the Console runs commands, and a guide gives basic commands 
 - **The guide** (`commands.GUIDE`): 21 examples for 7 tools, **each run once and seen working**: 16 at once; 4 FFmpeg / FFprobe ones failed only because the test's video had been deleted by the yt-dlp MP3 example before them (re-run on a real video: OK); N_m3u8DL-RE needed `--auto-select` (it crashed asking which stream). XHS-Downloader: no examples yet, said in the guide.
 - **Seen in the test copy (port 8778)**: full screen (1463×834) — output 708 px + guide 320 px, no page scroll; small window (860×814) — guide under the box (box 287 px, guide 277 px with its own scroll), no page scroll either way; "Put in box" selects `<link>`; Run → Stop → "done." / "stopped." (0 yt-dlp process left); a `|` refused in words; the Guide button hides and shows it; Ctrl+Enter in the box does nothing; `/api/console/run` without the token: 403.
 - **Not seen**: the user's real window; a command while an update of the same tool runs (the code path read, not pressed).
+
+### 2026-11-15 — The Quality line from the reviewed check
+
+The user's yes ("build it"), knowing it covers one site today.
+- **`needs.QUALITY_SEEN`**: what a log-in does not unlock, filled only from reviewed quality-check results, each with its date. One line: Bilibili · yt-dlp — "1080p high bitrate" for premium members, a normal log-in did not unlock it (checked 2026-11-15). Served per program as `quality_note` (`server.detection_json`), shown under Quality on the card (`#quality-note`).
+- **Seen in the test copy**: on the Bilibili card with yt-dlp, MP4: shown; yutto (not checked for it): hidden; MP3: hidden; back to yt-dlp / MP4: shown; a YouTube card: hidden. Full screen: one line inside the card; small window: one line, right edge on the Quality list's (813 px), no sideways scroll; no script error.
+- **Also**: `needs.SEEN_BEFORE` gained Reddit and Vimeo · yt-dlp "account" (2026-11-15), so the Sites page says what the card already said.
