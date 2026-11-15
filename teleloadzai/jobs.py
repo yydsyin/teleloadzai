@@ -691,6 +691,11 @@ class Queue:
         with self._lock:
             self._held.add(tool_id)
 
+    def held(self, tool_id: str) -> bool:
+        """This tool is being installed or updated now (`hold`)."""
+        with self._lock:
+            return tool_id in self._held or (tool_id == "ffprobe" and "ffmpeg" in self._held)
+
     def release(self, tool_id: str) -> None:
         with self._lock:
             self._held.discard(tool_id)

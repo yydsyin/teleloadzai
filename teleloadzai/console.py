@@ -1,7 +1,8 @@
 """The Console page's lines: what each program says while it works.
 
 Asked by the user 2026-10-25 (model S1, a Console page like the launcher
-they showed): read-only -- nobody types a command here. Each line is washed
+they showed): read-only until 2026-11-15, when it gained a command box
+(`commands.py`, decision 42) whose lines come here too. Each line is washed
 by `cookies.redact` before it is kept (hard rule 1, decision 37), kept in
 memory only, the last LIMIT lines, and gone when Teleloadzai closes: never
 written to disk by us (the page's "Save as file" is the user's own act).

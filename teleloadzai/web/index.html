@@ -624,7 +624,7 @@
     font: 12.5px/1.65 "Cascadia Mono", Consolas, monospace;
   }
   .con-box.wrap-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .con-box:empty::before { content: "Nothing yet. Title reads, downloads and updates write here while they work."; color: #868c96; }
+  .con-box:empty::before { content: "Nothing yet. Title reads, downloads, updates and your commands write here."; color: #868c96; }
   /* 4.87:1 on the box; #7d838e was 4.33 (critique of 2026-10-31). */
   .con-box .t { color: #868c96; margin-right: 12px; }
   /* "hd", not "head": .head is the page's row that spreads to both ends. */
@@ -635,6 +635,33 @@
      13 px and 6 px margin: red lines sat apart and shifted. */
   .con-box .err { color: #ff8f80; font-size: inherit; margin-top: 0; word-break: normal; }
   .con-box .lk { color: #84b6ff; }
+  /* The command box and its guide (decision 42, model A, 2026-11-15): the
+     guide on the right in full screen; under the box in the small window,
+     where a 300 px column would leave the output too narrow. */
+  .con-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; }
+  .con-body.no-guide { grid-template-columns: minmax(0, 1fr); }
+  .con-body.no-guide .con-guide { display: none; }
+  .con-main { min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+  .con-bar { display: flex; gap: 8px; align-items: center; }
+  .con-bar select, .con-bar input { font-size: 14px; padding: 7px 10px; border-radius: 10px;
+    border: 1px solid var(--line-strong); background: var(--card); color: var(--ink); }
+  .con-bar input { flex: 1; min-width: 0; font: 13px "Cascadia Mono", Consolas, monospace; }
+  .con-bar button { white-space: nowrap; }
+  .con-where { margin: 0; font-size: 13px; color: var(--soft); }
+  .con-guide { min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--card); padding: 12px 14px; }
+  .con-guide-title { margin: 0 0 8px; font-size: 15px; }
+  .con-ex { padding: 8px 0; border-top: 1px solid var(--line); }
+  .con-ex:first-child { border-top: 0; padding-top: 0; }
+  .con-ex code { display: block; font: 12.5px/1.5 "Cascadia Mono", Consolas, monospace;
+    color: var(--ink); overflow-wrap: anywhere; }
+  .con-ex .what { display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+    font-size: 13px; color: var(--soft); margin-top: 2px; }
+  .con-guide .none { font-size: 13px; color: var(--soft); margin: 0; }
+  @media (max-width: 1100px) {
+    .con-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+    .con-guide { max-height: 34vh; }
+  }
   .icon-gear { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z'/%3E%3C/svg%3E"); }
   .icon-cc { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Cpath d='M10 10.5a2 2 0 1 0 0 3M16 10.5a2 2 0 1 0 0 3'/%3E%3C/svg%3E"); }
   #result.dead-end #row-subs { display: none; }
@@ -1384,8 +1411,10 @@
     </div>
   </div>
 
-  <!-- Console (2026-10-25): what each program says while it works. Read
-       only -- nothing is typed here; washed of secrets by the server. -->
+  <!-- Console (2026-10-25): what each program says while it works, washed
+       of secrets by the server. Since 2026-11-15 (decision 42, model A) it
+       also runs one of our programs with ANY of its arguments -- no shell --
+       and shows a guide of examples beside it. -->
   <div data-view="console" id="console-page">
     <h2 class="pane-title page-title" id="con-title" tabindex="-1">Console</h2>
     <div class="con-head">
@@ -1397,9 +1426,26 @@
         <button class="ghost tiny" id="con-save">Save as file</button>
         <button class="ghost tiny" id="con-scroll" aria-pressed="true">Auto-scroll</button>
         <button class="ghost tiny" id="con-wrap" aria-pressed="false">Wrap lines</button>
+        <button class="ghost tiny" id="con-guide-toggle" aria-pressed="true" aria-controls="con-guide">Guide</button>
       </span>
     </div>
-    <div class="con-box" id="con-box" role="log" aria-label="What the programs say" tabindex="0"></div>
+    <div class="con-body" id="con-body">
+      <div class="con-main">
+        <div class="con-box" id="con-box" role="log" aria-label="What the programs say" tabindex="0"></div>
+        <form class="con-bar" id="con-bar" autocomplete="off">
+          <label class="sr-only" for="con-tool">Program</label>
+          <select id="con-tool"></select>
+          <label class="sr-only" for="con-args">Its arguments</label>
+          <input id="con-args" type="text" spellcheck="false" placeholder="-F https://…">
+          <button type="submit" id="con-run">Run</button>
+        </form>
+        <p class="con-where" id="con-where">Runs in your download folder. Any option of the program works, not only the guide's.</p>
+      </div>
+      <aside class="con-guide" id="con-guide" aria-label="Basic commands">
+        <h3 class="con-guide-title" id="con-guide-title">Basic commands</h3>
+        <div id="con-guide-list"></div>
+      </aside>
+    </div>
   </div>
 
   <!-- Programs: its own page in the left menu since 2026-10-25 (model S1);
@@ -4035,7 +4081,7 @@ function showView(name) {
   if (name === "programs") loadTools();   // versions from the cache: instant
   // The Console reads the server's lines once a second, only while shown.
   clearInterval(consoleTimer);
-  if (name === "console") { pollConsole(); consoleTimer = setInterval(pollConsole, 1000); }
+  if (name === "console") { loadConsoleTools(); pollConsole(); consoleTimer = setInterval(pollConsole, 1000); }
   if (name === "sites") {
     loadTools();      // the table names each site's programs
     loadCookies();
@@ -4090,12 +4136,106 @@ async function pollConsole() {
   while (box.childElementCount > 2000) box.firstElementChild.remove();
   if (data.lines.length && $("con-scroll").getAttribute("aria-pressed") === "true") box.scrollTop = box.scrollHeight;
   const running = data.running || [];
-  $("con-chip").textContent = running.length ? "running" : "idle";
-  $("con-chip").classList.toggle("running", running.length > 0);
-  $("con-state").textContent = !running.length ? "No download running"
-    : running.length === 1 ? `1 download: ${running[0].title} (${running[0].tool})`
-    : `${running.length} downloads: ` + running.map((r) => r.title).join(" · ");
+  showCommand(data.command);
+  const busy = running.length > 0 || commandRunning;
+  $("con-chip").textContent = busy ? "running" : "idle";
+  $("con-chip").classList.toggle("running", busy);
+  const tool = consoleTools.find((t) => t.id === (data.command || {}).tool);
+  const yours = commandRunning ? `Your ${tool ? tool.name : ""} command is running`.replace("  ", " ") : "";
+  $("con-state").textContent = !running.length ? (yours || "No download running")
+    : (running.length === 1 ? `1 download: ${running[0].title} (${running[0].tool})`
+      : `${running.length} downloads: ` + running.map((r) => r.title).join(" · "))
+      + (yours ? ` · ${yours}` : "");
 }
+
+// ---- The command box (decision 42, model A, 2026-11-15) -------------------
+// One of our programs with ANY of its arguments; the server splits them and
+// starts the program itself -- no shell. The guide is examples only.
+let consoleTools = [];
+let commandRunning = false;
+
+async function loadConsoleTools() {
+  let data;
+  try { data = await api("/api/console/tools"); } catch { return; }
+  if (data.error) return;
+  consoleTools = data.tools || [];
+  const select = $("con-tool");
+  const keep = select.value;
+  select.textContent = "";
+  for (const tool of consoleTools) select.appendChild(new Option(tool.name, tool.id));
+  if (!consoleTools.length) select.appendChild(new Option("No program installed", ""));
+  if (consoleTools.some((t) => t.id === keep)) select.value = keep;
+  renderGuide();
+}
+
+function renderGuide() {
+  const tool = consoleTools.find((t) => t.id === $("con-tool").value);
+  $("con-guide-title").textContent = tool ? `Basic commands: ${tool.name}` : "Basic commands";
+  const list = $("con-guide-list");
+  list.textContent = "";
+  if (!tool || !tool.guide.length) {
+    const none = document.createElement("p");
+    none.className = "none";
+    none.textContent = tool
+      ? `No examples for ${tool.name} yet. Type its options yourself; --help lists them.`
+      : "Install a program on Programs to run its commands here.";
+    list.appendChild(none);
+    return;
+  }
+  for (const example of tool.guide) {
+    const row = document.createElement("div");
+    row.className = "con-ex";
+    const code = document.createElement("code");
+    code.textContent = example.args;
+    const what = document.createElement("div");
+    what.className = "what";
+    const words = document.createElement("span");
+    words.textContent = example.what;
+    const put = document.createElement("button");
+    put.type = "button";
+    put.className = "ghost tiny";
+    put.textContent = "Put in box";
+    put.setAttribute("aria-label", `Put ${example.args} in the box`);
+    put.addEventListener("click", () => {
+      const box = $("con-args");
+      box.value = example.args;
+      box.focus();
+      // <link> or <file> selected: typing or pasting replaces it at once.
+      const at = example.args.search(/<(link|file)>/);
+      if (at >= 0) box.setSelectionRange(at, example.args.indexOf(">", at) + 1);
+    });
+    what.append(words, put);
+    row.append(code, what);
+    list.appendChild(row);
+  }
+}
+
+function showCommand(state) {
+  commandRunning = Boolean(state && state.running);
+  $("con-run").textContent = commandRunning ? "Stop" : "Run";
+  $("con-tool").disabled = commandRunning;
+}
+
+$("con-tool").addEventListener("change", renderGuide);
+$("con-bar").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (commandRunning) {
+    await api("/api/console/stop", {});
+    pollConsole();
+    return;
+  }
+  const tool = $("con-tool").value;
+  if (!tool) { setStatus("Install a program on Programs first."); return; }
+  const answer = await api("/api/console/run", { tool, args: $("con-args").value });
+  if (answer.error) { setStatus(answer.error); return; }
+  showCommand(answer.command);
+  pollConsole();
+});
+$("con-guide-toggle").addEventListener("click", () => {
+  const on = $("con-guide-toggle").getAttribute("aria-pressed") !== "true";
+  $("con-guide-toggle").setAttribute("aria-pressed", String(on));
+  $("con-body").classList.toggle("no-guide", !on);
+});
 
 // Two clicks, like every other button that destroys (review of 2026-10-25):
 // the lines cannot come back.

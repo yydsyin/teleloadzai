@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import console, cookies, dialogs, explain, login, needs, notify, runners, toolservers, tools, ytdlp
+from . import commands, console, cookies, dialogs, explain, login, needs, notify, runners, toolservers, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import DONE, ERROR, Queue, TargetInUse, target_clashes
@@ -633,10 +633,11 @@ def start_install(tool_id: str) -> dict:
             console.add(line_id, f"{'Updating' if tools.status(tool_id, check_online=False)['installed'] else 'Installing'} {name}", "head")
             # Never while this tool downloads (decision 19): it waits, and
             # says so. Its new downloads do not start meanwhile.
-            while QUEUE.busy(tool_id):
+            while QUEUE.busy(tool_id) or commands.busy(tool_id):
                 count = QUEUE.busy(tool_id)
-                _set_install(tool_id, stage=f"waits for {count} download"
-                             f"{'s' if count > 1 else ''} to finish", percent=0)
+                _set_install(tool_id, stage=(f"waits for {count} download"
+                             f"{'s' if count > 1 else ''} to finish") if count
+                             else "waits for the Console's command to finish", percent=0)
                 time.sleep(2)
             QUEUE.hold(tool_id)
             try:
@@ -913,7 +914,13 @@ class Handler(BaseHTTPRequestHandler):
                 lines, upto = console.since(start)
                 running = [{"title": j["title"] or j["url"], "tool": tool_name(j["tool"])}
                            for j in QUEUE.all() if j["state"] == "running"]
-                self._json({"lines": lines, "next": upto, "running": running})
+                self._json({"lines": lines, "next": upto, "running": running,
+                            "command": commands.state()})
+                return
+
+            if path == "/api/console/tools":
+                # The command box's list: the tools it can run now (decision 42).
+                self._json({"tools": commands.available()})
                 return
 
             if path == "/api/jobs":
@@ -1129,6 +1136,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/console/clear":
             console.clear()
             self._json({"ok": True})
+            return
+
+        if path == "/api/console/run":
+            # One of our tools with the user's own arguments (decision 42):
+            # no shell, split in commands.split, run in the download folder.
+            if QUEUE.held(str(body.get("tool") or "")):
+                self._json({"error": "This program is being updated. Run the command when it is done."}, 400)
+                return
+            try:
+                commands.run(str(body.get("tool") or ""), str(body.get("args") or "")[:8000],
+                             download_folder())
+            except commands.CommandError as problem:
+                self._json({"error": str(problem)}, 400)
+                return
+            self._json({"ok": True, "command": commands.state()})
+            return
+
+        if path == "/api/console/stop":
+            self._json({"stopped": commands.stop()})
             return
 
         if path == "/api/console/note":
