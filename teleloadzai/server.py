@@ -256,7 +256,9 @@ def tool_choices() -> list[dict]:
             "id": platform.id, "name": platform.name,
             "chosen": offered[0].tool_id,
             "default": usable_default,
-            "tools": [{"id": o.tool_id, "name": tool_name(o.tool_id), "why": o.why}
+            "tools": [{"id": o.tool_id, "name": tool_name(o.tool_id), "why": o.why,
+                       # The warning sign of the reviewed download test, as on the card.
+                       "fails_note": needs.fails_note(platform.id, o.tool_id)}
                       for o in platform.tools
                       if runners.unavailable_reason(o.tool_id) is None],
         })
@@ -746,6 +748,19 @@ def tool_probe(platform_id: str, url: str) -> dict:
 # JSON shapes
 # --------------------------------------------------------------------------
 
+def _lock_note(platform, tool_id: str, cookies_on: bool, site_logged_in: bool) -> str:
+    """Why the sizes above this program's top are locked on the card, or ""
+    when nothing is (the user, 2026-11-16: shown grey, with the log-in that
+    unlocks them). yutto without a log-in gives 480p (runners.TOP_WITHOUT_LOGIN)."""
+    top = runners.top_height(tool_id, site_logged_in)
+    if not top:
+        return ""
+    if login.site_state(platform.id) == "logged_in" and not cookies_on:
+        return (f"Above {top}p, {tool_name(tool_id)} needs your log-in: "
+                "turn on “Use my log-ins” on the Sites page.")
+    return f"Above {top}p, {tool_name(tool_id)} needs your {platform.name} log-in. Log in on the Sites page."
+
+
 def detection_json(result: Detection) -> dict:
     platform = result.platform
     # The user's saved choice first: the page picks the first one.
@@ -806,6 +821,11 @@ def detection_json(result: Detection) -> dict:
                 # What a log-in does not unlock here, from the reviewed
                 # quality check, with its date ("" for nothing known).
                 "quality_note": needs.quality_note(platform.id, option.tool_id) if platform else "",
+                # The reviewed download test saw it fail here: a warning sign
+                # on its button, never a block (the user, 2026-11-16).
+                "fails_note": needs.fails_note(platform.id, option.tool_id),
+                # Why the sizes above `top` are locked (grey, not selectable).
+                "lock_note": _lock_note(platform, option.tool_id, cookies_on, site_logged_in),
                 # Formats where it names the file itself: asked a folder.
                 "names_itself": list(runners.NAMES_ITSELF.get(option.tool_id, ())),
             }

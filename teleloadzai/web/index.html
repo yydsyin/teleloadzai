@@ -365,7 +365,6 @@
   #sites-table .site-name { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
   #sites-table .need-line { font-size: 12px; color: var(--soft); font-weight: 400; }
   #sites-table .program-pick { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }
-  #sites-table .program-why { font-size: 13px; }
   #sites-table .login { justify-content: flex-end; }
   /* The column names stay in sight while 23 sites scroll under them; they
      scrolled away (critique of 2026-10-31). */
@@ -452,7 +451,7 @@
   }
   #result.dead-end .choice, #result.dead-end #quality,
   #result.dead-end #quality-label, #result.dead-end #quality-why,
-  #result.dead-end #quality-note { display: none; }
+  #result.dead-end #quality-info, #result.dead-end #quality-lock { display: none; }
   #status-close:hover, #status-close:focus-visible { opacity: 1; }
   #status-close:focus-visible { outline: 2px solid var(--card); outline-offset: 2px; }
 
@@ -754,7 +753,24 @@
   }
   .controls select { height: 36px; min-width: 130px; padding: 0 10px; font-size: 14px; }
   #quality-why { text-align: right; }
-  #quality-note { margin: 2px 0 6px; font-size: 13px; color: var(--soft); text-align: right; }
+  /* An icon says there is something; its sentence shows on hover or when
+     the keyboard reaches it (the user, 2026-11-16: the lines wedged under
+     Quality and Program looked odd). Simple outline icons; one box for the
+     whole page (#tip), in the card's colours -- never Windows' black one. */
+  .tip-icon { display: inline-flex; width: 18px; height: 18px; flex: none; color: var(--soft);
+              cursor: help; vertical-align: middle; border-radius: 4px; }
+  .tip-icon::before { content: ""; width: 100%; height: 100%; background: currentColor;
+              -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+  .tip-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button .tip-icon, .tool-solo .tip-icon { width: 15px; height: 15px; margin-left: 5px; }
+  .icon-warn { color: var(--accent); --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z'/%3E%3Cpath d='M12 16h.01'/%3E%3C/svg%3E"); }
+  .icon-lock { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z'/%3E%3Cpath d='M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0'/%3E%3Cpath d='M8 11v-4a4 4 0 1 1 8 0v4'/%3E%3C/svg%3E"); }
+  .icon-info { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0'/%3E%3Cpath d='M12 9h.01'/%3E%3Cpath d='M11 12h1v4h1'/%3E%3C/svg%3E"); }
+  #row-quality .tip-icon { margin-right: 8px; }
+  .tool-solo { display: inline-flex; align-items: center; font-size: 14px; }
+  #tip { position: fixed; z-index: 50; max-width: 280px; padding: 7px 10px; background: var(--card);
+         color: var(--ink); border: 1px solid var(--line-strong); border-radius: 8px;
+         font-size: 13px; line-height: 1.45; pointer-events: none; }
 
   .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .head-tools { display: inline-flex; gap: 6px; }
@@ -1030,15 +1046,17 @@
           <!-- A real <label>: a screen reader announced the list with no name
                (critique of 2026-09-26). The row's name is drawn beside it. -->
           <label class="sr-only" id="quality-label" for="quality">Quality</label>
+          <!-- Locked sizes (a log-in unlocks them) and what a log-in does not
+               unlock (needs.QUALITY_SEEN): an icon each, the sentence on
+               hover or focus (2026-11-16). -->
+          <span class="tip-icon icon-lock hidden" id="quality-lock" tabindex="0" role="img" aria-label="Locked sizes"></span>
+          <span class="tip-icon icon-info hidden" id="quality-info" tabindex="0" role="img" aria-label="About the quality"></span>
           <select id="quality"></select>
           <!-- Where the list is missing, why (the user, 2026-10-05: a YouTube
                MP4 with no Quality list looked like a bug). -->
           <span class="hint hidden" id="quality-why"></span>
         </span>
       </div>
-      <!-- What a log-in does not unlock on this site (needs.QUALITY_SEEN,
-           from the reviewed quality check, dated), 2026-11-15. -->
-      <p class="hint hidden" id="quality-note"></p>
       <!-- Subtitles (Phase 2 item 7, drawn and chosen 2026-10-25): only in
            MP4, only when the video HAS subtitles -- otherwise not a word
            (the user: "if there isn't subtitle, it shouldn't be mentioned"). -->
@@ -1064,6 +1082,9 @@
         <span class="opt-control">
           <span class="switch seg-track hidden" id="tool-pick" role="group" aria-label="Program for this download"
                 aria-describedby="tool-why"></span>
+          <!-- One program that the reviewed download test saw fail: its name
+               and the warning sign -- no switch to show it on (2026-11-16). -->
+          <span class="tool-solo hidden" id="tool-solo" tabindex="0"></span>
         </span>
       </div>
       <div class="hint hidden" id="tool-why"></div>
@@ -1794,7 +1815,7 @@ function applyChoices(tool) {
   if (mode === "mp4") {
     const was = $("quality").value;
     fillQualities();
-    if ([...$("quality").options].some((o) => o.value === was)) $("quality").value = was;
+    if ([...$("quality").options].some((o) => o.value === was && !o.disabled)) $("quality").value = was;
   }
   const mp3 = document.querySelector('.choice[data-mode="mp3"]');
   const mp4 = document.querySelector('.choice[data-mode="mp4"]');
@@ -1841,8 +1862,8 @@ function applyChoices(tool) {
   // A quality this site keeps behind more than a log-in (MP4 only: an MP3's
   // sound is not concerned).
   const note = mode === "mp4" && tool && !deadEnd(tool) ? tool.quality_note || "" : "";
-  $("quality-note").textContent = note;
-  $("quality-note").classList.toggle("hidden", !note);
+  $("quality-info").dataset.tip = note;
+  $("quality-info").classList.toggle("hidden", !note);
   paintSubs(tool);
 }
 
@@ -2091,9 +2112,10 @@ function showChosenTool() {
   // showed "Videos work without a log-in" under "This post has no video",
   // and another text when yt-dlp was pressed by hand (review of 2026-10-05).
   const dead = deadEnd(chosen);
-  // The switch shows the name: the line says only what this program gives
-  // (the user, 2026-11-15: "keep the necessary information").
-  const why = several && chosen && chosen.why && mode !== "mp3" && !stepped && !dead ? `${chosen.why}.` : "";
+  // What each program gives is on its button, on hover or focus (the user,
+  // 2026-11-16: the line under the switch looked odd). The line keeps only
+  // what CHANGED the switch, so it never moves in silence.
+  const why = "";
   // Said when the MP3 button changed the tool, so the switch never moves
   // silently; MP4 gives the user's tool back.
   const from = formatFrom && currentTools.find((t) => t.id === formatFrom);
@@ -2101,9 +2123,10 @@ function showChosenTool() {
   const whyText = (why + (from ? ` Chosen for the MP3: ${from.name} makes none.` : "")
     + (subsOf ? ` Chosen for the subtitles: ${subsOf.name} makes none.` : "")
     + (mp3Waiting && chosen ? ` ${chosen.name} makes no MP3.` : "")).trim();
-  // MP3 drops the picture claim: its line keeps its room, or Download jumped
-  // 26 px up as the hand went to it (review of 2026-10-05).
-  const keepRoom = !whyText && several && !stepped && !dead && mode === "mp3";
+  // The line kept its room in MP3 while MP4 showed the program's claim, or
+  // Download jumped 26 px (review of 2026-10-05). The claim is now on the
+  // buttons, so neither format shows a line: no room to keep.
+  const keepRoom = false;
   $("tool-why").textContent = whyText || (keepRoom ? " " : "");
   $("tool-why").classList.toggle("hidden", !whyText && !keepRoom);
   $("tool-why").style.visibility = keepRoom ? "hidden" : "";
@@ -2188,6 +2211,80 @@ function notify(text) {
   statusTimer = setTimeout(() => setStatus(""), 4000);
 }
 
+// ---- The hover box (the user, 2026-11-16) -----------------------------------
+// Any element with data-tip shows its sentence on hover, and when the
+// keyboard reaches it -- the old lines lived in Windows' tooltip, which the
+// keyboard never reaches (loop round 1). One box for the page, placed under
+// the element (above it near the bottom), kept inside the window; Esc,
+// scrolling or leaving hides it. role="tooltip" + aria-describedby: a screen
+// reader reads the sentence with the element.
+const tipBox = document.createElement("div");
+tipBox.id = "tip";
+tipBox.setAttribute("role", "tooltip");
+tipBox.className = "hidden";
+document.body.appendChild(tipBox);
+let tipFor = null;
+
+function showTip(el) {
+  if (!el.dataset.tip) { hideTip(); return; }
+  if (tipFor && tipFor !== el) hideTip();
+  tipFor = el;
+  tipBox.textContent = el.dataset.tip;
+  tipBox.classList.remove("hidden");
+  el.setAttribute("aria-describedby", "tip");
+  const at = el.getBoundingClientRect(), box = tipBox.getBoundingClientRect();
+  const left = Math.min(Math.max(8, at.left + at.width / 2 - box.width / 2), innerWidth - box.width - 8);
+  const top = at.bottom + 6 + box.height > innerHeight - 8 ? at.top - box.height - 6 : at.bottom + 6;
+  tipBox.style.left = `${Math.round(left)}px`;
+  tipBox.style.top = `${Math.round(top)}px`;
+}
+
+function hideTip() {
+  if (tipFor && tipFor.getAttribute("aria-describedby") === "tip") tipFor.removeAttribute("aria-describedby");
+  tipFor = null;
+  tipBox.classList.add("hidden");
+}
+
+document.addEventListener("mouseover", (e) => {
+  const el = e.target.closest && e.target.closest("[data-tip]");
+  if (el && el.dataset.tip) showTip(el);
+  else if (tipFor && !tipFor.contains(e.target)) hideTip();
+});
+document.addEventListener("focusin", (e) => {
+  const el = e.target.closest && e.target.closest("[data-tip]");
+  if (el && el.dataset.tip) showTip(el); else hideTip();
+});
+document.addEventListener("focusout", () => hideTip());
+// Esc with a box open closes the box only: before this, the same Esc also
+// closed the whole card (seen 2026-11-16). Caught first, then stopped; a
+// second Esc does what it always did.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !tipFor) return;
+  hideTip();
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
+// Scrolling: a box opened by the keyboard follows its element -- Tab to a
+// row lower down scrolls the page AFTER the focus, and the box vanished at
+// once (seen 2026-11-16); a box opened by the mouse closes.
+addEventListener("scroll", () => {
+  if (!tipFor) return;
+  if (tipFor.contains(document.activeElement)) showTip(tipFor); else hideTip();
+}, true);
+
+/** The warning sign put on a program's button (the reviewed download test). */
+function warnSign() {
+  const sign = document.createElement("span");
+  sign.className = "tip-icon icon-warn";
+  sign.setAttribute("aria-hidden", "true");
+  return sign;
+}
+
+/** A program button's sentence: what it gives, then its warning. */
+function toolTip(tool) {
+  return [tool.why ? `${tool.why}.` : "", tool.fails_note || ""].filter(Boolean).join(" ");
+}
+
 function qualityLabel(value) {
   if (value === "best") return "Best";
   return mode === "mp3" ? value + " kbps" : value + "p";
@@ -2212,21 +2309,36 @@ function fillQualities() {
   // its 576p file. And "Best" without a number: TikTok answers 720p to one
   // request and 576p to the next (3 of 5 / 2 of 5, measured 2026-09-27), so
   // no number read beforehand is a promise the download can keep.
+  let locked = [];
   if (mode === "mp4") {
-    // And never above what the chosen program can give now: yutto without
-    // a log-in gives 480p when asked 1080p, and says nothing (seen
-    // 2026-11-09; server: runners.top_height). "Best" is then its top.
-    const top = (chosenTool() || {}).top || 0;
+    // Never selectable above what the chosen program can give now: yutto
+    // without a log-in gives 480p when asked 1080p, and says nothing (seen
+    // 2026-11-09; server: runners.top_height). "Best" is then its top. The
+    // sizes above are SHOWN, grey and locked, with the log-in that unlocks
+    // them behind the lock (the user, 2026-11-16).
+    const tool = chosenTool() || {};
+    const top = tool.top || 0;
     const ceiling = top && maxHeight ? Math.min(top, maxHeight) : maxHeight;
+    const all = list;
     list = maxHeight
-      ? list.filter((v) => v === "best" || (Number(v) < ceiling && videoHeights.includes(Number(v))))
+      ? all.filter((v) => v === "best" || (Number(v) < ceiling && videoHeights.includes(Number(v))))
       : ["best"];
+    locked = top && maxHeight && tool.lock_note
+      ? all.filter((v) => v !== "best" && Number(v) > top && videoHeights.includes(Number(v))) : [];
   }
-  $("quality").innerHTML = list
-    .map((v) => `<option value="${v}">${qualityLabel(v)}</option>`)
+  $("quality").innerHTML = locked
+    // A list can hold text only: the lock is a character, grey because the
+    // size cannot be picked.
+    .map((v) => `<option value="${v}" disabled>\u{1F512}︎ ${qualityLabel(v)}</option>`)
+    .concat(list.map((v) => `<option value="${v}">${qualityLabel(v)}</option>`))
     .join("");
-  // Only "Best" left: a list with one choice is not a choice.
-  $("quality").dataset.single = String(list.length < 2);
+  $("quality").value = "best";
+  const lock = locked.length ? (chosenTool() || {}).lock_note || "" : "";
+  $("quality-lock").dataset.tip = lock;
+  $("quality-lock").classList.toggle("hidden", !lock);
+  // Only "Best" left: a list with one choice is not a choice. Locked sizes
+  // make it one: the user sees what a log-in would give.
+  $("quality").dataset.single = String(list.length + locked.length < 2);
 }
 
 function formatTime(seconds) {
@@ -2419,7 +2531,10 @@ async function readLink(url, mine) {
     button.type = "button";
     button.dataset.tool = tool.id;
     button.textContent = tool.name;
-    button.title = tool.why;
+    // What it gives, and the warning of the reviewed download test, on
+    // hover or focus -- in our box, not Windows' black tooltip (2026-11-16).
+    button.dataset.tip = toolTip(tool);
+    if (tool.fails_note) button.appendChild(warnSign());
     button.addEventListener("click", () => {
       const makesMp3 = "mp3" in (tool.choices || {});
       // MP3 is kept from link to link on purpose; a program pressed by hand
@@ -2444,6 +2559,11 @@ async function readLink(url, mine) {
     $("tool-pick").appendChild(button);
   }
   $("tool-pick").classList.toggle("hidden", currentTools.length < 2);
+  // One program and a warning: its name and the sign, where the switch would be.
+  const solo = currentTools.length === 1 && currentTools[0].fails_note ? currentTools[0] : null;
+  $("tool-solo").replaceChildren(...(solo ? [solo.name, warnSign()] : []));
+  $("tool-solo").dataset.tip = solo ? solo.fails_note : "";
+  $("tool-solo").classList.toggle("hidden", !solo);
   // Said as a choice: the switch sat among the tags and read as one more tag
   // (review of 2026-09-27).
   $("tool-pick-label").classList.toggle("hidden", currentTools.length < 2);
@@ -3923,7 +4043,7 @@ function renderUpdateBar() {
   const ready = list.length ? `${list.length} update${list.length > 1 ? "s" : ""} ready` : "";
   $("programs-badge").classList.toggle("hidden", !ready);
   $("programs-badge-words").textContent = ready ? `, ${ready}` : "";
-  $("nav-programs").title = ready;
+  $("nav-programs").dataset.tip = ready;
   const show = updateMode === "ask" && (working.length > 0 || (!updateBarLater && list.length > 0));
   $("update-bar").classList.toggle("hidden", !show);
   if (!show) return;
@@ -5545,18 +5665,9 @@ function renderSites() {
     sayNeed();
     if (tools.length > 1) {
       // The card's switch, here too (model S2, 2026-10-23): program names,
-      // every one visible (decision 13). What the chosen one gives, and
-      // which is the usual one, in a line under it as on the card -- they
-      // lived in a tooltip the keyboard never reaches (loop round 1).
-      const why = document.createElement("span");
-      why.className = "hint program-why";
-      const sayWhy = () => {
-        // Only what the pressed program gives: its name is on the button
-        // (the user, 2026-11-15: the line was not clear nor simple).
-        const chosen = tools.find((t) => t.id === site.tools.chosen) || tools[0];
-        why.textContent = chosen.why ? `${chosen.why}.` : "";
-        sayNeed();            // the need follows the program chosen
-      };
+      // every one visible (decision 13). What each gives, and its warning,
+      // on its button, on hover or focus -- as on the card (2026-11-16).
+      const sayWhy = () => sayNeed();       // the need follows the program chosen
       const pick = document.createElement("span");
       pick.className = "seg-track";
       pick.setAttribute("role", "group");
@@ -5565,7 +5676,8 @@ function renderSites() {
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = tool.name;
-        button.title = tool.why;
+        button.dataset.tip = toolTip(tool);
+        if (tool.fails_note) button.appendChild(warnSign());
         button.setAttribute("aria-pressed", String(tool.id === site.tools.chosen));
         button.addEventListener("click", async () => {
           if (button.getAttribute("aria-pressed") === "true") return;
@@ -5578,10 +5690,16 @@ function renderSites() {
         pick.appendChild(button);
       }
       sayWhy();
-      pick.setAttribute("aria-describedby", "why-" + site.id);
-      why.id = "why-" + site.id;
       program.classList.add("program-pick");
-      program.append(pick, why);
+      program.append(pick);
+    } else if (tools.length === 1 && tools[0].fails_note) {
+      // One program and a warning: its name and the sign (no switch).
+      const solo = document.createElement("span");
+      solo.className = "tool-solo";
+      solo.tabIndex = 0;
+      solo.dataset.tip = tools[0].fails_note;
+      solo.append(tools[0].name, warnSign());
+      program.append(solo);
     }
     // One program: no name. A choice the user cannot make was a word to
     // learn on 23 rows (critique of 2026-10-31, the user's choice); the
@@ -5597,13 +5715,13 @@ function renderSites() {
         const sign = document.createElement("span");
         sign.className = "login-sign login-" + state;
         sign.textContent = { logged_in: "Logged in", expired: "Expired", visited: "Visited" }[state];
-        sign.title = said;
+        sign.dataset.tip = said;          // our box, not Windows' black one (2026-11-16)
         login.appendChild(sign);
       }
       const button = document.createElement("button");
       button.className = "ghost tiny login-site";
       button.textContent = label[state];
-      button.title = said;
+      button.dataset.tip = said;
       button.setAttribute("aria-label", label[state] + ": " + site.name + ". " + said);
       button.addEventListener("click", () => openLogin(site.login));
       login.appendChild(button);
@@ -5612,7 +5730,9 @@ function renderSites() {
     // Nothing to set: one program, no log-in state, nothing seen. Folded
     // under "N more sites" (critique of 2026-10-31).
     const state = site.login ? site.login.state || "none" : "none";
-    if (tools.length <= 1 && state === "none" && needLine.classList.contains("hidden")) {
+    // A warning sign is something to say: never folded (2026-11-16).
+    if (tools.length <= 1 && state === "none" && needLine.classList.contains("hidden")
+        && !program.querySelector(".tool-solo")) {
       quiet.push(row);
       continue;
     }

@@ -70,6 +70,87 @@ def quality_note(site: str, program: str) -> str:
     return f"{seen[0]} (checked {seen[1]})" if seen else ""
 
 
+# What the quality check's DOWNLOAD TEST saw failing (dev/quality_check.py,
+# its "Does not download" section), filled ONLY after the user's review,
+# each with its date and its evidence. The app reads it so it does not pick
+# what fails (the user's plan, 2026-11-16).
+#   "avoid" + "height" -- yt-dlp: a codec family its "Best" (or that height
+#                         chosen) must not take while another file of the
+#                         same height exists
+#   "fails"            -- another program: it fails on this site
+# An entry with "version" applies only while the program is at that version:
+# an update may fix it, and the check tests it again (a new version is due).
+DOWNLOAD_FAILS: dict[str, dict] = {
+    # BV1Gsnj6XE9M: Bilibili's main server cuts the AV1 1080p file (format
+    # 100026) -- 5.2 MB of 23.6 MB, "383 bytes read, 22199763 more expected.
+    # Giving up after 10 retries", on 2026-11-09 and 2026-11-16; the H.264
+    # 1080p (30080) came whole both times (88.6 MB, ffprobe 1080p, 257 s).
+    # 3 other videos' AV1 1080p came whole (11-09): H.264 is taken on every
+    # Bilibili video at 1080p -- the same height, a bigger file. AV1 720p came
+    # whole, so only 1080p. Not tied to a yt-dlp version: the cut is Bilibili's.
+    "bilibili|yt-dlp": {"avoid": "av01", "prefer": "h264", "height": 1080, "seen": "2026-11-16"},
+    # Rumble refused both test links, with and without cookies: "HTTP Error
+    # 403: Forbidden" (RumbleEmbed), on 2026-11-15 and 2026-11-16 (yt-dlp
+    # 2026.11.14.232655). Reviewed by the user 2026-11-16. Not tied to a
+    # yt-dlp version: the next check after a Rumble change in yt-dlp's
+    # release notes reads it again, and this line is reviewed then.
+    "rumble|yt-dlp": {"fails": True, "seen": "2026-11-16",
+                      "next": "Rumble refused it (403). It may work again after an update."},
+    # XHS-Downloader V2.8 crashes reading Xiaohongshu's page, which now holds
+    # JavaScript (`new Set([])`): "yaml.parser.ParserError … expected ',' or
+    # '}', but got '['", on both test links, 2026-11-16. Its authors: issue
+    # #497, opened 2026-10-17, closed as done 2026-10-23, no release after 2.8
+    # (2026-09-12; read the same day).
+    "xiaohongshu|xhs-downloader": {"fails": True, "version": "XHS-Downloader V2.8 Stable",
+                                   "seen": "2026-11-16", "who": "XHS-Downloader 2.8",
+                                   "next": "Its authors fixed it: the fix comes with its next version."},
+}
+
+
+def download_fail(site: str, program: str) -> dict | None:
+    """The reviewed entry for this site and program, or None. None too when it
+    names a version and the program is no longer at it (updated, or removed)."""
+    entry = DOWNLOAD_FAILS.get(f"{site}|{program}")
+    if not entry:
+        return None
+    if entry.get("version"):
+        from . import tools     # only this function needs it
+        try:
+            if tools.installed_version(program) != entry["version"]:
+                return None
+        except Exception:
+            # The version could not be read: the entry still applies -- a
+            # known failure is avoided rather than offered on a doubt.
+            pass
+    return dict(entry)
+
+
+def ytdlp_prefer(site: str, mode: str, quality: str) -> str:
+    """The codec yt-dlp should prefer at the same height for this download
+    ("h264" on Bilibili at 1080p and "Best"), or "". MP4 only: an MP3 takes
+    no picture. Below the entry's height the usual rule stands (AV1 720p came
+    whole on Bilibili, 2026-11-09)."""
+    entry = download_fail(site, "yt-dlp") if mode == "mp4" else None
+    if not entry or not entry.get("prefer"):
+        return ""
+    if quality == "best" or (str(quality).isdigit() and int(quality) >= entry.get("height", 0)):
+        return entry["prefer"]
+    return ""
+
+
+def fails_note(site: str, program: str) -> str:
+    """The sentence behind the program's warning sign, or "" -- the reviewed
+    download test said this program fails on this site. A warning, never a
+    block: Download stays pressable (the user, 2026-11-16)."""
+    entry = download_fail(site, program)
+    if not entry or not entry.get("fails"):
+        return ""
+    from .platforms import tool_name
+    who = entry.get("who") or tool_name(program)
+    return " ".join(filter(None, [f"{who} failed on this site in our last check ({entry['seen']}).",
+                                  entry.get("next", "")]))
+
+
 _lock = threading.Lock()
 
 

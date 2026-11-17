@@ -1592,6 +1592,12 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
     return RunResult(moved, tail, note=note)
 
 
+# Python's last line of a crash report: "name.of.SomeError: the reason" (or
+# the name alone). Seen 2026-11-16: "yaml.parser.ParserError: while parsing
+# a flow mapping" (XHS-Downloader 2.8, a PyInstaller program).
+_PY_EXCEPTION = re.compile(r"^[A-Za-z_][\w.]*(Error|Exception|Exit|Interrupt)(:|$)")
+
+
 def _short_error(tail: list[str]) -> str:
     """The line worth showing, washed of anything that could be a cookie.
 
@@ -1606,6 +1612,15 @@ def _short_error(tail: list[str]) -> str:
     #       it contains 失败 (failed) but the reason is the line above it.
     useful = [l.strip() for l in tail
               if l.strip() and not l.strip().startswith(("at ", "--- End of", "共处理"))]
+    # A Python crash report: its reason is the exception's own line, not a
+    # quoted fragment under it. XHS-Downloader 2.8 on Xiaohongshu, 2026-11-16:
+    # the row showed `... :null,"error":null},"translate":...` -- a piece of
+    # the page that held the word "error" -- instead of
+    # "yaml.parser.ParserError: while parsing a flow mapping".
+    if any(l.startswith("Traceback (most recent call last)") for l in useful):
+        raised = [l for l in useful if _PY_EXCEPTION.match(l)]
+        if raised:
+            return cookies.redact(raised[-1][:200])
     for clean in reversed(useful):
         if any(word in clean.lower()
                for word in ("error", "exception", "失败", "错误", "traceback")):

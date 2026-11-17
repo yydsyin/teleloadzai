@@ -1,447 +1,450 @@
 # Texts shown by Teleloadzai
 
-> Made 2026-11-15 by a script that reads the code (`web/index.html` and the Python files).
+> Made 2026-11-17 by a script that reads the code (`web/index.html` and the Python files).
 > It is the list for translation: every sentence the window, its messages and its errors can show.
 > It is made by reading the code, so a line may still be a word nobody sees: check before translating.
 > `{…}` or `${…}` marks a value put in by the program (a name, a number).
 
-## `index.html` (433)
+## `index.html` (436)
 
 | Line | Text |
 |---|---|
-| 954 | Close this message |
-| 960 | Program updates |
-| 964 | Update all |
-| 974 | Paste a link |
-| 978 | <input type="text" id="url" placeholder="https://… One link, or several" |
-| 979 | autocomplete="off" spellcheck="false" aria-describedby="url-error"> |
-| 990 | Close this card |
-| 997 | This short link could not be opened. If the download fails, paste the full link. |
-| 1006 | Show the program's message |
-| 1051 | In the video |
-| 1052 | Separate file |
-| 1054 | Subtitle language |
-| 1065 | Program for this download |
-| 1065 | <span class="switch seg-track hidden" id="tool-pick" role="group" aria-label="Program for this download" |
-| 1083 | Install and continue |
-| 1101 | Choices for these videos |
-| 1102 | Same for all |
-| 1103 | Choose for each |
-| 1112 | Subtitles for these videos |
-| 1124 | Format for all these links |
-| 1135 | Best for each video |
-| 1142 | Change the folder for these downloads |
-| 1142 | Change… |
-| 1165 | Retry failed |
-| 1166 | Clear finished |
-| 1167 | <button class="more-btn" type="button" aria-haspopup="menu" |
-| 1168 | More: the whole list |
-| 1168 | aria-expanded="false" aria-label="More: the whole list">⋯ |
-| 1168 | <span class="more-menu hidden" |
-| 1169 | Remove all |
-| 1179 | Continue them |
-| 1189 | <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" |
-| 1190 | stroke-linejoin="round" aria-hidden="true"> |
-| 1194 | Your downloads will appear here. |
-| 1211 | Paste a link above to start. A missing program is offered when needed. |
-| 1214 | Got it |
-| 1215 | Manage programs |
-| 1236 | Download folder |
-| 1240 | Browse… |
-| 1245 | Ask where to save each file |
-| 1253 | Read a link as soon as it is pasted |
-| 1254 | Off: the link waits until you press Continue. |
-| 1263 | Use a link I copied |
-| 1264 | When you come back to Teleloadzai. Only links are taken. |
-| 1273 | Tell me when a download ends |
-| 1274 | Only while you are in another window. |
-| 1280 | Downloads at the same time |
-| 1290 | Stop a live recording after |
-| 1293 | 15 minutes |
-| 1294 | 30 minutes |
-| 1295 | 1 hour |
-| 1296 | 2 hours |
-| 1297 | 4 hours |
-| 1298 | No limit |
-| 1315 | Use my log-ins for downloads |
-| 1317 | For videos that need a log-in. Kept on this PC only. |
-| 1320 | your log-ins are not used. |
-| 1342 | Your sites |
-| 1342 | Loading… |
-| 1346 | Downloading a lot can get your account suspended. Use a second account. |
-| 1357 | Your log-ins and cookie file |
-| 1365 | What is a cookie? |
-| 1367 | What a site saves when you log in, so it knows it's you. Teleloadzai |
-| 1368 | keeps only the site you log in to, and gives it only to the download program. |
-| 1381 | Two ways to add a log-in |
-| 1384 | Log in on the site |
-| 1386 | Choose a site above |
-| 1389 | Import a cookie file |
-| 1390 | A cookies.txt from your browser |
-| 1391 | Choose my cookies.txt… |
-| 1398 | How to get a cookies.txt file |
-| 1400 | Install a "cookies.txt" add-on in your browser and export your cookies |
-| 1401 | if it asks). Your file is never changed. |
-| 1403 | Teleloadzai keeps only the sites it downloads from. The rest is thrown away. |
-| 1412 | Forget them |
-| 1417 | Waiting for you |
-| 1420 | I have logged in |
-| 1428 | When I close __APP_NAME__ |
-| 1431 | Stay logged in |
-| 1432 | Forget everything |
-| 1450 | No download running |
-| 1453 | Copy all |
-| 1454 | Save as file |
-| 1456 | Wrap lines |
-| 1462 | What the programs say |
-| 1466 | Its arguments |
-| 1467 | -F https://… |
-| 1470 | Runs in your download folder. |
-| 1472 | Basic commands |
-| 1486 | Installed programs |
-| 1489 | Check versions |
-| 1500 | Ask me first (recommended) |
-| 1509 | yt-dlp version |
-| 1512 | Preview gets fixes for broken sites sooner. |
-| 1516 | Stable (recommended) |
-| 1523 | Python is needed |
-| 1526 | Install Python |
-| 1527 | Download it myself |
-| 1528 | Check again |
-| 1556 | Teleloadzai restarted. Reload this page (F5) to continue. |
-| 1597 | ${added} of ${total} added, then Teleloadzai stopped answering. |
-| 1598 | Reload the page (F5) and paste the others again. |
-| 1703 | Try anyway |
-| 1703 | Download… |
-| 1723 | ${reader.name} could not read the title. ${chosen.name} reads it when it downloads. |
-| 1740 | ${site} refused this video, even with your ${site} log-in. |
-| 1741 | No title found |
-| 1751 | ${reader.name} is up to date. Try again in a few days. |
-| 1773 | You'll choose a folder: ${tool.name} names the file. |
-| 1775 | The "Save as" window will suggest the name "unknown". |
-| 1777 | The file will be named "unknown". |
-| 1779 | ${tool.name} names the file from the post's text, or "unknown" if it has none. |
-| 1782 | If ${tool.name} can download it, it names the file itself. |
-| 1825 | More than the site's own sound only makes a bigger file. |
-| 1837 | Quality: Best · ${tool.name} has no size choice |
-| 1885 | ${s.name} (automatic) |
-| 1946 | Quality: after the title is read |
-| 1953 | Quality: Best · no smaller size to choose |
-| 1956 | Quality: Best · the sizes are not known before the download |
-| 1985 | If you can watch it on ${site}, log in again here. |
-| 1996 | Or choose ${free.name} above: it works without a log-in. |
-| 2003 | Your ${savedVisit && !n.logged_in ? |
-| 2003 | } is saved, but log-ins are switched off. |
-| 2004 | Turn them on in the Sites page. |
-| 2010 | Tip: if ${tool.name} is refused, open ${site} once |
-| 2011 | with the button below |
-| 2023 | Logging in may let you download it. |
-| 2025 | ${site} asks for an account. Logging in may help. |
-| 2027 | ${tool.name} needs you to be logged in to ${site}. |
-| 2038 | Videos work without a log-in. Photos and stories need gallery-dl and your Instagram log-in. |
-| 2051 | needs you to be logged in to ${site}, and log-ins are switched off in the Sites page. |
-| 2052 | needs you to be logged in to ${site}. |
-| 2101 | Chosen for the MP3: ${from.name} makes none. |
-| 2102 | Chosen for the subtitles: ${subsOf.name} makes none. |
-| 2103 | ${chosen.name} makes no MP3. |
-| 2115 | To try ${wayOut.name}, choose it above. |
-| 2130 | works only in the Teleloadzai window, not in a browser tab. |
-| 2132 | Logging in |
-| 2146 | Log in again |
-| 2147 | Open ${currentPlatform} once |
-| 2158 | (${Math.round(bytes / 1048576)} MB) |
-| 2159 | It also needs Python. |
-| 2162 | ${currentPlatform} needs ${missing.name}${mb(missing.size)}, not installed yet. |
-| 2163 | FFmpeg${mb(ffmpegSize)} comes with it. |
-| 2164 | FFmpeg${mb(ffmpegSize)} is not installed yet. Every download needs it. |
-| 2166 | Install ${names.join(" and ")} and continue |
-| 2226 | <option value="${v}">${qualityLabel(v)}</option> |
-| 2295 | ${text} ${Math.round((Date.now() - started) / 1000)} s |
-| 2348 | That is not a link. Paste a video address (https://…). |
-| 2371 | Reading… |
-| 2391 | Teleloadzai does not download ${found.platform}. |
-| 2468 | Not usable yet: |
-| 2501 | Ready to download |
-| 2503 | No preview for ${found.platform} links: ${tool.name} reads it when it downloads. |
-| 2513 | the site |
-| 2516 | Asking ${asking} for the title… |
-| 2517 | ${readBy.name} is reading the post. This takes about 20 seconds… |
-| 2552 | Teleloadzai got no answer while reading the title. |
-| 2553 | ${readBy.name} could not read this link. |
-| 2645 | ${name} is already the newest version. |
-| 2650 | <b>${name} says this needs a log-in.</b> Log in, then press Retry. |
-| 2656 | Or try ${job.other_tool.name}. |
-| 2666 | <b>Teleloadzai does not know this error.</b> |
-| 2668 | ${name} is up to date. Its test version may help. |
-| 2669 | ${name} is up to date. Try again in a few days. |
-| 2670 | Try updating ${name} first. |
-| 2671 | If this link needs an account, logging in may help. |
-| 2724 | data-update="${job.tool}">Update ${job.tool_name \|\| job.tool} and retry |
-| 2727 | data-preview="${job.id}">Try a newer test version |
-| 2745 | <button class="ghost tiny" data-reread="${job.id}">Read the link again</button> |
-| 2746 | <button class="ghost tiny" ${first[1]}</button> |
-| 2748 | <button type="button" role="menuitem" ${inner}</button> |
-| 2794 | ${job.on_disk} files |
-| 2799 | Already in your folder |
-| 2807 | Waiting: its program updates first |
-| 2815 | Recording live, no time limit |
-| 2819 | ${formatElapsed(job.elapsed \|\| 0)} of ${job.limit_minutes \|\| 60} min |
-| 2820 | Recording live |
-| 2843 | Starting the download… |
-| 2843 | Working… |
-| 2872 | so far |
-| 2898 | ${Math.min(percent, 100)}% |
-| 2914 | Gone: moved or deleted. |
-| 2915 | Done, in your folder. |
-| 2926 | In your folder |
-| 2927 | Not downloaded |
-| 2948 | <span class="imark" aria-hidden="true"></span><span class="iname"></span><span class="istate"></span> |
-| 2967 | ${done} of ${items.length} done |
-| 2967 | · ${failedCount} failed |
-| 2984 | Download the whole post again |
-| 2984 | Download again |
-| 2999 | job state- |
-| 3026 | <span class="mark bad" aria-hidden="true">✕</span> |
-| 3027 | <span class="mark ok" aria-hidden="true">✓</span> |
-| 3028 | <span class="mark run" aria-hidden="true"></span> |
-| 3029 | <span class="mark wait" aria-hidden="true"></span> |
-| 3030 | <span class="mark gone" aria-hidden="true">–</span> |
-| 3032 | <button type="button" role="menuitem" data-details="${job.id}">Details</button> |
-| 3037 | <button type="button" role="menuitem" data-reread="${job.id}">Read the link again</button> |
-| 3038 | <button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button> |
-| 3042 | <button type="button" role="menuitem" data-reveal="${job.id}">Show in folder</button> |
-| 3045 | <button type="button" role="menuitem" data-again="${job.id}">${againWords(job)}</button> |
-| 3053 | <button type="button" role="menuitem" data-open="${job.id}">Open</button> |
-| 3055 | <button type="button" role="menuitem" data-retry="${job.id}">Record again</button> |
-| 3058 | <span class="more-gap"></span> |
-| 3062 | sr-only job-state |
-| 3064 | <span class="done-at gone" aria-hidden="true">Gone · moved or deleted</span> |
-| 3068 | <button class="ghost tiny" data-open="${job.id}">Open</button> |
-| 3069 | <button class="ghost tiny" data-force="${job.id}">${againWords(job)}</button> |
-| 3071 | <button class="ghost tiny" data-retry="${job.id}">${job.interrupted ? "Continue" : "Download again"}</button> |
-| 3072 | <button class="ghost tiny cancel">Stop</button> |
-| 3081 | <div class="err"></div> |
-| 3082 | hint warn-text |
-| 3085 | <div class="hint job-note" style="margin-top:6px"></div> |
-| 3086 | <div class="hint skip-why" style="margin-top:4px"></div> |
-| 3092 | Continue starts a new recording. |
-| 3096 | ghost tiny |
-| 3098 | <div class="hint group-from hidden"></div> |
-| 3100 | fail-more hidden |
-| 3101 | more tool-words |
-| 3107 | 1 unfinished piece of this download is still in your folder. |
-| 3108 | ${pieces} unfinished pieces of this download are still in your folder. |
-| 3126 | ${fileName(files[0])} and ${files.length - 1} more |
-| 3137 | original files |
-| 3138 | original file |
-| 3185 | Hide details |
-| 3205 | Saved before it stopped: ${fileName(files[0])}. |
-| 3206 | Saved before it stopped: ${files.length} files, ${fileName(files[0])} first. |
-| 3208 | Saved before it failed: ${fileName(files[0])}. |
-| 3209 | Saved before it failed: ${files.length} files, ${fileName(files[0])} first. |
-| 3266 | Replace the post's files? Click again |
-| 3266 | Replace the file? Click again |
-| 3366 | · ${done} done |
-| 3366 | · ${failed} failed |
-| 3431 | more-menu hidden |
-| 3459 | ${name}: nothing was downloaded. |
-| 3459 | ${name}: download finished. |
-| 3460 | ${name}: download failed. |
-| 3523 | Downloads (${jobs.length}) |
-| 3623 | 1 download did not finish when Teleloadzai closed. |
-| 3624 | ${cut} downloads did not finish when Teleloadzai closed. |
-| 3625 | Continue it |
-| 3634 | 1 unfinished piece of it stays |
-| 3635 | ${count} unfinished pieces stay |
-| 3635 | your folders |
-| 3672 | 1 download continues. |
-| 3672 | ${again} downloads continue. |
-| 3673 | ${again === 1 ? "1 download continues." : |
-| 3683 | None of these downloads can be retried now: each failed row says why. |
-| 3691 | ${again} downloads started again. |
-| 3714 | <span class="badge">always needed</span> |
-| 3715 | <span class="badge alert">installed elsewhere</span> |
-| 3716 | <span class="badge new">update</span> |
-| 3726 | <span class="badge ${missing ? "alert" : ""}">needs ${need}${least}</span> |
-| 3733 | <span class="small">working…</span> |
-| 3734 | <button class="tiny" data-install="${tool.id}">Install</button> |
-| 3740 | ${tool.channel_change ? |
-| 3741 | Switch to Preview |
-| 3741 | Switch to Stable |
-| 3743 | <button class="ghost tiny" data-remove="${tool.id}" aria-label="Remove ${tool.name}">Remove</button> |
-| 3746 | · ${Math.round(tool.size / 1048576)} MB |
-| 3750 | version not known |
-| 3751 | not installed · latest |
-| 3751 | not installed |
-| 3761 | width:${progress.percent \|\| 0}% |
-| 3771 | Python is needed for this program. See below. |
-| 3793 | Remove ${name}? Click again |
-| 3798 | ${name} could not be removed completely. Close any download |
-| 3799 | that uses it, then try again. |
-| 3814 | ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} are Python programs. |
-| 3815 | ${names[0]} is a Python program. |
-| 3817 | ${who} Python is not on this PC. Windows can install it for you. |
-| 3818 | ${who} Python is not on this PC. Install it from python.org. |
-| 3892 | ${tool.name} → ${tool.channel === "preview" ? "Preview" : "Stable"} version |
-| 3920 | Update all (${list.length}) |
-| 3923 | ${list.length} update${list.length > 1 ? "s" : ""} ready |
-| 3933 | ${toolName(id)} (${p.stage \|\| "starting"}) |
-| 3934 | Updates ready: |
-| 3942 | The update of ${name} did not finish: ${p.error \|\| "unknown error"}. |
-| 3943 | The update did not change ${name}: ${shortVersion(p.after \|\| "")} is kept. |
-| 3944 | ${name} installed${p.after ? ": " + shortVersion(p.after) : ""}. |
-| 3945 | ${name} now uses its ${p.channel === "preview" ? "Preview" : "Stable"} version (${shortVersion(p.after)}). |
-| 3946 | ${name} updated: ${shortVersion(p.before)} → ${shortVersion(p.after)}. |
-| 3988 | The update of ${name} gave no answer after 30 minutes. |
-| 3992 | Update failed. Try again |
-| 4037 | Try a newer test version |
-| 4043 | yt-dlp now uses its Preview version. To go back, open Programs. |
-| 4058 | Saved: updates · |
-| 4067 | Saved: yt-dlp will use its Preview version. Press “Switch to Preview” to change it now. |
-| 4068 | Saved: yt-dlp will use its Stable version. |
-| 4089 | Asking GitHub… |
-| 4097 | Checking… |
-| 4100 | Python found. |
-| 4100 | Still not found. |
-| 4104 | Windows is installing Python. Answer its window if it asks. This can take minutes… |
-| 4107 | Python installed. |
-| 4108 | Not installed: |
-| 4157 | ── ${line.text} ── |
-| 4187 | Your ${tool ? tool.name : ""} command is running |
-| 4189 | 1 download: ${running[0].title} (${running[0].tool}) |
-| 4190 | ${running.length} downloads: |
-| 4206 | The Console's program list could not be loaded. Open the Console again. |
-| 4214 | No program installed |
-| 4228 | No examples yet. --help lists its options. |
-| 4229 | Install a program on Programs first. |
-| 4245 | Put in box |
-| 4246 | Put ${example.args} in the box |
-| 4272 | ${APP_NAME} did not answer. Restart ${APP_NAME}. |
-| 4296 | Clear all? Click again |
-| 4302 | Nothing to copy yet. |
-| 4313 | Could not copy the console. |
-| 4315 | Console copied. |
-| 4319 | Not saved: |
-| 4392 | Updating… |
-| 4398 | The update did not finish: ${(result && result.error) \|\| "no answer after 6 minutes"}. |
-| 4407 | Installing… this can take a moment. |
-| 4413 | This program needs Python: see Programs. |
-| 4414 | Install failed: |
-| 4438 | Read again |
-| 4483 | No link in what you copied. |
-| 4492 | Your copied link is in the box. Press Continue. |
-| 4493 | Your ${links.length} copied links are in the box. Press Continue. |
-| 4500 | Using the link you copied. |
-| 4500 | Using the ${links.length} links you copied. |
-| 4517 | Click to close |
-| 4590 | Waiting for the title… |
-| 4595 | Download not started: a new link was pasted. Press Download again for it. |
-| 4610 | Download not started: |
-| 4622 | Choose a folder: ${tool.name} names the file… |
-| 4628 | Choose where to save it… |
-| 4653 | Added to Downloads. |
-| 4747 | Format for |
-| 4776 | Quality for |
-| 4809 | Subtitle language for |
-| 4812 | Not this video |
-| 4833 | no subtitles |
-| 4843 | Program for |
-| 4885 | ${info.title} · ${info.items.length} videos |
-| 4941 | ${all.length ? all[0].name : "its program"} is not installed. Paste this link alone to install it. |
-| 4949 | no program here makes an MP3 of it. |
-| 4979 | ${shortLink(url)}: the same video as link ${seen.get(key)}. |
-| 5024 | ${f.platform}: Teleloadzai does not download ${f.platform}. |
-| 5032 | ${batchExtra} links left out: ${BATCH_MAX} at most at once. Paste the rest after. |
-| 5036 | ${batchExtra} videos left out: ${BATCH_MAX} at most when choosing for each video. |
-| 5037 | “Same for all” takes the whole playlist. |
-| 5042 | ${list0.count} videos, one row each: the list may be slow. |
-| 5057 | ${list0.title \|\| "Playlist"} · ${list0.count} videos |
-| 5067 | · Videos not read yet come at their best size. |
-| 5095 | title not read |
-| 5105 | …and ${batchExtra} more videos |
-| 5126 | “${line.length > 40 ? line.slice(0, 40) + "…" : line}”: not a link. |
-| 5127 | FFmpeg is missing. Paste one link alone to install it. |
-| 5132 | Not added: |
-| 5152 | <option value="${v}">${v === "best" ? "Best" : v + " kbps"}</option> |
-| 5164 | Each video asks where to save it |
-| 5189 | Could not save this choice: |
-| 5204 | Choose the folder for these downloads… |
-| 5237 | Adding ${added + refused.length + 1} of ${jobs.length}… |
-| 5253 | ${added} videos of the playlist added, one row each. |
-| 5254 | 1 download added. |
-| 5254 | ${added} downloads added. |
-| 5277 | Choosing ${n + 1} of ${ready.length}… |
-| 5281 | Choose the folder for “${label}”: ${tool.name} names the file… |
-| 5282 | Choose where to save “${label}”… |
-| 5291 | Adding ${n + 1} of ${ready.length}… |
-| 5323 | Remove ${ended}? Click again |
-| 5334 | Choose a folder… |
-| 5338 | Folder saved. |
-| 5362 | Saved: live recordings stop after |
-| 5369 | Saved: a message when a download ends. |
-| 5370 | Saved: no message. |
-| 5376 | Saved: a pasted link is read at once. |
-| 5377 | Saved: a pasted link waits for Continue. |
-| 5382 | Saved: copied links are used when you come back. |
-| 5383 | Saved: copied links are left alone. |
-| 5390 | Saved: Windows will ask where to save each file. |
-| 5391 | Saved: files go to your Download folder without asking. |
-| 5410 | Import a cookie file… |
-| 5430 | None saved |
-| 5431 | Not usable: import a new file |
-| 5432 | ${state.total} cookies, ${state.sites.length + (state.more_sites \|\| 0)} sites |
-| 5434 | off · none saved |
-| 5443 | not usable |
-| 5445 | <span class="warn-text">⚠️ ${state.broken}</span> |
-| 5449 | off · paused |
-| 5457 | 1 of them has already expired. |
-| 5458 | ${state.expired} of them have already expired. |
-| 5480 | ⚠️ Cannot log in here: |
-| 5510 | Logged in |
-| 5511 | , until ${new Date(p.ends * 1000).toLocaleDateString()}. |
-| 5512 | Log-in expired on ${new Date(p.ends * 1000).toLocaleDateString()}. |
-| 5513 | Visited, no account. |
-| 5514 | Not logged in. |
-| 5516 | Log in |
-| 5527 | label site-name |
-| 5541 | ${NEED_WORDS[seen.need]} · seen |
-| 5552 | hint program-why |
-| 5576 | Saved: ${site.name} uses ${tool.name}. |
-| 5598 | login-sign login- |
-| 5604 | ghost tiny login-site |
-| 5629 | Fewer sites |
-| 5630 | ${quiet.length} more site${quiet.length === 1 ? "" : "s"} with nothing to set |
-| 5649 | just now |
-| 5649 | ${minutes} min ago |
-| 5651 | ${hours} h ago |
-| 5652 | ${Math.round(hours / 24)} days ago |
-| 5663 | The log-in window could not open: |
-| 5666 | Log in to |
-| 5668 | A window has opened on |
-| 5669 | It closes by itself once you are in. |
-| 5681 | Log in with an e-mail or a phone number: a Facebook or Google log-in |
-| 5682 | would open in your browser, where Teleloadzai cannot see it. |
-| 5728 | Teleloadzai could not take the cookies: |
-| 5730 | 1 cookie |
-| 5731 | Logged in to |
-| 5731 | Window closed: |
-| 5732 | saved. If a download failed, press Retry on it. |
-| 5738 | You closed the window before Teleloadzai could take anything from |
-| 5744 | Taking the cookies… |
-| 5750 | No cookies came back: the log-in may not have finished. Try again. |
-| 5754 | cookies saved from the log-in. |
-| 5799 | Saved: when |
-| 5800 | every log-in is forgotten. |
-| 5800 | you stay logged in. |
-| 5805 | A visit is enough |
-| 5805 | Works without a log-in |
-| 5805 | Needs your account |
-| 5817 | Choose your cookies.txt in the window that opens… |
-| 5826 | ${result.imported} cookies kept, ${result.ignored} from other sites left out. |
-| 5827 | ${result.imported} cookies kept. |
-| 5834 | Forget every log-in? Click again |
-| 5847 | Cookies forgotten. |
-| 5880 | Works with ${sites.slice(0, 5).join(", ")} and ${sites.length - 5} other sites. |
+| 970 | Close this message |
+| 976 | Program updates |
+| 980 | Update all |
+| 990 | Paste a link |
+| 994 | <input type="text" id="url" placeholder="https://… One link, or several" |
+| 995 | autocomplete="off" spellcheck="false" aria-describedby="url-error"> |
+| 1006 | Close this card |
+| 1013 | This short link could not be opened. If the download fails, paste the full link. |
+| 1022 | Show the program's message |
+| 1052 | Locked sizes |
+| 1053 | About the quality |
+| 1069 | In the video |
+| 1070 | Separate file |
+| 1072 | Subtitle language |
+| 1083 | Program for this download |
+| 1083 | <span class="switch seg-track hidden" id="tool-pick" role="group" aria-label="Program for this download" |
+| 1104 | Install and continue |
+| 1122 | Choices for these videos |
+| 1123 | Same for all |
+| 1124 | Choose for each |
+| 1133 | Subtitles for these videos |
+| 1145 | Format for all these links |
+| 1156 | Best for each video |
+| 1163 | Change the folder for these downloads |
+| 1163 | Change… |
+| 1186 | Retry failed |
+| 1187 | Clear finished |
+| 1188 | <button class="more-btn" type="button" aria-haspopup="menu" |
+| 1189 | More: the whole list |
+| 1189 | aria-expanded="false" aria-label="More: the whole list">⋯ |
+| 1189 | <span class="more-menu hidden" |
+| 1190 | Remove all |
+| 1200 | Continue them |
+| 1210 | <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" |
+| 1211 | stroke-linejoin="round" aria-hidden="true"> |
+| 1215 | Your downloads will appear here. |
+| 1232 | Paste a link above to start. A missing program is offered when needed. |
+| 1235 | Got it |
+| 1236 | Manage programs |
+| 1257 | Download folder |
+| 1261 | Browse… |
+| 1266 | Ask where to save each file |
+| 1274 | Read a link as soon as it is pasted |
+| 1275 | Off: the link waits until you press Continue. |
+| 1284 | Use a link I copied |
+| 1285 | When you come back to Teleloadzai. Only links are taken. |
+| 1294 | Tell me when a download ends |
+| 1295 | Only while you are in another window. |
+| 1301 | Downloads at the same time |
+| 1311 | Stop a live recording after |
+| 1314 | 15 minutes |
+| 1315 | 30 minutes |
+| 1316 | 1 hour |
+| 1317 | 2 hours |
+| 1318 | 4 hours |
+| 1319 | No limit |
+| 1336 | Use my log-ins for downloads |
+| 1338 | For videos that need a log-in. Kept on this PC only. |
+| 1341 | your log-ins are not used. |
+| 1363 | Your sites |
+| 1363 | Loading… |
+| 1367 | Downloading a lot can get your account suspended. Use a second account. |
+| 1378 | Your log-ins and cookie file |
+| 1386 | What is a cookie? |
+| 1388 | What a site saves when you log in, so it knows it's you. Teleloadzai |
+| 1389 | keeps only the site you log in to, and gives it only to the download program. |
+| 1402 | Two ways to add a log-in |
+| 1405 | Log in on the site |
+| 1407 | Choose a site above |
+| 1410 | Import a cookie file |
+| 1411 | A cookies.txt from your browser |
+| 1412 | Choose my cookies.txt… |
+| 1419 | How to get a cookies.txt file |
+| 1421 | Install a "cookies.txt" add-on in your browser and export your cookies |
+| 1422 | if it asks). Your file is never changed. |
+| 1424 | Teleloadzai keeps only the sites it downloads from. The rest is thrown away. |
+| 1433 | Forget them |
+| 1438 | Waiting for you |
+| 1441 | I have logged in |
+| 1449 | When I close __APP_NAME__ |
+| 1452 | Stay logged in |
+| 1453 | Forget everything |
+| 1471 | No download running |
+| 1474 | Copy all |
+| 1475 | Save as file |
+| 1477 | Wrap lines |
+| 1483 | What the programs say |
+| 1487 | Its arguments |
+| 1488 | -F https://… |
+| 1491 | Runs in your download folder. |
+| 1493 | Basic commands |
+| 1507 | Installed programs |
+| 1510 | Check versions |
+| 1521 | Ask me first (recommended) |
+| 1530 | yt-dlp version |
+| 1533 | Preview gets fixes for broken sites sooner. |
+| 1537 | Stable (recommended) |
+| 1544 | Python is needed |
+| 1547 | Install Python |
+| 1548 | Download it myself |
+| 1549 | Check again |
+| 1577 | Teleloadzai restarted. Reload this page (F5) to continue. |
+| 1618 | ${added} of ${total} added, then Teleloadzai stopped answering. |
+| 1619 | Reload the page (F5) and paste the others again. |
+| 1724 | Try anyway |
+| 1724 | Download… |
+| 1744 | ${reader.name} could not read the title. ${chosen.name} reads it when it downloads. |
+| 1761 | ${site} refused this video, even with your ${site} log-in. |
+| 1762 | No title found |
+| 1772 | ${reader.name} is up to date. Try again in a few days. |
+| 1794 | You'll choose a folder: ${tool.name} names the file. |
+| 1796 | The "Save as" window will suggest the name "unknown". |
+| 1798 | The file will be named "unknown". |
+| 1800 | ${tool.name} names the file from the post's text, or "unknown" if it has none. |
+| 1803 | If ${tool.name} can download it, it names the file itself. |
+| 1846 | More than the site's own sound only makes a bigger file. |
+| 1858 | Quality: Best · ${tool.name} has no size choice |
+| 1906 | ${s.name} (automatic) |
+| 1967 | Quality: after the title is read |
+| 1974 | Quality: Best · no smaller size to choose |
+| 1977 | Quality: Best · the sizes are not known before the download |
+| 2006 | If you can watch it on ${site}, log in again here. |
+| 2017 | Or choose ${free.name} above: it works without a log-in. |
+| 2024 | Your ${savedVisit && !n.logged_in ? |
+| 2024 | } is saved, but log-ins are switched off. |
+| 2025 | Turn them on in the Sites page. |
+| 2031 | Tip: if ${tool.name} is refused, open ${site} once |
+| 2032 | with the button below |
+| 2044 | Logging in may let you download it. |
+| 2046 | ${site} asks for an account. Logging in may help. |
+| 2048 | ${tool.name} needs you to be logged in to ${site}. |
+| 2059 | Videos work without a log-in. Photos and stories need gallery-dl and your Instagram log-in. |
+| 2072 | needs you to be logged in to ${site}, and log-ins are switched off in the Sites page. |
+| 2073 | needs you to be logged in to ${site}. |
+| 2123 | Chosen for the MP3: ${from.name} makes none. |
+| 2124 | Chosen for the subtitles: ${subsOf.name} makes none. |
+| 2125 | ${chosen.name} makes no MP3. |
+| 2138 | To try ${wayOut.name}, choose it above. |
+| 2153 | works only in the Teleloadzai window, not in a browser tab. |
+| 2155 | Logging in |
+| 2169 | Log in again |
+| 2170 | Open ${currentPlatform} once |
+| 2181 | (${Math.round(bytes / 1048576)} MB) |
+| 2182 | It also needs Python. |
+| 2185 | ${currentPlatform} needs ${missing.name}${mb(missing.size)}, not installed yet. |
+| 2186 | FFmpeg${mb(ffmpegSize)} comes with it. |
+| 2187 | FFmpeg${mb(ffmpegSize)} is not installed yet. Every download needs it. |
+| 2189 | Install ${names.join(" and ")} and continue |
+| 2278 | tip-icon icon-warn |
+| 2332 | <option value="${v}" disabled>\u{1F512}︎ ${qualityLabel(v)}</option> |
+| 2333 | <option value="${v}">${qualityLabel(v)}</option> |
+| 2407 | ${text} ${Math.round((Date.now() - started) / 1000)} s |
+| 2460 | That is not a link. Paste a video address (https://…). |
+| 2483 | Reading… |
+| 2503 | Teleloadzai does not download ${found.platform}. |
+| 2588 | Not usable yet: |
+| 2621 | Ready to download |
+| 2623 | No preview for ${found.platform} links: ${tool.name} reads it when it downloads. |
+| 2633 | the site |
+| 2636 | Asking ${asking} for the title… |
+| 2637 | ${readBy.name} is reading the post. This takes about 20 seconds… |
+| 2672 | Teleloadzai got no answer while reading the title. |
+| 2673 | ${readBy.name} could not read this link. |
+| 2765 | ${name} is already the newest version. |
+| 2770 | <b>${name} says this needs a log-in.</b> Log in, then press Retry. |
+| 2776 | Or try ${job.other_tool.name}. |
+| 2786 | <b>Teleloadzai does not know this error.</b> |
+| 2788 | ${name} is up to date. Its test version may help. |
+| 2789 | ${name} is up to date. Try again in a few days. |
+| 2790 | Try updating ${name} first. |
+| 2791 | If this link needs an account, logging in may help. |
+| 2844 | data-update="${job.tool}">Update ${job.tool_name \|\| job.tool} and retry |
+| 2847 | data-preview="${job.id}">Try a newer test version |
+| 2865 | <button class="ghost tiny" data-reread="${job.id}">Read the link again</button> |
+| 2866 | <button class="ghost tiny" ${first[1]}</button> |
+| 2868 | <button type="button" role="menuitem" ${inner}</button> |
+| 2914 | ${job.on_disk} files |
+| 2919 | Already in your folder |
+| 2927 | Waiting: its program updates first |
+| 2935 | Recording live, no time limit |
+| 2939 | ${formatElapsed(job.elapsed \|\| 0)} of ${job.limit_minutes \|\| 60} min |
+| 2940 | Recording live |
+| 2963 | Starting the download… |
+| 2963 | Working… |
+| 2992 | so far |
+| 3018 | ${Math.min(percent, 100)}% |
+| 3034 | Gone: moved or deleted. |
+| 3035 | Done, in your folder. |
+| 3046 | In your folder |
+| 3047 | Not downloaded |
+| 3068 | <span class="imark" aria-hidden="true"></span><span class="iname"></span><span class="istate"></span> |
+| 3087 | ${done} of ${items.length} done |
+| 3087 | · ${failedCount} failed |
+| 3104 | Download the whole post again |
+| 3104 | Download again |
+| 3119 | job state- |
+| 3146 | <span class="mark bad" aria-hidden="true">✕</span> |
+| 3147 | <span class="mark ok" aria-hidden="true">✓</span> |
+| 3148 | <span class="mark run" aria-hidden="true"></span> |
+| 3149 | <span class="mark wait" aria-hidden="true"></span> |
+| 3150 | <span class="mark gone" aria-hidden="true">–</span> |
+| 3152 | <button type="button" role="menuitem" data-details="${job.id}">Details</button> |
+| 3157 | <button type="button" role="menuitem" data-reread="${job.id}">Read the link again</button> |
+| 3158 | <button type="button" role="menuitem" data-dismiss="${job.id}">Remove from list</button> |
+| 3162 | <button type="button" role="menuitem" data-reveal="${job.id}">Show in folder</button> |
+| 3165 | <button type="button" role="menuitem" data-again="${job.id}">${againWords(job)}</button> |
+| 3173 | <button type="button" role="menuitem" data-open="${job.id}">Open</button> |
+| 3175 | <button type="button" role="menuitem" data-retry="${job.id}">Record again</button> |
+| 3178 | <span class="more-gap"></span> |
+| 3182 | sr-only job-state |
+| 3184 | <span class="done-at gone" aria-hidden="true">Gone · moved or deleted</span> |
+| 3188 | <button class="ghost tiny" data-open="${job.id}">Open</button> |
+| 3189 | <button class="ghost tiny" data-force="${job.id}">${againWords(job)}</button> |
+| 3191 | <button class="ghost tiny" data-retry="${job.id}">${job.interrupted ? "Continue" : "Download again"}</button> |
+| 3192 | <button class="ghost tiny cancel">Stop</button> |
+| 3201 | <div class="err"></div> |
+| 3202 | hint warn-text |
+| 3205 | <div class="hint job-note" style="margin-top:6px"></div> |
+| 3206 | <div class="hint skip-why" style="margin-top:4px"></div> |
+| 3212 | Continue starts a new recording. |
+| 3216 | ghost tiny |
+| 3218 | <div class="hint group-from hidden"></div> |
+| 3220 | fail-more hidden |
+| 3221 | more tool-words |
+| 3227 | 1 unfinished piece of this download is still in your folder. |
+| 3228 | ${pieces} unfinished pieces of this download are still in your folder. |
+| 3246 | ${fileName(files[0])} and ${files.length - 1} more |
+| 3257 | original files |
+| 3258 | original file |
+| 3305 | Hide details |
+| 3325 | Saved before it stopped: ${fileName(files[0])}. |
+| 3326 | Saved before it stopped: ${files.length} files, ${fileName(files[0])} first. |
+| 3328 | Saved before it failed: ${fileName(files[0])}. |
+| 3329 | Saved before it failed: ${files.length} files, ${fileName(files[0])} first. |
+| 3386 | Replace the post's files? Click again |
+| 3386 | Replace the file? Click again |
+| 3486 | · ${done} done |
+| 3486 | · ${failed} failed |
+| 3551 | more-menu hidden |
+| 3579 | ${name}: nothing was downloaded. |
+| 3579 | ${name}: download finished. |
+| 3580 | ${name}: download failed. |
+| 3643 | Downloads (${jobs.length}) |
+| 3743 | 1 download did not finish when Teleloadzai closed. |
+| 3744 | ${cut} downloads did not finish when Teleloadzai closed. |
+| 3745 | Continue it |
+| 3754 | 1 unfinished piece of it stays |
+| 3755 | ${count} unfinished pieces stay |
+| 3755 | your folders |
+| 3792 | 1 download continues. |
+| 3792 | ${again} downloads continue. |
+| 3793 | ${again === 1 ? "1 download continues." : |
+| 3803 | None of these downloads can be retried now: each failed row says why. |
+| 3811 | ${again} downloads started again. |
+| 3834 | <span class="badge">always needed</span> |
+| 3835 | <span class="badge alert">installed elsewhere</span> |
+| 3836 | <span class="badge new">update</span> |
+| 3846 | <span class="badge ${missing ? "alert" : ""}">needs ${need}${least}</span> |
+| 3853 | <span class="small">working…</span> |
+| 3854 | <button class="tiny" data-install="${tool.id}">Install</button> |
+| 3860 | ${tool.channel_change ? |
+| 3861 | Switch to Preview |
+| 3861 | Switch to Stable |
+| 3863 | <button class="ghost tiny" data-remove="${tool.id}" aria-label="Remove ${tool.name}">Remove</button> |
+| 3866 | · ${Math.round(tool.size / 1048576)} MB |
+| 3870 | version not known |
+| 3871 | not installed · latest |
+| 3871 | not installed |
+| 3881 | width:${progress.percent \|\| 0}% |
+| 3891 | Python is needed for this program. See below. |
+| 3913 | Remove ${name}? Click again |
+| 3918 | ${name} could not be removed completely. Close any download |
+| 3919 | that uses it, then try again. |
+| 3934 | ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} are Python programs. |
+| 3935 | ${names[0]} is a Python program. |
+| 3937 | ${who} Python is not on this PC. Windows can install it for you. |
+| 3938 | ${who} Python is not on this PC. Install it from python.org. |
+| 4012 | ${tool.name} → ${tool.channel === "preview" ? "Preview" : "Stable"} version |
+| 4040 | Update all (${list.length}) |
+| 4043 | ${list.length} update${list.length > 1 ? "s" : ""} ready |
+| 4053 | ${toolName(id)} (${p.stage \|\| "starting"}) |
+| 4054 | Updates ready: |
+| 4062 | The update of ${name} did not finish: ${p.error \|\| "unknown error"}. |
+| 4063 | The update did not change ${name}: ${shortVersion(p.after \|\| "")} is kept. |
+| 4064 | ${name} installed${p.after ? ": " + shortVersion(p.after) : ""}. |
+| 4065 | ${name} now uses its ${p.channel === "preview" ? "Preview" : "Stable"} version (${shortVersion(p.after)}). |
+| 4066 | ${name} updated: ${shortVersion(p.before)} → ${shortVersion(p.after)}. |
+| 4108 | The update of ${name} gave no answer after 30 minutes. |
+| 4112 | Update failed. Try again |
+| 4157 | Try a newer test version |
+| 4163 | yt-dlp now uses its Preview version. To go back, open Programs. |
+| 4178 | Saved: updates · |
+| 4187 | Saved: yt-dlp will use its Preview version. Press “Switch to Preview” to change it now. |
+| 4188 | Saved: yt-dlp will use its Stable version. |
+| 4209 | Asking GitHub… |
+| 4217 | Checking… |
+| 4220 | Python found. |
+| 4220 | Still not found. |
+| 4224 | Windows is installing Python. Answer its window if it asks. This can take minutes… |
+| 4227 | Python installed. |
+| 4228 | Not installed: |
+| 4277 | ── ${line.text} ── |
+| 4307 | Your ${tool ? tool.name : ""} command is running |
+| 4309 | 1 download: ${running[0].title} (${running[0].tool}) |
+| 4310 | ${running.length} downloads: |
+| 4326 | The Console's program list could not be loaded. Open the Console again. |
+| 4334 | No program installed |
+| 4348 | No examples yet. --help lists its options. |
+| 4349 | Install a program on Programs first. |
+| 4365 | Put in box |
+| 4366 | Put ${example.args} in the box |
+| 4392 | ${APP_NAME} did not answer. Restart ${APP_NAME}. |
+| 4416 | Clear all? Click again |
+| 4422 | Nothing to copy yet. |
+| 4433 | Could not copy the console. |
+| 4435 | Console copied. |
+| 4439 | Not saved: |
+| 4512 | Updating… |
+| 4518 | The update did not finish: ${(result && result.error) \|\| "no answer after 6 minutes"}. |
+| 4527 | Installing… this can take a moment. |
+| 4533 | This program needs Python: see Programs. |
+| 4534 | Install failed: |
+| 4558 | Read again |
+| 4603 | No link in what you copied. |
+| 4612 | Your copied link is in the box. Press Continue. |
+| 4613 | Your ${links.length} copied links are in the box. Press Continue. |
+| 4620 | Using the link you copied. |
+| 4620 | Using the ${links.length} links you copied. |
+| 4637 | Click to close |
+| 4710 | Waiting for the title… |
+| 4715 | Download not started: a new link was pasted. Press Download again for it. |
+| 4730 | Download not started: |
+| 4742 | Choose a folder: ${tool.name} names the file… |
+| 4748 | Choose where to save it… |
+| 4773 | Added to Downloads. |
+| 4867 | Format for |
+| 4896 | Quality for |
+| 4929 | Subtitle language for |
+| 4932 | Not this video |
+| 4953 | no subtitles |
+| 4963 | Program for |
+| 5005 | ${info.title} · ${info.items.length} videos |
+| 5061 | ${all.length ? all[0].name : "its program"} is not installed. Paste this link alone to install it. |
+| 5069 | no program here makes an MP3 of it. |
+| 5099 | ${shortLink(url)}: the same video as link ${seen.get(key)}. |
+| 5144 | ${f.platform}: Teleloadzai does not download ${f.platform}. |
+| 5152 | ${batchExtra} links left out: ${BATCH_MAX} at most at once. Paste the rest after. |
+| 5156 | ${batchExtra} videos left out: ${BATCH_MAX} at most when choosing for each video. |
+| 5157 | “Same for all” takes the whole playlist. |
+| 5162 | ${list0.count} videos, one row each: the list may be slow. |
+| 5177 | ${list0.title \|\| "Playlist"} · ${list0.count} videos |
+| 5187 | · Videos not read yet come at their best size. |
+| 5215 | title not read |
+| 5225 | …and ${batchExtra} more videos |
+| 5246 | “${line.length > 40 ? line.slice(0, 40) + "…" : line}”: not a link. |
+| 5247 | FFmpeg is missing. Paste one link alone to install it. |
+| 5252 | Not added: |
+| 5272 | <option value="${v}">${v === "best" ? "Best" : v + " kbps"}</option> |
+| 5284 | Each video asks where to save it |
+| 5309 | Could not save this choice: |
+| 5324 | Choose the folder for these downloads… |
+| 5357 | Adding ${added + refused.length + 1} of ${jobs.length}… |
+| 5373 | ${added} videos of the playlist added, one row each. |
+| 5374 | 1 download added. |
+| 5374 | ${added} downloads added. |
+| 5397 | Choosing ${n + 1} of ${ready.length}… |
+| 5401 | Choose the folder for “${label}”: ${tool.name} names the file… |
+| 5402 | Choose where to save “${label}”… |
+| 5411 | Adding ${n + 1} of ${ready.length}… |
+| 5443 | Remove ${ended}? Click again |
+| 5454 | Choose a folder… |
+| 5458 | Folder saved. |
+| 5482 | Saved: live recordings stop after |
+| 5489 | Saved: a message when a download ends. |
+| 5490 | Saved: no message. |
+| 5496 | Saved: a pasted link is read at once. |
+| 5497 | Saved: a pasted link waits for Continue. |
+| 5502 | Saved: copied links are used when you come back. |
+| 5503 | Saved: copied links are left alone. |
+| 5510 | Saved: Windows will ask where to save each file. |
+| 5511 | Saved: files go to your Download folder without asking. |
+| 5530 | Import a cookie file… |
+| 5550 | None saved |
+| 5551 | Not usable: import a new file |
+| 5552 | ${state.total} cookies, ${state.sites.length + (state.more_sites \|\| 0)} sites |
+| 5554 | off · none saved |
+| 5563 | not usable |
+| 5565 | <span class="warn-text">⚠️ ${state.broken}</span> |
+| 5569 | off · paused |
+| 5577 | 1 of them has already expired. |
+| 5578 | ${state.expired} of them have already expired. |
+| 5600 | ⚠️ Cannot log in here: |
+| 5630 | Logged in |
+| 5631 | , until ${new Date(p.ends * 1000).toLocaleDateString()}. |
+| 5632 | Log-in expired on ${new Date(p.ends * 1000).toLocaleDateString()}. |
+| 5633 | Visited, no account. |
+| 5634 | Not logged in. |
+| 5636 | Log in |
+| 5647 | label site-name |
+| 5661 | ${NEED_WORDS[seen.need]} · seen |
+| 5688 | Saved: ${site.name} uses ${tool.name}. |
+| 5716 | login-sign login- |
+| 5722 | ghost tiny login-site |
+| 5749 | Fewer sites |
+| 5750 | ${quiet.length} more site${quiet.length === 1 ? "" : "s"} with nothing to set |
+| 5769 | just now |
+| 5769 | ${minutes} min ago |
+| 5771 | ${hours} h ago |
+| 5772 | ${Math.round(hours / 24)} days ago |
+| 5783 | The log-in window could not open: |
+| 5786 | Log in to |
+| 5788 | A window has opened on |
+| 5789 | It closes by itself once you are in. |
+| 5801 | Log in with an e-mail or a phone number: a Facebook or Google log-in |
+| 5802 | would open in your browser, where Teleloadzai cannot see it. |
+| 5848 | Teleloadzai could not take the cookies: |
+| 5850 | 1 cookie |
+| 5851 | Logged in to |
+| 5851 | Window closed: |
+| 5852 | saved. If a download failed, press Retry on it. |
+| 5858 | You closed the window before Teleloadzai could take anything from |
+| 5864 | Taking the cookies… |
+| 5870 | No cookies came back: the log-in may not have finished. Try again. |
+| 5874 | cookies saved from the log-in. |
+| 5919 | Saved: when |
+| 5920 | every log-in is forgotten. |
+| 5920 | you stay logged in. |
+| 5925 | A visit is enough |
+| 5925 | Works without a log-in |
+| 5925 | Needs your account |
+| 5937 | Choose your cookies.txt in the window that opens… |
+| 5946 | ${result.imported} cookies kept, ${result.ignored} from other sites left out. |
+| 5947 | ${result.imported} cookies kept. |
+| 5954 | Forget every log-in? Click again |
+| 5967 | Cookies forgotten. |
+| 6000 | Works with ${sites.slice(0, 5).join(", ")} and ${sites.length - 5} other sites. |
 
 ## `__main__.py` (21)
 
@@ -615,14 +618,14 @@
 | 536 | Saved from the download cut off last time. |
 | 466 | ). It was kept as |
 | 460 | The list of your last downloads could not be read ({…}), nor set aside ({…}). It is left as it is in {…}, and this session's downloads are not kept in it. |
-| 1113 | Already there: nothing was downloaded. |
+| 1116 | Already there: nothing was downloaded. |
 | 454 | jobs (unreadable {…}).json |
 | 461 | ), nor set aside ( |
 | 461 | ). It is left as it is in |
 | 462 | , and this session's downloads are not kept in it. |
 | 510 | Teleloadzai: the list keeps {…} rows: {…} old failed or cut-off {…} left it. |
 | 522 | Could not keep the list of downloads: |
-| 1025 | The live recording reached its time limit, but its file could not be renamed. Look for a .part file in the folder. |
+| 1028 | The live recording reached its time limit, but its file could not be renamed. Look for a .part file in the folder. |
 | 511 | old failed or cut-off |
 
 ## `login.py` (21)
@@ -651,18 +654,22 @@
 | 364 | logins (unreadable {…}).json |
 | 372 | ; the Sites page forgets how you logged in. |
 
-## `needs.py` (8)
+## `needs.py` (12)
 
 | Line | Text |
 |---|---|
 | 62 | Bilibili keeps “1080p high bitrate” for its premium members: a normal log-in did not unlock it. |
 | 70 | {…} (checked {…}) |
-| 89 | not a table |
-| 104 | {…} was damaged. It was kept as {…}; the Sites page starts again from what Teleloadzai knew before. |
-| 109 | {…} could not be read ({…}): this download's result is not kept on the Sites page. |
-| 151 | {…} could not be written ({…}): this download's result is not kept on the Sites page. |
-| 97 | needs (unreadable {…}).json |
-| 101 | {…} is damaged and could not be set aside: what each site needs is not updated. |
+| 98 | Rumble refused it (403). It may work again after an update. |
+| 104 | XHS-Downloader V2.8 Stable |
+| 106 | Its authors fixed it: the fix comes with its next version. |
+| 150 | {…} failed on this site in our last check ({…}). |
+| 170 | not a table |
+| 185 | {…} was damaged. It was kept as {…}; the Sites page starts again from what Teleloadzai knew before. |
+| 190 | {…} could not be read ({…}): this download's result is not kept on the Sites page. |
+| 232 | {…} could not be written ({…}): this download's result is not kept on the Sites page. |
+| 178 | needs (unreadable {…}).json |
+| 182 | {…} is damaged and could not be set aside: what each site needs is not updated. |
 
 ## `notify.py` (8)
 
@@ -704,7 +711,7 @@
 | 149 | Past videos and clips |
 | 152 | Boards and pins |
 
-## `runners.py` (26)
+## `runners.py` (27)
 
 | Line | Text |
 |---|---|
@@ -729,59 +736,62 @@
 | 1183 | The download was cut off at {…} MB of {…} MB. Nothing was kept: try again. |
 | 1346 | no recipe for |
 | 1352 | {…} is not installed |
+| 1620 | Traceback (most recent call last) |
 | 898 | Could not note the work folder {…} in {…}. |
 | 1184 | MB. Nothing was kept: try again. |
 | 1188 | The video could not be downloaded: |
 | 1528 | stopped with code |
 | 1044 | "{…}" was downloaded, but could not be put in the folder: {…}. It is moved there at the next start. |
 
-## `server.py` (43)
+## `server.py` (45)
 
 | Line | Text |
 |---|---|
-| 407 | The cookies are saved, but “Use my log-ins” could not be switched on ({…}). Switch it on on the Sites page. |
+| 409 | The cookies are saved, but “Use my log-ins” could not be switched on ({…}). Switch it on on the Sites page. |
+| 761 | Above {…}p, {…} needs your {…} log-in. Log in on the Sites page. |
 | 67 | Your settings file was damaged, so Teleloadzai went back to its usual settings. The old file was kept as {…}. |
-| 290 | Your settings could not be saved ({…}). Try again. |
-| 408 | ). Switch it on on the Sites page. |
+| 292 | Your settings could not be saved ({…}). Try again. |
+| 410 | ). Switch it on on the Sites page. |
+| 759 | Above {…}p, {…} needs your log-in: turn on “Use my log-ins” on the Sites page. |
 | 62 | Your settings file is damaged and could not be set aside ({…}): Teleloadzai uses its usual settings, and changes are not saved until the file can be moved. |
 | 209 | another program is using the clipboard |
-| 291 | Your settings could not be saved. |
-| 404 | your settings cannot be saved now |
-| 427 | The folder “{…}” no longer exists, so this download goes to {…}. |
-| 1152 | This program is being updated. Run the command when it is done. |
+| 293 | Your settings could not be saved. |
+| 406 | your settings cannot be saved now |
+| 429 | The folder “{…}” no longer exists, so this download goes to {…}. |
+| 1172 | This program is being updated. Run the command when it is done. |
 | 54 | settings (unreadable {…}).json |
 | 63 | ): Teleloadzai uses its usual settings, and changes are not saved until the file can be moved. |
 | 114 | Your settings file could not be read ({…}): Teleloadzai uses its usual settings, and changes are not saved until it can be read. |
-| 480 | bad mode or quality |
-| 488 | {…} cannot make an MP3. Choose MP4, or another program. |
-| 495 | {…} gives {…}p at most without your log-in to this site. Choose {…}p or less, or log in on the Sites page. |
-| 498 | {…} cannot read this link. Choose another program. |
-| 500 | {…} is not installed |
-| 511 | The folder {…} does not exist. |
-| 536 | that download is still running, or no longer exists |
-| 706 | Could not read the title: |
-| 709 | No title in the answer. |
+| 482 | bad mode or quality |
+| 490 | {…} cannot make an MP3. Choose MP4, or another program. |
+| 497 | {…} gives {…}p at most without your log-in to this site. Choose {…}p or less, or log in on the Sites page. |
+| 500 | {…} cannot read this link. Choose another program. |
+| 502 | {…} is not installed |
+| 513 | The folder {…} does not exist. |
+| 538 | that download is still running, or no longer exists |
+| 708 | Could not read the title: |
+| 711 | No title in the answer. |
 | 104 | not a table |
-| 483 | no runner for |
-| 496 | p or less, or log in on the Sites page. |
-| 533 | Another download in the list is already saving to “{…}”. Choose another name. |
-| 664 | {…} installed: {…}. |
-| 1013 | Reading the title · yt-dlp · |
-| 1308 | Choose your cookies.txt |
-| 665 | Updated: {…} → {…}. |
-| 1008 | Reading the title · |
-| 1155 | This command is too long (8,000 characters at most). |
-| 1230 | that download no longer exists |
-| 1262 | The file is no longer where it was saved: it may have been moved or deleted. |
-| 666 | Switched to the {…} version: {…}. |
-| 667 | The update did not change {…}: {…} is kept. |
-| 974 | Teleloadzai hit an unexpected problem ({…}: {…}). |
-| 1139 | The clipboard could not be read: {…}. |
-| 643 | waits for {…} download{…} to finish |
-| 645 | waits for the Console's command to finish |
-| 1206 | Windows could not write the file: |
-| 1275 | Windows could not open it: |
-| 1365 | The log-in window could not be read: |
+| 485 | no runner for |
+| 498 | p or less, or log in on the Sites page. |
+| 535 | Another download in the list is already saving to “{…}”. Choose another name. |
+| 666 | {…} installed: {…}. |
+| 1033 | Reading the title · yt-dlp · |
+| 1328 | Choose your cookies.txt |
+| 667 | Updated: {…} → {…}. |
+| 1028 | Reading the title · |
+| 1175 | This command is too long (8,000 characters at most). |
+| 1250 | that download no longer exists |
+| 1282 | The file is no longer where it was saved: it may have been moved or deleted. |
+| 668 | Switched to the {…} version: {…}. |
+| 669 | The update did not change {…}: {…} is kept. |
+| 994 | Teleloadzai hit an unexpected problem ({…}: {…}). |
+| 1159 | The clipboard could not be read: {…}. |
+| 645 | waits for {…} download{…} to finish |
+| 647 | waits for the Console's command to finish |
+| 1226 | Windows could not write the file: |
+| 1295 | Windows could not open it: |
+| 1385 | The log-in window could not be read: |
 
 ## `tools.py` (31)
 
@@ -845,7 +855,7 @@
 
 | Line | Text |
 |---|---|
-| 643 | [info] Writing video subtitles to: |
+| 650 | [info] Writing video subtitles to: |
 | 313 | {…} of {…} MP3s were saved without a cover picture. |
 | 71 | joining picture and sound |
 | 72 | making the MP3 |
@@ -858,6 +868,6 @@
 | 365 | ffmpeg is not installed |
 | 394 | yt-dlp did not answer within {…} seconds. |
 | 533 | The name chosen in "Save as" is too long for Windows. Choose a shorter name or folder. |
-| 858 | yt-dlp finished without downloading anything. |
-| 907 | "{…}" was made, but could not be given its name: {…}. It is in the folder as "{…}". |
-| 859 | Its last line: |
+| 866 | yt-dlp finished without downloading anything. |
+| 915 | "{…}" was made, but could not be given its name: {…}. It is in the folder as "{…}". |
+| 867 | Its last line: |

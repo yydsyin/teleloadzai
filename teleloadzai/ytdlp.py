@@ -511,7 +511,7 @@ def untagged(name: str, tag: str = "") -> str:
 
 def _output_arguments(
     mode: str, out_dir: Path, quality: str = "best", out_path: Path | None = None,
-    tag: str = "",
+    tag: str = "", prefer: str = "",
 ) -> list[str]:
     """Build the yt-dlp options for the chosen format and quality.
 
@@ -605,6 +605,13 @@ def _output_arguments(
                 f"best[height<={quality}]{real}/best{real}"
             )
             sort = ["-S", f"res:{quality}"]
+        if prefer:
+            # A codec to prefer AT THE SAME HEIGHT (needs.DOWNLOAD_FAILS, the
+            # reviewed download test): the height is sorted first, so it is
+            # never lowered. Probed 2026-11-16 on Bilibili BV1Gsnj6XE9M, yt-dlp
+            # 2026.11.14: "res,vcodec" -> AV1 100026, ":h265" -> HEVC 30077,
+            # ":h264" -> H.264 30080, all 1080p; "res:720,vcodec:h264" -> 720p.
+            sort = ["-S", (sort[1] if sort else "res") + f",vcodec:{prefer}"]
         return [
             *tidy,
             "-f", selector,
@@ -695,6 +702,7 @@ def download(
     sub_lang: str = "",
     on_line: Callable[[str], None] | None = None,
     job_id: str = "",
+    prefer_codec: str = "",
 ) -> DownloadResult:
     """Download one link as MP3 or MP4, reporting progress line by line.
 
@@ -741,7 +749,7 @@ def download(
         *(["--force-overwrites"] if (force or _only_chosen_name(out_path)) else []),
         *_cookie_arguments(cookie_file),
         *_ffmpeg_arguments(),
-        *_output_arguments(mode, out_dir, quality, out_path, tag),
+        *_output_arguments(mode, out_dir, quality, out_path, tag, prefer_codec),
         *_subtitle_arguments(mode, subs, sub_lang),
         url,
     ]
