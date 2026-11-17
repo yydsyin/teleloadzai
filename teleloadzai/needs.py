@@ -109,14 +109,21 @@ DOWNLOAD_FAILS: dict[str, dict] = {
 
 def download_fail(site: str, program: str) -> dict | None:
     """The reviewed entry for this site and program, or None. None too when it
-    names a version and the program is no longer at it (updated, or removed)."""
+    names a version and the program is no longer at it (updated, or removed);
+    a version that cannot be read keeps the entry."""
     entry = DOWNLOAD_FAILS.get(f"{site}|{program}")
     if not entry:
         return None
     if entry.get("version"):
         from . import tools     # only this function needs it
         try:
-            if tools.installed_version(program) != entry["version"]:
+            if tools.installed_path(program) is None:
+                return None                     # removed: nothing to warn about
+            version = tools.installed_version(program)
+            # "" is a version read that failed or timed out (tools.py keeps
+            # only real answers): unknown, so the warning stays -- it vanished
+            # while the broken 2.8 was still there (hunt, 2026-11-17).
+            if version and version != entry["version"]:
                 return None
         except Exception:
             # The version could not be read: the entry still applies -- a

@@ -139,14 +139,18 @@ def _error_of(text: str) -> str:
     return cookies.redact(chosen)[:240]
 
 
-def read(url: str, cookie_file: Path | None) -> dict:
-    """One title read, as the app does it, plus yt-dlp's own "missing" line."""
+def read(url: str, cookie_file: Path | None, prefer: str = "") -> dict:
+    """One title read, as the app does it, plus yt-dlp's own "missing" line.
+    `prefer`: the codec the app prefers on this site (needs.ytdlp_prefer) --
+    the check must test the file the app really picks (hunt, 2026-11-17: it
+    tested Bilibili's AV1, which the app no longer takes)."""
+    sort = f"res,vcodec:{prefer},{ytdlp.MP4_SORT}" if prefer else f"res,{ytdlp.MP4_SORT}"
     command = [
         str(ytdlp.require_ytdlp()),
         "--dump-single-json", "--no-playlist",
         "--encoding", "utf-8", "--no-colors",
         "--no-quiet",           # the app's read is quiet; the "missing" line needs this
-        "-f", ytdlp._MP4_BEST, "-S", f"res,{ytdlp.MP4_SORT}",
+        "-f", ytdlp._MP4_BEST, "-S", sort,
         *(["--cookies", str(cookie_file)] if cookie_file else []),
         url,
     ]
@@ -364,12 +368,26 @@ def test_download(url: str, state: dict, cookie_file: Path | None) -> dict | Non
     return result
 
 
-def with_my_cookies(url: str, download: bool, plain_format: str | None) -> dict:
+def test_avoided(url: str, picked: dict) -> dict:
+    """The file the reviewed table makes the app AVOID (Bilibili's AV1 1080p):
+    still failing, or whole again -- then the table's line can be removed.
+    Read with the plain rule, downloaded once, without cookies."""
+    plain_pick = read(url, None)
+    if not plain_pick.get("ok"):
+        return {"ok": False, "error": plain_pick.get("error", "the read failed")}
+    if plain_pick.get("format_id") == picked.get("format_id"):
+        return {"same": True}       # nothing avoided on this video
+    got = fetch(url, ["-f", plain_pick["format_id"]], None, plain_pick.get("seconds"))
+    return {"format": plain_pick["format_id"], "codec": plain_pick.get("codec"),
+            "height": plain_pick.get("best"), **got}
+
+
+def with_my_cookies(url: str, download: bool, plain_format: str | None, prefer: str = "") -> dict:
     """The same read with a throwaway copy of our cookie file -- and the
     download test, unless it picked the same file as without cookies."""
     try:
         with _cookie_copy() as copy:
-            state = read(url, copy)
+            state = read(url, copy, prefer)
             if download and state.get("ok"):
                 if state.get("format_id") == plain_format:
                     state["download"] = {"same": True}
@@ -586,11 +604,12 @@ def check_site(site: str, links: list[str], cookies_on: bool | None, download: b
     (decided before), or the read changed since the last time (the user's
     plan, 2026-11-17: read every day, download weekly or on a change)."""
     before = before or {}
+    prefer = needs.ytdlp_prefer(site, "mp4", "best")    # the app's own pick
     result: dict = {"checked": time.strftime("%Y-%m-%d %H:%M"), "failed_links": []}
     sign = login.site_state(site)
     result["sign"] = sign
     for number, url in enumerate(links, 1):
-        plain = read(url, None)
+        plain = read(url, None, prefer)
         if plain["ok"] or plain.get("needs_login"):
             result.update(link=url, link_number=number, no_cookies=plain)
             break
@@ -608,7 +627,11 @@ def check_site(site: str, links: list[str], cookies_on: bool | None, download: b
         result["downloaded"] = before.get("downloaded") if same_link else None
     if download and plain["ok"]:
         plain["download"] = test_download(result["link"], plain, None)
-    elif same_link and _carried(before.get("no_cookies"), result["downloaded"]):
+        if prefer and plain["download"] and not plain["download"].get("skipped"):
+            plain["download"]["avoided"] = test_avoided(result["link"], plain)
+    # Carried only on a day WITHOUT a test: on a test day whose read failed,
+    # the old result was stamped with today's date (hunt, 2026-11-17).
+    elif not download and same_link and _carried(before.get("no_cookies"), result["downloaded"]):
         plain["download"] = _carried(before.get("no_cookies"), result["downloaded"])
 
     if cookies_on is None:
@@ -620,7 +643,7 @@ def check_site(site: str, links: list[str], cookies_on: bool | None, download: b
     elif sign == "none":
         result["your_cookies"] = {"skipped": "no cookies for this site"}
     else:
-        result["your_cookies"] = with_my_cookies(result["link"], download, plain.get("format_id"))
+        result["your_cookies"] = with_my_cookies(result["link"], download, plain.get("format_id"), prefer)
         if not download and same_link and _carried(before.get("your_cookies"), result["downloaded"]):
             result["your_cookies"]["download"] = _carried(before.get("your_cookies"), result["downloaded"])
     return result
@@ -633,26 +656,44 @@ def _days_ago(days: int) -> str:
     return time.strftime("%Y-%m-%d", time.localtime(time.time() - days * 86400))
 
 
-def new_failures(table: dict) -> tuple[set[str], list[str]]:
-    """{"site|program"} of the downloads that failed on this PC since the last
-    run, and every failed row's id seen so far. data/jobs.json has no dates:
-    the failed rows already seen are remembered by their id (the first run
-    takes every failed row as new -- one test each, once)."""
+def failed_rows() -> tuple[dict[str, str] | None, str]:
+    """{row id: "site|program"} of the failed downloads in data/jobs.json, and
+    a problem to say -- None when the file could not be read (then nothing is
+    marked seen: hunt, 2026-11-17, an unreadable file forgot every failure).
+    The file has no dates: rows already seen are remembered by their id."""
     jobs_file = DATA_DIR / "jobs.json"
-    rows = []
+    problem = ""
     for _ in range(5):          # the app may be replacing the file this instant
         try:
             data = json.loads(jobs_file.read_text(encoding="utf-8"))
             rows = data.get("jobs", []) if isinstance(data, dict) else data
-            break
+            return ({r["id"]: f"{r.get('platform')}|{r.get('tool')}" for r in rows
+                     if isinstance(r, dict) and r.get("state") == "error" and r.get("id")}, "")
         except FileNotFoundError:
-            break
-        except (OSError, ValueError):
+            return {}, ""
+        except (OSError, ValueError) as error:
+            problem = f"data/jobs.json could not be read ({type(error).__name__}), so failed downloads on this PC were not looked at"
             time.sleep(0.2)
-    failed = [r for r in rows if isinstance(r, dict) and r.get("state") == "error" and r.get("id")]
+    return None, problem
+
+
+def new_failures(table: dict, rows: dict[str, str] | None) -> set[str]:
+    """{"site|program"} of the failed rows not yet tested."""
     seen = set(table.get("failed_jobs_seen") or [])
-    pairs = {f"{r.get('platform')}|{r.get('tool')}" for r in failed if r["id"] not in seen}
-    return pairs, [r["id"] for r in failed][-500:]
+    return {pair for row, pair in (rows or {}).items() if row not in seen}
+
+
+def seen_after(table: dict, rows: dict[str, str] | None, tested: set[str], testable: set[str]) -> list[str]:
+    """The failed rows to remember as seen: those seen before, those whose
+    pair was really tested in this run, and those no test can cover (no link,
+    a program not tested). A failure not tested stays new for the next run
+    (hunt, 2026-11-17: --site, --no-download, a pair tested earlier the same
+    day marked it seen without a test). Rows gone from the list are dropped."""
+    if rows is None:
+        return list(table.get("failed_jobs_seen") or [])
+    seen = set(table.get("failed_jobs_seen") or [])
+    keep = [row for row, pair in rows.items() if row in seen or pair in tested or pair not in testable]
+    return keep[-500:]
 
 
 def full_test_reasons(sites: list[str], table: dict, read_reasons: dict[str, str],
@@ -663,8 +704,13 @@ def full_test_reasons(sites: list[str], table: dict, read_reasons: dict[str, str
     reasons: dict[str, str] = {}
     for site in sites:
         entry, why = old.get(site) or {}, read_reasons.get(site, "")
+        last = [(entry.get(s) or {}).get("download") or {} for s in ("no_cookies", "your_cookies")]
         if not entry.get("downloaded"):
             reasons[site] = "never tested by a download"
+        elif any("ok" in d and not d["ok"] for d in last):
+            # Retested at once, as the programs are: a site fixed the next day
+            # was noticed up to a week late (hunt, 2026-11-17).
+            reasons[site] = "its last download test failed"
         elif needs.download_fail(site, "yt-dlp"):
             reasons[site] = "it is in the reviewed table (tested daily, so a fixed site loses its warning)"
         elif why.startswith(("yt-dlp ", "a download on this PC", "more than 30", "its last read failed")):
@@ -868,11 +914,15 @@ def _key(state: dict | None) -> tuple:
 
 
 def report(new: dict, old: dict, header: list[str],
-           new_programs: dict | None = None, old_programs: dict | None = None) -> tuple[str, int, int, int]:
-    """The report's text, and how many changes, broken checks and files that
-    do not download it holds."""
+           new_programs: dict | None = None, old_programs: dict | None = None
+           ) -> tuple[str, int, int, int, int]:
+    """The report's text, and how many changes, broken checks, files that do
+    not download, and NEW failures (failing now, not at the last test) it
+    holds -- the Windows message counts only the new ones: a failure retested
+    every day must not send the same message every day."""
     names = {p.id: p.name for p in PLATFORMS}
-    changed, broken, fails = [], [], []
+    changed, broken, fails, table_lines = [], [], [], []
+    new_fails = 0
     new_programs, old_programs = new_programs or {}, old_programs or {}
     for key, now in new_programs.items():
         site, _, tool = key.partition("|")
@@ -884,6 +934,7 @@ def report(new: dict, old: dict, header: list[str],
                               f"your cookies {_program_said(f['your_cookies'])}" for f in now["failed_links"])
             fails.append(f"- {label}: failed on every link tried — the program, the site or "
                          f"the links. {tries}")
+            new_fails += not (old_programs.get(key) or {}).get("fails")
         before = old_programs.get(key) or {}
         if before.get("link") and before.get("link") == now.get("link"):
             for state, words in (("no_cookies", "no cookies"), ("your_cookies", "your cookies")):
@@ -903,6 +954,20 @@ def report(new: dict, old: dict, header: list[str],
             # already said (no daily message for one old result).
             if d and not d.get("same") and not d.get("skipped") and not d.get("ok") and not d.get("from"):
                 fails.append(f"- **{name}** · {label} · {now.get('link')}: {_download_said(d)}")
+                was = ((before or {}).get(state) or {}).get("download") or {}
+                new_fails += not ("ok" in was and not was["ok"])
+            # The file the reviewed table makes the app avoid: still failing,
+            # or whole again (then its line can go).
+            avoided = (d or {}).get("avoided") if d and not d.get("from") else None
+            if avoided and not avoided.get("same"):
+                entry = needs.download_fail(site, "yt-dlp") or {}
+                what = _one_try(avoided)
+                if avoided.get("ok"):
+                    table_lines.append(f"- **{name}** · {label}: the avoided file came WHOLE — {what}. "
+                                       f"The table's line (avoid {entry.get('avoid', '?')}) can be removed.")
+                    changed.append(f"- **{name}**: the file the table avoids came whole — its line can be removed")
+                else:
+                    table_lines.append(f"- **{name}** · {label}: the avoided file still fails — {what}")
         if now.get("broken"):
             errors = "; ".join(f"link {f['number']}: {f['error']}" for f in now["failed_links"])
             # yt-dlp failing on every link of ONE site is a result to review,
@@ -913,6 +978,7 @@ def report(new: dict, old: dict, header: list[str],
             else:
                 fails.append(f"- **{name}** · yt-dlp: failed on every link tried — the program, the site "
                              f"or the links. {errors}")
+                new_fails += not ((before or {}).get("broken") or (before or {}).get("retry"))
             continue
         if now.get("link_number", 1) > 1:
             broken.append(f"- **{name}**: link 1 failed, link {now['link_number']} used. "
@@ -950,6 +1016,8 @@ def report(new: dict, old: dict, header: list[str],
             if extra:
                 login_only.append(f"- **{names.get(site, site)}** · yt-dlp: "
                                   f"{', '.join(f'{h}p' for h in extra)} only with your cookies")
+    if table_lines:
+        lines += ["", "## The reviewed table (needs.DOWNLOAD_FAILS)", ""] + table_lines
     lines += ["", "## Sizes only with your log-in", "",
               "Candidates for the card's locked sizes (grey, with the log-in that unlocks them).", ""]
     lines += login_only or ["None found."]
@@ -986,7 +1054,7 @@ def report(new: dict, old: dict, header: list[str],
                              f"| {_program_said(now.get('your_cookies'))} |")
     lines += ["", "Not tested: " + "; ".join(f"**{tool_name(t)}** — {why}" for t, why in NOT_TESTED.items())
               + ".", ""]
-    return "\n".join(lines), len(changed), len(broken), len(fails)
+    return "\n".join(lines), len(changed), len(broken), len(fails), new_fails
 
 
 def _write(path: Path, text: str) -> None:
@@ -1058,7 +1126,20 @@ def main() -> int:
     if args.due and _ran_today():
         print("Already ran today.")
         return 0
-    failed_pairs, failed_seen = new_failures(table)
+    rows, rows_problem = failed_rows()
+    if rows_problem:
+        problems.append(rows_problem)
+    failed_pairs = new_failures(table, rows)
+    # Every pair a test can cover: a failed row of another pair is "seen" at
+    # once (nothing would ever test it).
+    testable = {f"{s}|yt-dlp" for s in sites} | {f"{s}|{t}" for s, t in program_pairs(links)}
+    # ffprobe missing: every download test would say "could not read the
+    # file" -- one problem said instead of twenty false failures (hunt).
+    probe_tool = ytdlp.find_tool("ffmpeg")
+    if not args.no_download and not (probe_tool and probe_tool.with_name("ffprobe.exe").is_file()):
+        problems.append("ffprobe is missing (it comes with FFmpeg), so no download test ran")
+        args.no_download = True
+        pairs = []
     # By hand (no --due): every site read gets its full test, as before.
     full_tests: dict[str, str] = {s: "run by hand" for s in sites}
     if args.due:
@@ -1074,9 +1155,12 @@ def main() -> int:
         pairs = [(s, t) for s, t in pairs if f"{s}|{t}" in program_reasons]
         reasons.update(program_reasons)
         if not sites and not pairs:
+            # A test folder Windows refused to delete at the start is said
+            # on a quiet day too (hunt, 2026-11-17).
+            problems += [f"a download test folder was left: {left}" for left in _LEFT_BEHIND]
             log_run("nothing due" + "".join(f" · PROBLEM: {p}" for p in problems))
             table["notes_seen"] = notes_seen
-            table["failed_jobs_seen"] = failed_seen
+            table["failed_jobs_seen"] = seen_after(table, rows, set(), testable)
             _write(TABLE_FILE, json.dumps({**table, "sites": old}, ensure_ascii=False, indent=1))
             if problems:
                 tell("Quality check: a problem", problems[0][:200], None)
@@ -1127,10 +1211,14 @@ def main() -> int:
         header.append("- yt-dlp full download test today: " + ("; ".join(f"{s}: {w}" for s, w in tested.items())
                       or "none (read only — the last test's result is shown with its date)"))
     header += [f"- ⚠️ {p}" for p in problems]
-    text, changed, broken, fails = report(new, {s: old[s] for s in new if s in old}, header,
+    text, changed, broken, fails, new_fails = report(new, {s: old[s] for s in new if s in old}, header,
                                           new_programs, old_programs)
     report_file = OUT_DIR / f"report-{time.strftime('%Y-%m-%d-%H%M%S')}.md"
     _write(report_file, text)
+    # The pairs really tested by a download in this run: their failed rows
+    # are now seen; the others stay new for the next run.
+    tested_now = ({f"{s}|yt-dlp" for s, n in new.items() if n.get("full_test_why")}
+                  | {k for k, n in new_programs.items() if not n.get("not_installed") and not n.get("port_taken")})
     merged = dict(old)
     for site, now in new.items():
         before = old.get(site)
@@ -1144,7 +1232,7 @@ def main() -> int:
             merged[site] = now
     _write(TABLE_FILE, json.dumps({"ytdlp": version, "notes_seen": notes_seen, "sites": merged,
                                    "programs": {**old_programs, **new_programs},
-                                   "failed_jobs_seen": failed_seen},
+                                   "failed_jobs_seen": seen_after(table, rows, tested_now, testable)},
                                   ensure_ascii=False, indent=1))
     log_run(f"{len(sites)} read ({', '.join(sites)}) · {len(pairs)} program tests"
             + (f" ({', '.join(f'{s}|{t}' for s, t in pairs)})" if pairs else "")
@@ -1152,8 +1240,8 @@ def main() -> int:
             + f" · {fails} not downloading"
             + "".join(f" · PROBLEM: {p}" for p in problems) + f" · {report_file.name}")
     print(f"\nReport: {report_file}")
-    if changed or broken or problems or fails:
-        parts = [f"{fails} download test{'s' if fails != 1 else ''} failed"] if fails else []
+    if changed or broken or problems or new_fails:
+        parts = [f"{new_fails} new download failure{'s' if new_fails != 1 else ''}"] if new_fails else []
         parts += [f"{changed} change{'s' if changed != 1 else ''} to review"] if changed else []
         parts += [f"{broken} broken check{'s' if broken != 1 else ''}"] if broken else []
         parts += ["a problem"] if problems else []
