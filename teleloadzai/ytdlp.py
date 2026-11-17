@@ -433,8 +433,8 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
         "--no-warnings",
         "--no-colors",
         # The download's own MP4 rule: the answer's "height" is then what
-        # "Best" will really give (see _MP4_BEST).
-        "-f", _MP4_BEST,
+        # "Best" will really give (see _MP4_BEST) -- its sort too.
+        "-f", _MP4_BEST, "-S", f"res,{MP4_SORT}",
         *_cookie_arguments(cookie_file),
         url,
     ]
@@ -485,9 +485,19 @@ VIDEO_QUALITIES = ("best", "1080", "720", "480", "360")   # max height
 # TikTok lists a 720p version, this rule (a real .mp4 first) picks 576p, and
 # the list said "Best (720p)" over a 1024x576 file; "480p" gave the same
 # 576p file (both measured 2026-09-27, ffprobe, 18,277,961 bytes).
+#
+# The HEIGHT comes first, and .mp4 only between files of the same height
+# (`MP4_SORT`): with the user's cookies YouTube offers its 4K as .webm only,
+# and the old rule ("a .mp4 picture first") gave H.264 1080p instead of VP9
+# 2160p (seen 2026-11-17 by the quality check). The picture and sound are
+# joined into an .mp4 either way (--merge-output-format). A READY file (one
+# with its sound, Archive.org) must still be a real .mp4: `best[ext=mp4]`.
+# Probed the same day on the 20 test sites without cookies: every pick the
+# same as before, for "Best" and for 1440p; with cookies, YouTube 137 -> 313.
 _REAL = "[ext!=jpg][ext!=png][ext!=webp][ext!=mhtml]"
-_MP4_BEST = (f"bestvideo[ext=mp4]{_REAL}+bestaudio[ext=m4a]/bestvideo{_REAL}+bestaudio/"
+_MP4_BEST = (f"bestvideo{_REAL}+bestaudio[ext=m4a]/bestvideo{_REAL}+bestaudio/"
              f"best[ext=mp4]{_REAL}/best{_REAL}")
+MP4_SORT = "ext:mp4:m4a"         # after the height, in every MP4 -S
 
 
 # In MP3 mode, yt-dlp first fetches a step file named like the final one,
@@ -587,31 +597,32 @@ def _output_arguments(
         # "MP4" means an .mp4 file. Picture + sound fetched apart are joined
         # into one (--merge-output-format); but a site that serves READY
         # files (Archive.org) was answered with whatever file fit the height:
-        # MP4 at 360p gave Cops1922's 300p .ogv (seen 2026-09-26). A real
-        # .mp4 now comes first, at the closest height; another format only
-        # when the site has no .mp4 at all.
+        # MP4 at 360p gave Cops1922's 300p .ogv (seen 2026-09-26). A ready
+        # file must be a real .mp4; a picture joined to its sound may come in
+        # any container, the height first (see _MP4_BEST, 2026-11-17).
         if quality == "best":
             selector = _MP4_BEST
-            sort = []
+            sort = ["-S", f"res,{MP4_SORT}"]
         else:
             # The best not taller than the chosen height; when there is none,
             # `-S res:N` makes the last "best" the CLOSEST above -- Weibo at
             # 360 now gives its 720p video, not its 1080p. Measured the same
             # day: YouTube picks exactly the formats it picked before.
             selector = (
-                f"bestvideo[height<={quality}][ext=mp4]{real}+bestaudio[ext=m4a]/"
+                f"bestvideo[height<={quality}]{real}+bestaudio[ext=m4a]/"
                 f"bestvideo[height<={quality}]{real}+bestaudio/"
                 f"best[height<={quality}][ext=mp4]{real}/best[ext=mp4]{real}/"
                 f"best[height<={quality}]{real}/best{real}"
             )
-            sort = ["-S", f"res:{quality}"]
+            sort = ["-S", f"res:{quality},{MP4_SORT}"]
         if prefer:
             # A codec to prefer AT THE SAME HEIGHT (needs.DOWNLOAD_FAILS, the
             # reviewed download test): the height is sorted first, so it is
             # never lowered. Probed 2026-11-16 on Bilibili BV1Gsnj6XE9M, yt-dlp
             # 2026.11.14: "res,vcodec" -> AV1 100026, ":h265" -> HEVC 30077,
             # ":h264" -> H.264 30080, all 1080p; "res:720,vcodec:h264" -> 720p.
-            sort = ["-S", (sort[1] if sort else "res") + f",vcodec:{prefer}"]
+            height, rest = sort[1].split(",", 1)
+            sort = ["-S", f"{height},vcodec:{prefer},{rest}"]
         return [
             *tidy,
             "-f", selector,

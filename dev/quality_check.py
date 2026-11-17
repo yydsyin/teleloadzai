@@ -142,7 +142,7 @@ def read(url: str, cookie_file: Path | None) -> dict:
         "--dump-single-json", "--no-playlist",
         "--encoding", "utf-8", "--no-colors",
         "--no-quiet",           # the app's read is quiet; the "missing" line needs this
-        "-f", ytdlp._MP4_BEST,
+        "-f", ytdlp._MP4_BEST, "-S", f"res,{ytdlp.MP4_SORT}",
         *(["--cookies", str(cookie_file)] if cookie_file else []),
         url,
     ]
