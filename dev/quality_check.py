@@ -23,10 +23,14 @@ They take the post's file as it is, so when one fails the way out is
 another program, not another quality. Streamlink and N_m3u8DL-RE are not
 tested (NOT_TESTED says why).
 
-EVERY DAY (the user, 2026-11-17): each site and each program is due once
-per calendar day, at the first log-on -- and at once after a failed read, a
-program update, a yt-dlp release that changed the site, or a download on
-this PC that disagrees.
+HOW OFTEN (the user's choice, 2026-11-17): every yt-dlp site is READ every
+day (no download, seconds). The full download test runs once a week, and at
+once when something changed: a yt-dlp release that touched the site, a
+program update, a read different from the last one, a failed download on
+this PC (data/jobs.json, failed rows by id), a failed test. What is in the
+reviewed table (needs.DOWNLOAD_FAILS) is tested every day, so a fixed site
+or program loses its warning. On a day with no test, the last result is
+kept with its date and gives no new message.
 
 Both are under data/, which git ignores: the report says which sites the
 developer is logged in on, and the repository is public. Nothing here
@@ -528,8 +532,12 @@ def _program_said(state: dict | None) -> str:
     return f"whole: {', '.join(what) or 'files'}, {state['bytes'] / 1048576:.1f} MB"
 
 
-def due_programs(pairs: list[tuple[str, str]], table: dict) -> dict[str, str]:
-    """{"site|program": why it is due}."""
+def due_programs(pairs: list[tuple[str, str]], table: dict,
+                 failed_pairs: set[str] | None = None) -> dict[str, str]:
+    """{"site|program": why it is due} -- each test is a real download: weekly,
+    daily for what is in the reviewed table or failing, at once after an
+    update or a failed download on this PC (the user's plan, 2026-11-17)."""
+    failed_pairs = failed_pairs or set()
     due: dict[str, str] = {}
     old = table.get("programs", {})
     for site, tool in pairs:
@@ -544,14 +552,40 @@ def due_programs(pairs: list[tuple[str, str]], table: dict) -> dict[str, str]:
             due[key] = "the program was updated"
         elif entry.get("not_installed"):
             pass
-        elif entry["checked"][:10] < time.strftime("%Y-%m-%d"):
-            # Every day (the user, 2026-11-17: "we need to verify this every
-            # day"): a calendar day, not 24 hours -- the log-on time moves.
+        elif entry["checked"][:10] >= time.strftime("%Y-%m-%d"):
+            pass                # already tested today
+        elif needs.download_fail(site, tool):
+            due[key] = "it is in the reviewed table (tested daily, so a fixed program loses its warning)"
+        elif key in failed_pairs:
+            due[key] = "a download on this PC failed"
+        elif entry["checked"][:10] <= _days_ago(WEEK_DAYS):
             due[key] = f"last tested on {entry['checked'][:10]}"
     return due
 
 
-def check_site(site: str, links: list[str], cookies_on: bool | None, download: bool = True) -> dict:
+def _read_changed(before: dict | None, now: dict) -> bool:
+    """The read differs from the last one on the same link: another file picked,
+    or other sizes offered -- worth a full test the same day."""
+    if not before or not before.get("ok") or not now.get("ok"):
+        return False
+    return (before.get("format_id") != now.get("format_id")
+            or before.get("heights") != now.get("heights"))
+
+
+def _carried(before_state: dict | None, on: str | None) -> dict | None:
+    """The last full test's result, kept on a day with none -- marked with its date."""
+    old = (before_state or {}).get("download")
+    if not old or not on:
+        return None
+    return {**old, "from": old.get("from") or on}
+
+
+def check_site(site: str, links: list[str], cookies_on: bool | None, download: bool = True,
+               before: dict | None = None, full_test: str = "") -> dict:
+    """The day's read; the full download test only for a reason -- `full_test`
+    (decided before), or the read changed since the last time (the user's
+    plan, 2026-11-17: read every day, download weekly or on a change)."""
+    before = before or {}
     result: dict = {"checked": time.strftime("%Y-%m-%d %H:%M"), "failed_links": []}
     sign = login.site_state(site)
     result["sign"] = sign
@@ -564,8 +598,18 @@ def check_site(site: str, links: list[str], cookies_on: bool | None, download: b
     else:
         result["broken"] = True
         return result
+    same_link = before.get("link") == result["link"]
+    if not full_test and same_link and _read_changed(before.get("no_cookies"), plain):
+        full_test = "the read changed since the last time"
+    download = download and bool(full_test)
+    if download:
+        result["downloaded"], result["full_test_why"] = time.strftime("%Y-%m-%d"), full_test
+    else:
+        result["downloaded"] = before.get("downloaded") if same_link else None
     if download and plain["ok"]:
         plain["download"] = test_download(result["link"], plain, None)
+    elif same_link and _carried(before.get("no_cookies"), result["downloaded"]):
+        plain["download"] = _carried(before.get("no_cookies"), result["downloaded"])
 
     if cookies_on is None:
         result["your_cookies"] = {"skipped": "the app's settings file could not be read"}
@@ -577,7 +621,59 @@ def check_site(site: str, links: list[str], cookies_on: bool | None, download: b
         result["your_cookies"] = {"skipped": "no cookies for this site"}
     else:
         result["your_cookies"] = with_my_cookies(result["link"], download, plain.get("format_id"))
+        if not download and same_link and _carried(before.get("your_cookies"), result["downloaded"]):
+            result["your_cookies"]["download"] = _carried(before.get("your_cookies"), result["downloaded"])
     return result
+
+
+WEEK_DAYS = 7               # the full download test of everything, once a week
+
+
+def _days_ago(days: int) -> str:
+    return time.strftime("%Y-%m-%d", time.localtime(time.time() - days * 86400))
+
+
+def new_failures(table: dict) -> tuple[set[str], list[str]]:
+    """{"site|program"} of the downloads that failed on this PC since the last
+    run, and every failed row's id seen so far. data/jobs.json has no dates:
+    the failed rows already seen are remembered by their id (the first run
+    takes every failed row as new -- one test each, once)."""
+    jobs_file = DATA_DIR / "jobs.json"
+    rows = []
+    for _ in range(5):          # the app may be replacing the file this instant
+        try:
+            data = json.loads(jobs_file.read_text(encoding="utf-8"))
+            rows = data.get("jobs", []) if isinstance(data, dict) else data
+            break
+        except FileNotFoundError:
+            break
+        except (OSError, ValueError):
+            time.sleep(0.2)
+    failed = [r for r in rows if isinstance(r, dict) and r.get("state") == "error" and r.get("id")]
+    seen = set(table.get("failed_jobs_seen") or [])
+    pairs = {f"{r.get('platform')}|{r.get('tool')}" for r in failed if r["id"] not in seen}
+    return pairs, [r["id"] for r in failed][-500:]
+
+
+def full_test_reasons(sites: list[str], table: dict, read_reasons: dict[str, str],
+                      failed_pairs: set[str]) -> dict[str, str]:
+    """{site: why yt-dlp's download test runs today} -- weekly, or at once on a
+    change; the read itself runs every day."""
+    old = table.get("sites", {})
+    reasons: dict[str, str] = {}
+    for site in sites:
+        entry, why = old.get(site) or {}, read_reasons.get(site, "")
+        if not entry.get("downloaded"):
+            reasons[site] = "never tested by a download"
+        elif needs.download_fail(site, "yt-dlp"):
+            reasons[site] = "it is in the reviewed table (tested daily, so a fixed site loses its warning)"
+        elif why.startswith(("yt-dlp ", "a download on this PC", "more than 30", "its last read failed")):
+            reasons[site] = why
+        elif f"{site}|yt-dlp" in failed_pairs:
+            reasons[site] = "a download on this PC failed"
+        elif entry["downloaded"] <= _days_ago(WEEK_DAYS):
+            reasons[site] = f"last full test on {entry['downloaded']}"
+    return reasons
 
 
 # ---------------------------------------------------------------- what is due
@@ -746,7 +842,7 @@ def _download_said(d: dict | None) -> str:
         return "same file as without cookies"
     if d.get("skipped"):
         return f"not downloaded ({d['skipped']})"
-    text = _one_try(d)
+    text = (f"(full test of {d['from']}) " if d.get("from") else "") + _one_try(d)
     for t in d.get("instead") or []:
         text += f" → {_one_try(t)}"
     if not d.get("ok") and not d.get("instead"):
@@ -803,7 +899,9 @@ def report(new: dict, old: dict, header: list[str],
         name = names.get(site, site)
         for state, label in (("no_cookies", "no cookies"), ("your_cookies", "your cookies")):
             d = (now.get(state) or {}).get("download")
-            if d and not d.get("same") and not d.get("skipped") and not d.get("ok"):
+            # Today's tests only: a failure carried from an earlier day was
+            # already said (no daily message for one old result).
+            if d and not d.get("same") and not d.get("skipped") and not d.get("ok") and not d.get("from"):
                 fails.append(f"- **{name}** · {label} · {now.get('link')}: {_download_said(d)}")
         if now.get("broken"):
             errors = "; ".join(f"link {f['number']}: {f['error']}" for f in now["failed_links"])
@@ -960,6 +1058,9 @@ def main() -> int:
     if args.due and _ran_today():
         print("Already ran today.")
         return 0
+    failed_pairs, failed_seen = new_failures(table)
+    # By hand (no --due): every site read gets its full test, as before.
+    full_tests: dict[str, str] = {s: "run by hand" for s in sites}
     if args.due:
         reasons, newest, found = due_sites(sites, table, notes_seen)
         problems += found
@@ -968,12 +1069,14 @@ def main() -> int:
         if not args.site:
             notes_seen = newest
         sites = [s for s in sites if s in reasons]
-        program_reasons = due_programs(pairs, table)
+        full_tests = full_test_reasons(sites, table, reasons, failed_pairs)
+        program_reasons = due_programs(pairs, table, failed_pairs)
         pairs = [(s, t) for s, t in pairs if f"{s}|{t}" in program_reasons]
         reasons.update(program_reasons)
         if not sites and not pairs:
             log_run("nothing due" + "".join(f" · PROBLEM: {p}" for p in problems))
             table["notes_seen"] = notes_seen
+            table["failed_jobs_seen"] = failed_seen
             _write(TABLE_FILE, json.dumps({**table, "sites": old}, ensure_ascii=False, indent=1))
             if problems:
                 tell("Quality check: a problem", problems[0][:200], None)
@@ -985,7 +1088,8 @@ def main() -> int:
     new: dict = {}
     for site in sites:
         started = time.monotonic()
-        new[site] = check_site(site, links[site], cookies_on, not args.no_download)
+        new[site] = check_site(site, links[site], cookies_on, not args.no_download,
+                               old.get(site), full_tests.get(site, ""))
         now = new[site]
         print(f"{site:12} {time.monotonic() - started:5.1f}s  "
               f"{'BROKEN' if now.get('broken') else _said(now.get('no_cookies'))}"
@@ -1018,6 +1122,10 @@ def main() -> int:
         header.append(f"- No test link yet for: {', '.join(missing_links)}")
     if reasons:
         header.append("- Why these: " + "; ".join(f"{s}: {r}" for s, r in reasons.items()))
+    tested = {s: n.get("full_test_why") for s, n in new.items() if n.get("full_test_why")}
+    if not args.no_download:
+        header.append("- yt-dlp full download test today: " + ("; ".join(f"{s}: {w}" for s, w in tested.items())
+                      or "none (read only — the last test's result is shown with its date)"))
     header += [f"- ⚠️ {p}" for p in problems]
     text, changed, broken, fails = report(new, {s: old[s] for s in new if s in old}, header,
                                           new_programs, old_programs)
@@ -1035,7 +1143,8 @@ def main() -> int:
         else:
             merged[site] = now
     _write(TABLE_FILE, json.dumps({"ytdlp": version, "notes_seen": notes_seen, "sites": merged,
-                                   "programs": {**old_programs, **new_programs}},
+                                   "programs": {**old_programs, **new_programs},
+                                   "failed_jobs_seen": failed_seen},
                                   ensure_ascii=False, indent=1))
     log_run(f"{len(sites)} read ({', '.join(sites)}) · {len(pairs)} program tests"
             + (f" ({', '.join(f'{s}|{t}' for s, t in pairs)})" if pairs else "")
