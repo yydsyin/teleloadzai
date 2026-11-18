@@ -1620,9 +1620,11 @@ def _short_error(tail: list[str]) -> str:
     if any(l.startswith("Traceback (most recent call last)") for l in useful):
         raised = [l for l in useful if _PY_EXCEPTION.match(l)]
         if raised:
-            return cookies.redact(raised[-1][:200])
+            return cookies.redact(raised[-1])[:200]
+    # Washed THEN cut: cut first, a token across character 200 kept up to 23
+    # of its characters, too short for redact to see (hunt, 2026-11-18).
     for clean in reversed(useful):
         if any(word in clean.lower()
                for word in ("error", "exception", "失败", "错误", "traceback")):
-            return cookies.redact(clean.lstrip("-> ")[:200])
-    return cookies.redact(useful[-1][:200]) if useful else ""
+            return cookies.redact(clean.lstrip("-> "))[:200]
+    return cookies.redact(useful[-1])[:200] if useful else ""

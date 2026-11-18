@@ -167,10 +167,18 @@ def _say(text: str) -> None:
     console.add("app", f"Teleloadzai: {text}", "err")
 
 
+_said_unreadable = False
+
+
 def _read(strict: bool = False) -> dict | None:
     """The file's lines; {} when there is none. With `strict`: a damaged file
     is set aside under a name of its own and said, then {} (learning goes
-    on); a file another program holds gives None (this line waits)."""
+    on); a file another program holds gives None (this line waits), and
+    every line is kept as it is -- the save must not drop a line this
+    version does not know (an older Teleloadzai after a newer one, hunt
+    round 4, 2026-11-18). Without `strict` (the Sites page), a file that
+    cannot be read is said once, not at every look."""
+    global _said_unreadable
     try:
         data = json.loads(FILE.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
@@ -179,6 +187,10 @@ def _read(strict: bool = False) -> dict | None:
         return {}
     except ValueError:
         if not strict:
+            if not _said_unreadable:
+                _said_unreadable = True
+                _say(f"{FILE.name} is damaged: the Sites page shows only what Teleloadzai "
+                     "knew before. It is set aside at the next download.")
             return {}
         aside, number = FILE.with_name("needs (unreadable).json"), 2
         while aside.exists():
@@ -194,9 +206,16 @@ def _read(strict: bool = False) -> dict | None:
         return {}
     except OSError as problem:
         if strict:
-            _say(f"{FILE.name} could not be read ({problem.strerror}): this download's "
+            _say(f"{FILE.name} could not be read ({problem.strerror or problem}): this download's "
                  "result is not kept on the Sites page.")
+        elif not _said_unreadable:
+            _said_unreadable = True
+            _say(f"{FILE.name} could not be read ({problem.strerror or problem}): the Sites page "
+                 "shows only what Teleloadzai knew before.")
         return None if strict else {}
+    _said_unreadable = False    # read again: a later damage is said again (hunt round 5)
+    if strict:
+        return data
     return {k: v for k, v in data.items()
             if isinstance(v, dict) and v.get("need") in KINDS and isinstance(v.get("seen"), str)}
 
@@ -236,5 +255,5 @@ def record(site: str, program: str, need: str) -> None:
                 temp.unlink(missing_ok=True)
             except OSError:
                 pass
-            _say(f"{FILE.name} could not be written ({problem.strerror}): this "
+            _say(f"{FILE.name} could not be written ({problem.strerror or problem}): this "
                  "download's result is not kept on the Sites page.")

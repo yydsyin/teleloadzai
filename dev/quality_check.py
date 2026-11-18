@@ -87,12 +87,21 @@ RUNS_LOG = OUT_DIR / "runs.log"
 TIMEOUT = 90.0
 DOWNLOADS = OUT_DIR / "download"    # one folder per download test, deleted after it
 MAX_MB = 300            # YouTube's test link "Best" is 709 MB (2026-11-16): not downloaded
+# A video whose size yt-dlp does not give in advance escapes MAX_MB: Twitch's
+# 4-hour test VOD downloaded 1 GB in 15 minutes and ended as a false failure
+# (2026-11-18). Without a size, a video longer than this is not downloaded.
+MAX_UNSIZED_MINUTES = 20
 DOWNLOAD_TIMEOUT = 15 * 60.0
+LOCK_FILE = OUT_DIR / "running.lock"
+LOCK_SINCE = OUT_DIR / "running-since.txt"
+STUCK_HOURS = 3             # a full run took under an hour (2026-11-18): longer is stuck
+_lock_handle = None                 # held open while this run lives: Windows frees it at exit
 # A codec's family from yt-dlp's vcodec ("av01.0.08M…" -> "av01"), and its
 # usual name for the report.
 _FAMILY = {"vp9": "vp09", "h264": "avc1", "avc3": "avc1", "hev1": "hvc1", "h265": "hvc1"}
 _CODEC_NAME = {"avc1": "H.264", "hvc1": "HEVC", "av01": "AV1", "vp09": "VP9"}
 _LEFT_BEHIND: list[str] = []        # test folders Windows refused to delete: said in the report
+_COPIES_LEFT: list[str] = []        # cookie copies Windows refused to delete: said in the report
 
 # The preview channel's notes, the same format as stable's ("#### Extractor
 # changes", then "- **name**: ..."), seen 2026-11-15 on 2026.11.14.232655.
@@ -202,7 +211,10 @@ def read(url: str, cookie_file: Path | None, prefer: str = "") -> dict:
             "kbps": kbps[-1:] if not heights else [], "missing": missing,
             "format_id": data.get("format_id"), "codec": picked_codec,
             "seconds": data.get("duration") if isinstance(data.get("duration"), (int, float)) else None,
-            "mb": round(sum(sizes) / 1048576) if sizes and all(sizes) else None,
+            # The parts whose size is known: at least that much. A 2 GB video
+            # with an audio of unknown size must still meet MAX_MB (hunt round 2).
+            "mb": round(sum(s for s in sizes if s) / 1048576) if any(sizes) else None,
+            "size_whole": bool(sizes) and all(sizes),
             "alternatives": list(one_per_codec.values())}
 
 
@@ -212,22 +224,45 @@ def _family(vcodec: str | None) -> str:
 
 
 def _quality_name(codec: str | None, height: int | None) -> str:
+    if codec == "none":         # sound only; a height there is the cover picture's
+        return "sound only"
     name = _CODEC_NAME.get(codec or "", codec or "")
     return f"{name} {height or '?'}p" if name else f"{height or '?'}p"
 
 
 # ---------------------------------------------------------------- the download test
 
+class CopyFailed(Exception):
+    """Our copy of the cookie file could not be made: a broken check, not a site result."""
+
+
 @contextlib.contextmanager
 def _cookie_copy():
-    """A throwaway copy of our cookie file, deleted when the block ends."""
-    RUN_COPIES.mkdir(parents=True, exist_ok=True)
+    """A throwaway copy of our cookie file, deleted when the block ends.
+    CopyFailed only for the copy itself: an error inside the block keeps its
+    own name (hunt round 4 -- every OSError was "the cookie copy failed")."""
     copy = RUN_COPIES / f"{uuid.uuid4().hex}.txt"
     try:
+        RUN_COPIES.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(cookies.COOKIE_FILE, copy)
+    except OSError as problem:
+        copy.unlink(missing_ok=True)
+        raise CopyFailed(f"the cookie copy failed: {problem.strerror or problem}") from problem
+    try:
         yield copy
     finally:
-        copy.unlink(missing_ok=True)
+        # A refused delete (an antivirus scan) must not replace the finished
+        # read with "the cookie copy failed": tried again, then said (hunt
+        # round 2, 2026-11-18). The next start's sweep removes it.
+        for attempt in range(5):
+            try:
+                copy.unlink(missing_ok=True)
+                break
+            except OSError as problem:
+                if attempt == 4:
+                    _COPIES_LEFT.append(f"{copy.name}: {problem.strerror or problem}")
+                else:
+                    time.sleep(1)
 
 
 def _remove_test_folder(folder: Path) -> None:
@@ -235,10 +270,21 @@ def _remove_test_folder(folder: Path) -> None:
     if folder.resolve().parent != DOWNLOADS.resolve():
         _LEFT_BEHIND.append(f"{folder} (not inside {DOWNLOADS}: not deleted)")
         return
-    try:
-        shutil.rmtree(folder)
-    except OSError as problem:
-        _LEFT_BEHIND.append(f"{folder.name}: {problem.strerror}")
+    # A program just stopped (a timeout) holds its files for a moment after
+    # it dies: "being used by another process" right away (2026-11-18).
+    for attempt in range(10):
+        try:
+            shutil.rmtree(folder)
+            return
+        except OSError as problem:
+            # A file that vanished while a tool was ending is not the folder
+            # gone: only a folder really gone ends the tries (hunt round 4).
+            if not folder.exists():
+                return
+            if attempt == 9:
+                _LEFT_BEHIND.append(f"{folder.name}: {problem.strerror or problem}")
+            else:
+                time.sleep(1)
 
 
 def _ffprobe(path: Path) -> tuple[float, int, str] | None:
@@ -288,7 +334,7 @@ def fetch(url: str, rule: list[str], cookie_file: Path | None, seconds: float | 
     try:
         folder.mkdir(parents=True)
     except OSError as problem:
-        return {"ok": False, "error": f"the test folder could not be made: {problem.strerror}"}
+        return {"ok": False, "error": f"the test folder could not be made: {problem.strerror or problem}"}
     try:
         try:
             command = [
@@ -308,7 +354,7 @@ def fetch(url: str, rule: list[str], cookie_file: Path | None, seconds: float | 
             files = [f for f in folder.iterdir() if f.is_file()]
             got = sum(f.stat().st_size for f in files)
         except OSError as problem:
-            return {"ok": False, "error": f"the test folder could not be read: {problem.strerror}"}
+            return {"ok": False, "error": f"the test folder could not be read: {problem.strerror or problem}"}
         if finished.returncode != 0:
             return {"ok": False, "bytes": got,
                     "error": _error_of(finished.stderr or finished.stdout or "")}
@@ -330,9 +376,11 @@ def fetch(url: str, rule: list[str], cookie_file: Path | None, seconds: float | 
         _remove_test_folder(folder)
 
 
-def _app_rule(height: int) -> list[str]:
-    """The app's own -f / -S for a chosen height (ytdlp._output_arguments), nothing else."""
-    words = ytdlp._output_arguments("mp4", DOWNLOADS, str(height), None, "")
+def _app_rule(height: int, site: str = "") -> list[str]:
+    """The app's own -f / -S for a chosen height (ytdlp._output_arguments,
+    with the codec the app prefers there, as jobs.py asks), nothing else."""
+    prefer = needs.ytdlp_prefer(site, "mp4", str(height)) if site else ""
+    words = ytdlp._output_arguments("mp4", DOWNLOADS, str(height), None, "", prefer)
     rule = []
     for flag in ("-f", "-S"):
         if flag in words:
@@ -340,12 +388,22 @@ def _app_rule(height: int) -> list[str]:
     return rule
 
 
-def test_download(url: str, state: dict, cookie_file: Path | None) -> dict | None:
+def test_download(url: str, state: dict, cookie_file: Path | None, site: str = "") -> dict | None:
     """Download what "Best" picked; when it fails, what works instead."""
     if not state.get("ok") or not state.get("format_id"):
         return None
     if state.get("mb") and state["mb"] > MAX_MB:
-        return {"skipped": f"about {state['mb']} MB, over the {MAX_MB} MB limit"}
+        size = "about" if state.get("size_whole", True) else "at least"
+        return {"skipped": f"{size} {state['mb']} MB, over the {MAX_MB} MB limit"}
+    # No whole size: the length must vouch for it. "size_whole" missing = a
+    # table written before 2026-11-18, where "mb" was only ever a whole size.
+    if not state.get("size_whole", bool(state.get("mb"))):
+        if not state.get("seconds"):
+            return {"skipped": "no size and no length given in advance: the "
+                               f"{MAX_MB} MB limit cannot be checked"}
+        if state["seconds"] > MAX_UNSIZED_MINUTES * 60:
+            return {"skipped": f"{round(state['seconds'] / 60)} minutes long and no whole size given in advance"
+                               f" (over {MAX_UNSIZED_MINUTES} minutes, the {MAX_MB} MB limit cannot be checked)"}
     best, seconds = state.get("best"), state.get("seconds")
     first = fetch(url, ["-f", state["format_id"]], cookie_file, seconds)
     result = {"format": state["format_id"], "codec": state.get("codec"), "height": best, **first}
@@ -361,7 +419,7 @@ def test_download(url: str, state: dict, cookie_file: Path | None) -> dict | Non
     else:
         lower = [h for h in state.get("heights") or [] if h < best]
         if lower:
-            got = fetch(url, _app_rule(lower[-1]), cookie_file, seconds)
+            got = fetch(url, _app_rule(lower[-1], site), cookie_file, seconds)
             tries.append({"format": f"the app's {lower[-1]}p rule", "codec": None,
                           "height": lower[-1], **got})
     result["instead"] = tries
@@ -374,7 +432,10 @@ def test_avoided(url: str, picked: dict) -> dict:
     Read with the plain rule, downloaded once, without cookies."""
     plain_pick = read(url, None)
     if not plain_pick.get("ok"):
-        return {"ok": False, "error": plain_pick.get("error", "the read failed")}
+        # Not "still fails": nothing was tried (and the report crashed on
+        # this shape, no "format" -- hunt, 2026-11-18).
+        return {"ok": False, "read_failed": True, "format": "the avoided file",
+                "error": plain_pick.get("error", "the read failed")}
     if plain_pick.get("format_id") == picked.get("format_id"):
         return {"same": True}       # nothing avoided on this video
     got = fetch(url, ["-f", plain_pick["format_id"]], None, plain_pick.get("seconds"))
@@ -382,7 +443,8 @@ def test_avoided(url: str, picked: dict) -> dict:
             "height": plain_pick.get("best"), **got}
 
 
-def with_my_cookies(url: str, download: bool, plain_format: str | None, prefer: str = "") -> dict:
+def with_my_cookies(url: str, download: bool, plain_format: str | None, prefer: str = "",
+                    site: str = "") -> dict:
     """The same read with a throwaway copy of our cookie file -- and the
     download test, unless it picked the same file as without cookies."""
     try:
@@ -392,10 +454,13 @@ def with_my_cookies(url: str, download: bool, plain_format: str | None, prefer: 
                 if state.get("format_id") == plain_format:
                     state["download"] = {"same": True}
                 else:
-                    state["download"] = test_download(url, state, copy)
+                    state["download"] = test_download(url, state, copy, site)
             return state
+    except CopyFailed as problem:   # our check broke, not the site: said as broken
+        return {"ok": False, "check_broken": True, "error": str(problem)}
     except OSError as problem:
-        return {"ok": False, "error": f"the cookie copy failed: {problem.strerror}"}
+        return {"ok": False, "check_broken": True,
+                "error": cookies.redact(f"{type(problem).__name__}: {problem}")[:240]}
 
 
 # ---------------------------------------------------------------- the other programs
@@ -437,7 +502,7 @@ def run_program(tool: str, url: str, cookie_file: Path | None, header: bool) -> 
     try:
         folder.mkdir(parents=True)
     except OSError as problem:
-        return {"ok": False, "error": f"the test folder could not be made: {problem.strerror}"}
+        return {"ok": False, "error": f"the test folder could not be made: {problem.strerror or problem}"}
     stop = threading.Event()
     started: list[subprocess.Popen] = []
 
@@ -480,7 +545,12 @@ def run_program(tool: str, url: str, cookie_file: Path | None, header: bool) -> 
                 return {"ok": False, "bytes": total, "error": cut or "a file of 0 seconds"}
             videos += 1
             top = max(top, height)
-        return {"ok": True, "bytes": total, "videos": videos, "pictures": pictures, "height": top}
+        done = {"ok": True, "bytes": total, "videos": videos, "pictures": pictures, "height": top}
+        # A run given the log-in that did not use it (yutto with an expired
+        # Bilibili log-in: 480p, "whole") is not a clean success (hunt, 2026-11-18).
+        if (cookie_file or header) and (result.note or result.no_login_given):
+            done["login_unused"] = result.note or "no log-in could be given to it"
+        return done
     finally:
         timer.cancel()
         _remove_test_folder(folder)
@@ -504,6 +574,10 @@ def check_program(site: str, tool: str, links: list[str], cookies_on: bool | Non
         mine_skip = "no cookie file"
     elif login.site_state(site) == "none":
         mine_skip = "no cookies for this site"
+    # yutto takes only a real log-in: with a visit's cookies or an expired
+    # one it runs as a visitor, which is our state, not its failure (hunt round 3).
+    elif tool in cookies.AUTH_FILE_CAPABLE and login.site_state(site) != "logged_in":
+        mine_skip = f"it needs a log-in, and this site's cookies are {login.site_state(site)}"
     elif not (takes_file or takes_site):
         mine_skip = "this program takes no cookies from Teleloadzai"
     else:
@@ -521,10 +595,21 @@ def check_program(site: str, tool: str, links: list[str], cookies_on: bool | Non
             mine = {"skipped": mine_skip}
         else:
             try:
-                with _cookie_copy() as copy:
-                    mine = run_program(tool, url, copy if takes_file else None, takes_site)
+                # A copy only for a program that reads the file: the others
+                # take the site's cookies from the app, and a refused copy
+                # called them "broken" for nothing (hunt round 6).
+                if takes_file:
+                    with _cookie_copy() as copy:
+                        mine = run_program(tool, url, copy, takes_site)
+                else:
+                    mine = run_program(tool, url, None, takes_site)
+            except CopyFailed as problem:
+                mine = {"ok": False, "check_broken": True, "error": str(problem)}
             except OSError as problem:
-                mine = {"ok": False, "error": f"the cookie copy failed: {problem.strerror}"}
+                mine = {"ok": False, "check_broken": True,
+                        "error": cookies.redact(f"{type(problem).__name__}: {problem}")[:240]}
+        if mine.get("port_taken"):      # the port held between the two runs: ours, said as broken (round 9)
+            mine = {**mine, "check_broken": True}
         if plain["ok"] or mine.get("ok"):
             result.update(link=url, link_number=number, no_cookies=plain, your_cookies=mine)
             return result
@@ -538,6 +623,8 @@ def _program_said(state: dict | None) -> str:
         return "—"
     if state.get("skipped"):
         return f"not run ({state['skipped']})"
+    if state.get("check_broken"):       # ours, not the program's (hunt round 5)
+        return f"not run — the check broke: {state.get('error', '')}"
     if not state.get("ok"):
         got = f", {state['bytes'] / 1048576:.1f} MB received" if state.get("bytes") else ""
         return f"FAILED{got} — {state.get('error', '')}"
@@ -547,7 +634,8 @@ def _program_said(state: dict | None) -> str:
                     + (f" up to {state['height']}p" if state.get("height") else ""))
     if state.get("pictures"):
         what.append(f"{state['pictures']} picture{'s' if state['pictures'] != 1 else ''}")
-    return f"whole: {', '.join(what) or 'files'}, {state['bytes'] / 1048576:.1f} MB"
+    unused = f" — but the log-in was not used: {state['login_unused']}" if state.get("login_unused") else ""
+    return f"whole: {', '.join(what) or 'files'}, {state['bytes'] / 1048576:.1f} MB{unused}"
 
 
 def due_programs(pairs: list[tuple[str, str]], table: dict,
@@ -562,7 +650,11 @@ def due_programs(pairs: list[tuple[str, str]], table: dict,
         key, entry = f"{site}|{tool}", old.get(f"{site}|{tool}") or {}
         if not entry.get("checked"):
             due[key] = "never tested"
-        elif entry.get("broken") or entry.get("fails"):
+        elif (entry.get("broken") or entry.get("fails")
+              # Worked without, failed or ignored the log-in with your
+              # cookies (yutto's 1080p lost): daily too (hunt round 8).
+              or (entry.get("your_cookies") or {}).get("ok") is False
+              or (entry.get("your_cookies") or {}).get("login_unused")):
             due[key] = "its last test failed"
         # Not installed: due again only when its version changes (installed),
         # not every day -- that would be a daily message for nothing.
@@ -626,7 +718,7 @@ def check_site(site: str, links: list[str], cookies_on: bool | None, download: b
     else:
         result["downloaded"] = before.get("downloaded") if same_link else None
     if download and plain["ok"]:
-        plain["download"] = test_download(result["link"], plain, None)
+        plain["download"] = test_download(result["link"], plain, None, site)
         if prefer and plain["download"] and not plain["download"].get("skipped"):
             plain["download"]["avoided"] = test_avoided(result["link"], plain)
     # Carried only on a day WITHOUT a test: on a test day whose read failed,
@@ -643,9 +735,41 @@ def check_site(site: str, links: list[str], cookies_on: bool | None, download: b
     elif sign == "none":
         result["your_cookies"] = {"skipped": "no cookies for this site"}
     else:
-        result["your_cookies"] = with_my_cookies(result["link"], download, plain.get("format_id"), prefer)
+        result["your_cookies"] = with_my_cookies(result["link"], download, plain.get("format_id"), prefer, site)
         if not download and same_link and _carried(before.get("your_cookies"), result["downloaded"]):
             result["your_cookies"]["download"] = _carried(before.get("your_cookies"), result["downloaded"])
+    # Due, but no file was tried (the read asks for a log-in and none is
+    # used, or no file picked): not stamped "tested today" -- that pushed the
+    # next test back a week (hunt, 2026-11-18). Said in the report instead.
+    # A "skipped" test (too big, too long without a size) tried no file
+    # either: it is said here, not shown as tested (hunt round 4).
+    mine = result["your_cookies"]
+    tried = lambda d: bool(d) and not d.get("skipped") and not d.get("same")
+    if download and not tried(plain.get("download")) and not tried(mine.get("download")):
+        why = (f"not downloaded ({plain['download']['skipped']})" if (plain.get("download") or {}).get("skipped")
+               else "yt-dlp asks for a log-in" if plain.get("needs_login")
+               else "the read picked no file")
+        if (mine.get("download") or {}).get("skipped"):
+            why += f"; with your cookies: not downloaded ({mine['download']['skipped']})"
+        elif (mine.get("download") or {}).get("same"):
+            why += "; with your cookies: the same file"
+        elif mine.get("skipped"):
+            why += f"; with your cookies: not read ({mine['skipped']})"
+        elif mine.get("check_broken"):
+            why += f"; with your cookies: not read, the check broke ({mine.get('error', '')})"
+        elif mine.get("needs_login"):
+            why += "; with your cookies: yt-dlp still asks for a log-in"
+        elif not mine.get("ok"):
+            why += f"; with your cookies: the read failed ({mine.get('error', '')})"
+        else:
+            why += "; with your cookies: the read picked no file"
+        result["full_test_none"] = f"{result.pop('full_test_why')}, but nothing was downloaded: {why}"
+        result["downloaded"] = before.get("downloaded") if same_link else None
+        if same_link:
+            for state, holder in (("no_cookies", plain), ("your_cookies", mine)):
+                carried = _carried(before.get(state), result["downloaded"])
+                if carried and holder is not None and "skipped" not in holder and not holder.get("download"):
+                    holder["download"] = carried
     return result
 
 
@@ -830,6 +954,48 @@ def tell(title: str, text: str, report_file: Path | None) -> None:
         log_run(f"MESSAGE NOT SHOWN ({title}): {type(problem).__name__}: {problem}")
 
 
+def _take_lock() -> bool:
+    """One check at a time. Two once ran together (the log-on task and one
+    started by hand, 2026-11-18): each one's start-up sweep tried to delete
+    the other's test folders, and both wrote table.json. Windows holds the
+    lock while this process lives and frees it when it ends, even after a
+    crash -- a stale lock cannot block the next day."""
+    global _lock_handle
+    import errno
+    import msvcrt
+    handle = open(LOCK_FILE, "a+")
+    try:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError as problem:
+        handle.close()
+        if problem.errno not in (errno.EACCES, errno.EDEADLK):
+            raise           # not "another run": the crash path says it
+        return False
+    _lock_handle = handle
+    try:                    # when this run began: a stuck run is said by the next one
+        LOCK_SINCE.write_text(str(time.time()), encoding="utf-8")
+    except OSError:
+        # The last run's time left there would read as "stuck" (hunt round 3).
+        with contextlib.suppress(OSError):
+            LOCK_SINCE.unlink(missing_ok=True)
+    return True
+
+
+def _stuck_since() -> str:
+    """The start of the run holding the lock, when it is over STUCK_HOURS old -- else ""."""
+    # The holder writes its time just AFTER taking the lock: read in that
+    # gap, the last run's time would look stuck (hunt round 3).
+    time.sleep(2)
+    try:
+        began = float(LOCK_SINCE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if time.time() - began < STUCK_HOURS * 3600:
+        return ""
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(began))
+
+
 def _ran_today() -> bool:
     """A finished run is already in today's log. The task starts at each log-on
     (the PC is off at any fixed hour, 2026-11-15): once a day is enough. A crash
@@ -841,7 +1007,7 @@ def _ran_today() -> bool:
         return False
     today = time.strftime("%Y-%m-%d")
     return any(line.startswith(today) and "CRASHED" not in line and "PROBLEM:" not in line
-               and "MESSAGE NOT SHOWN" not in line for line in lines)
+               and "MESSAGE NOT SHOWN" not in line and "SKIPPED" not in line for line in lines)
 
 
 def log_run(line: str) -> None:
@@ -857,6 +1023,8 @@ def _said(state: dict | None) -> str:
         return "—"
     if state.get("skipped"):
         return f"not read ({state['skipped']})"
+    if state.get("check_broken"):       # ours, not the site's (hunt round 5)
+        return f"not read — the check broke: {state.get('error', '')}"
     if state.get("needs_login"):
         return "yt-dlp asks for a log-in"
     if not state.get("ok"):
@@ -873,9 +1041,11 @@ def _said(state: dict | None) -> str:
 
 
 def _one_try(t: dict) -> str:
-    name = t["format"] if t.get("codec") is None else f"{_quality_name(t['codec'], t['height'])} ({t['format']})"
+    form = t.get("format", "?")
+    name = form if t.get("codec") is None else f"{_quality_name(t['codec'], t.get('height'))} ({form})"
     if t.get("ok"):
-        return f"{name}: whole, {t['bytes'] / 1048576:.1f} MB, {t['height']}p, {t['seconds']} s"
+        tall = f"{t['height']}p, " if t.get("height") and t.get("codec") != "none" else ""
+        return f"{name}: whole, {t['bytes'] / 1048576:.1f} MB, {tall}{t.get('seconds', '?')} s"
     got = f", {t['bytes'] / 1048576:.1f} MB received" if t.get("bytes") else ""
     return f"{name}: FAILED{got} — {t.get('error', '')}"
 
@@ -936,9 +1106,30 @@ def report(new: dict, old: dict, header: list[str],
                          f"the links. {tries}")
             new_fails += not (old_programs.get(key) or {}).get("fails")
         before = old_programs.get(key) or {}
+        if now.get("link"):
+            if now.get("link_number", 1) > 1:       # as yt-dlp's: said, not hidden
+                broken.append(f"- {label}: link 1 failed, link {now['link_number']} used. "
+                              + "; ".join(f"link {f['number']}: no cookies {_program_said(f['no_cookies'])}"
+                                          for f in now["failed_links"]))
+            # Worked without, failed (or ignored the log-in) with your
+            # cookies: yutto's 1080p is lost -- a failure to review (hunt).
+            mine, was = now.get("your_cookies") or {}, before.get("your_cookies") or {}
+            if mine.get("check_broken"):
+                broken.append(f"- {label} · your cookies: not tested — {mine['error']}")
+            elif "ok" in mine and (not mine["ok"] or mine.get("login_unused")):
+                fails.append(f"- {label} · your cookies: {_program_said(mine)}")
+                new_fails += not ("ok" in was and not was.get("check_broken")
+                                  and (not was["ok"] or was.get("login_unused")))
+        # A failed link whose cookie run broke on OUR side: said as broken too.
+        for f in now.get("failed_links") or []:
+            if (f.get("your_cookies") or {}).get("check_broken"):
+                broken.append(f"- {label} · link {f['number']} · your cookies: not tested — "
+                              f"{f['your_cookies']['error']}")
         if before.get("link") and before.get("link") == now.get("link"):
             for state, words in (("no_cookies", "no cookies"), ("your_cookies", "your cookies")):
                 was, is_ = before.get(state) or {}, now.get(state) or {}
+                if is_.get("check_broken") or was.get("check_broken"):
+                    continue            # our check broke: said under "Check broken"
                 if "ok" in was and "ok" in is_ and was["ok"] != is_["ok"]:
                     changed.append(f"- {label} · {words}: {_program_said(was)} → {_program_said(is_)}")
         elif before.get("link") and now.get("fails"):
@@ -959,7 +1150,11 @@ def report(new: dict, old: dict, header: list[str],
             # The file the reviewed table makes the app avoid: still failing,
             # or whole again (then its line can go).
             avoided = (d or {}).get("avoided") if d and not d.get("from") else None
-            if avoided and not avoided.get("same"):
+            if avoided and avoided.get("read_failed"):
+                table_lines.append(f"- **{name}** · {label}: the avoided file could not be checked today "
+                                   f"— its read failed: {avoided.get('error', '')}")
+                broken.append(f"- **{name}**: the avoided file was not checked — its read failed")
+            elif avoided and not avoided.get("same"):
                 entry = needs.download_fail(site, "yt-dlp") or {}
                 what = _one_try(avoided)
                 if avoided.get("ok"):
@@ -983,11 +1178,15 @@ def report(new: dict, old: dict, header: list[str],
         if now.get("link_number", 1) > 1:
             broken.append(f"- **{name}**: link 1 failed, link {now['link_number']} used. "
                           + "; ".join(f"link {f['number']}: {f['error']}" for f in now["failed_links"]))
+        if (now.get("your_cookies") or {}).get("check_broken"):
+            broken.append(f"- **{name}** · your cookies: not read — {now['your_cookies']['error']}")
         if not before or before.get("broken"):
             continue
         if before.get("link") != now.get("link"):
             continue                    # another video: not comparable
         for state, label in (("no_cookies", "no cookies"), ("your_cookies", "your cookies")):
+            if (now.get(state) or {}).get("check_broken") or (before.get(state) or {}).get("check_broken"):
+                continue                # our check broke: said under "Check broken"
             if _key(before.get(state)) != _key(now.get(state)):
                 changed.append(f"- **{name}** · {label}: {_said(before.get(state))} → {_said(now.get(state))}")
             # The download test: compared only when both runs made one (the
@@ -1057,6 +1256,40 @@ def report(new: dict, old: dict, header: list[str],
     return "\n".join(lines), len(changed), len(broken), len(fails), new_fails
 
 
+def _keep_good_cookie_state(now: dict, before: dict | None) -> dict:
+    """A "your cookies" state our check broke on (check_broken) never replaces
+    the last real one: it is the baseline the next run compares with, and
+    holds the last full test (hunt round 5). The break is kept beside it."""
+    mine = now.get("your_cookies") or {}
+    if (mine.get("check_broken") and before and before.get("link") == now.get("link")
+            and (before.get("your_cookies") or {}).get("ok") is not None
+            and not before["your_cookies"].get("check_broken")):
+        kept = dict(before["your_cookies"])
+        # Its download test keeps its own date: under today's "downloaded"
+        # it would read as today's test the next day (hunt round 6).
+        if kept.get("download") and not kept["download"].get("from") and before.get("downloaded"):
+            kept["download"] = {**kept["download"], "from": before["downloaded"]}
+        return {**now, "your_cookies": kept,
+                "your_cookies_broken": {"checked": now.get("checked"), "error": mine.get("error", "")}}
+    return now
+
+
+def _keep_tested_download(now: dict, before: dict | None) -> dict:
+    """A skipped download test (too big, too long without a size) is today's
+    cell, not a result: table.json keeps the last real test, with its date,
+    as the baseline (hunt round 7). The report is written before this."""
+    if not before or before.get("link") != now.get("link"):
+        return now
+    out = dict(now)
+    for state in ("no_cookies", "your_cookies"):
+        is_, was = now.get(state) or {}, before.get(state) or {}
+        old = was.get("download") or {}
+        if ((is_.get("download") or {}).get("skipped") and old
+                and not old.get("skipped") and not old.get("same")):
+            out[state] = {**is_, "download": {**old, "from": old.get("from") or before.get("downloaded")}}
+    return out
+
+
 def _write(path: Path, text: str) -> None:
     """Whole or not at all: a temporary file, then put in place."""
     temp = path.with_name(path.name + ".tmp")
@@ -1091,6 +1324,19 @@ def main() -> int:
     runners.WORK_LIST = OUT_DIR / "work-folders.txt"
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+    if not _take_lock():
+        stuck = _stuck_since()
+        if stuck:
+            # Skipping every day behind a hung run would be a check that
+            # never runs, in silence (hunt round 2): said, with a message.
+            text = f"a quality check started {stuck} is still running; it may be stuck"
+            log_run(f"SKIPPED: {text}")
+            print(text)
+            tell("Quality check: a problem", text[:200], None)
+            return 0
+        log_run("SKIPPED: another quality check was already running")
+        print("Another quality check is already running: this one stops.")
+        return 0
     problems: list[str] = []
     # A copy of the whole cookie file left by a run cut off mid-read (log-off,
     # shut-down): deleted before anything else (hunt, 2026-11-15).
@@ -1099,7 +1345,7 @@ def main() -> int:
             try:
                 leftover.unlink()
             except OSError as problem:
-                problems.append(f"a cookie copy from an earlier run could not be deleted: {problem.strerror}")
+                problems.append(f"a cookie copy from an earlier run could not be deleted: {problem.strerror or problem}")
     # The same for a download test cut off mid-file.
     if DOWNLOADS.is_dir():
         for leftover in DOWNLOADS.iterdir():
@@ -1196,6 +1442,8 @@ def main() -> int:
         print(f"{key:30} {time.monotonic() - started:5.1f}s  {said}", flush=True)
 
     problems += [f"a download test folder was left: {left}" for left in _LEFT_BEHIND]
+    problems += [f"a copy of your cookie file could not be deleted (the next run deletes it): {left}"
+                 for left in _COPIES_LEFT]
     switch = "unknown (settings unreadable)" if cookies_on is None else ("on" if cookies_on else "off")
     header = [f"- yt-dlp {version} · “Use my log-ins” {switch} · {len(sites)} sites read"
               f" · {len(pairs)} other program tests",
@@ -1210,6 +1458,9 @@ def main() -> int:
     if not args.no_download:
         header.append("- yt-dlp full download test today: " + ("; ".join(f"{s}: {w}" for s, w in tested.items())
                       or "none (read only — the last test's result is shown with its date)"))
+        missed = {s: n["full_test_none"] for s, n in new.items() if n.get("full_test_none")}
+        if missed:
+            header.append("- Due for a download test, none ran: " + "; ".join(f"{s}: {w}" for s, w in missed.items()))
     header += [f"- ⚠️ {p}" for p in problems]
     text, changed, broken, fails, new_fails = report(new, {s: old[s] for s in new if s in old}, header,
                                           new_programs, old_programs)
@@ -1217,8 +1468,16 @@ def main() -> int:
     _write(report_file, text)
     # The pairs really tested by a download in this run: their failed rows
     # are now seen; the others stay new for the next run.
-    tested_now = ({f"{s}|yt-dlp" for s, n in new.items() if n.get("full_test_why")}
-                  | {k for k, n in new_programs.items() if not n.get("not_installed") and not n.get("port_taken")})
+    # A site due but impossible to test today (full_test_none) counts as
+    # covered: its reason is in the report, and no test could ever turn its
+    # failed row into a result (hunt round 2).
+    # Not when our own check broke: that cause is passing (hunt round 6).
+    tested_now = ({f"{s}|yt-dlp" for s, n in new.items() if n.get("full_test_why") or (
+                       n.get("full_test_none") and not (n.get("your_cookies") or {}).get("check_broken"))}
+                  | {k for k, n in new_programs.items() if not n.get("not_installed") and not n.get("port_taken")
+                     # nor a pair whose cookie run broke on our side (round 10)
+                     and not any((s.get("your_cookies") or {}).get("check_broken")
+                                 for s in [n, *(n.get("failed_links") or [])])})
     merged = dict(old)
     for site, now in new.items():
         before = old.get(site)
@@ -1229,9 +1488,11 @@ def main() -> int:
             merged[site] = {**before, "retry": True,
                             "last_failure": {"checked": now["checked"], "failed_links": now["failed_links"]}}
         else:
-            merged[site] = now
+            merged[site] = _keep_tested_download(_keep_good_cookie_state(now, before), before)
+    programs_kept = {**old_programs, **{k: _keep_good_cookie_state(n, old_programs.get(k))
+                                        for k, n in new_programs.items()}}
     _write(TABLE_FILE, json.dumps({"ytdlp": version, "notes_seen": notes_seen, "sites": merged,
-                                   "programs": {**old_programs, **new_programs},
+                                   "programs": programs_kept,
                                    "failed_jobs_seen": seen_after(table, rows, tested_now, testable)},
                                   ensure_ascii=False, indent=1))
     log_run(f"{len(sites)} read ({', '.join(sites)}) · {len(pairs)} program tests"
