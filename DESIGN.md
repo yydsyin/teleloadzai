@@ -276,6 +276,13 @@ A picture (132×76, 200×112 in full screen, 96×54 in the compact step), the ti
 
 **One word:** the thing that downloads is a **program** everywhere on screen (the card, Settings → Programs, the messages), never a "tool".
 
+### The hover box and its icons (2026-11-16, the user's mix of two drawn models)
+The lines that sat under Quality and under Program became **icons whose sentence shows on hover or keyboard focus** ("the background of the message will not be black", the user).
+- **Icons**: simple outline icons, 18 px (15 px inside a button), soft ink: **ⓘ** beside the Quality list (what a log-in does not unlock), a **padlock** beside it when sizes are locked. A **warning triangle** in the ochre accent goes on a program's button — or beside its name when it is the site's only program — when the reviewed download test saw it fail. A warning, never a block: Download stays pressable.
+- **Locked sizes**: in the Quality list, above what the chosen program gives now, the sizes show grey and cannot be picked ("🔒 1080p"); the padlock's sentence says which log-in unlocks them.
+- **The box**: one for the whole page, card colour, ink text, 1 px `line-strong` border, radius 8, 13 px, at most 280 px wide; under its element, above it near the window's bottom, always inside the window. Esc closes the box only.
+- The same box carries the program buttons' sentence (card and Sites), the Sites log-in sign and button, and the menu's update "!". A Sites row with a warning is never folded under "more sites".
+
 ### Switches
 - **Two-way switch (Windows 11):** a soft track (ink 8 %). The chosen option is a raised card-coloured button in ink, and the others are soft-ink text. Used for MP3 | MP4 and the program names (decision 13). "Selected" is the raised button, never a fill.
 - **On/off switch:** 42×22, pill shape. **Off:** an outline in soft ink and a 12 px soft-ink knob (Windows 11's own; the old pale fill with a card-coloured knob was 1.4:1, critique of 2026-10-31). **On:** ink fill, a card-coloured knob that slides 20 px.
