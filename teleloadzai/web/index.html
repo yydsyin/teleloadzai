@@ -1047,7 +1047,7 @@
                (critique of 2026-09-26). The row's name is drawn beside it. -->
           <label class="sr-only" id="quality-label" for="quality">Quality</label>
           <!-- Locked sizes (a log-in unlocks them) and what a log-in does not
-               unlock (needs.QUALITY_SEEN): an icon each, the sentence on
+               unlock (the sign list, signs.json): an icon each, the sentence on
                hover or focus (2026-11-16). -->
           <span class="tip-icon icon-lock hidden" id="quality-lock" tabindex="0" role="img" aria-label="Locked sizes"></span>
           <span class="tip-icon icon-info hidden" id="quality-info" tabindex="0" role="img" aria-label="About the quality"></span>
@@ -1992,7 +1992,7 @@ function stillRefused(tool) {
 
 /**
  * What the chosen tool needs on this site BEFORE Download, or "" -- only
- * what the 2026-09-26 audit proved (the server sends it, login._NEEDS).
+ * what the 2026-09-26 audit proved (the server sends it, the sign list's before_download).
  */
 function needText(tool) {
   const n = tool && tool.need;

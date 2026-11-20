@@ -21,58 +21,30 @@ import os
 import threading
 import time
 
+from . import signs
 from .paths import DATA_DIR
 
 FILE = DATA_DIR / "needs.json"
 KINDS = ("visit", "none", "account")
 
-# The proofs written in CLAUDE.md before this file existed, with their dates.
-SEEN_BEFORE = {
-    # A visit is enough: 9 visit cookies, no sid_tt, the whole video (§4).
-    "tiktok|tiktokdownloader": ("visit", "2026-09-26"),
-    # 35 visit cookies and no sessionid: the user's 4 downloads worked (§4).
-    "douyin|tiktokdownloader": ("visit", "2026-09-26"),
-    # gallery-dl: "redirect to login page" with no log-in (the audit, §4).
-    "instagram|gallery-dl": ("account", "2026-09-26"),
-    # KS-Downloader: "Failed to retrieve posts data"; worked with a log-in.
-    "kuaishou|ks-downloader": ("account", "2026-09-26"),
-    # yt-dlp: "Unable to extract initial state" without a log-in on
-    # 2026-10-24; on 2026-11-09 (2026.11.04) 11 of 12 qualities came whole
-    # with NO cookies (docs/HISTORY.md) -- nothing is needed any more.
-    "bilibili|yt-dlp": ("none", "2026-11-09"),
-    # yutto 2.3.1 with no cookies: a whole 480p video, 2026-11-09 (1080p
-    # needs the log-in, said on the card: runners.TOP_WITHOUT_LOGIN).
-    "bilibili|yutto": ("none", "2026-11-09"),
-    # The quality check (dev/quality_check.py), 2026-11-15, reviewed by the
-    # user: yt-dlp asked for an account on every public link, with no cookies
-    # and with a visit's ("Account authentication is required" / "only works
-    # when logged-in"). Reddit worked with none on 2026-09-26.
-    "reddit|yt-dlp": ("account", "2026-11-15"),
-    "vimeo|yt-dlp": ("account", "2026-11-15"),
-}
-
-# What a log-in does NOT unlock in the qualities a site offers -- one line
-# under Quality on the card. Filled ONLY from quality-check results the user
-# reviewed (dev/quality_check.py, data/quality-check/), each with its date:
-# sites change what they offer, and the date says how fresh the line is.
-QUALITY_SEEN = {
-    # yt-dlp, BV1Gsnj6XE9M: "Format(s) 1080P 高码率 are missing; you have to
-    # become a premium member", with no cookies AND with a non-premium
-    # log-in; 360p to 1080p came either way. yutto: not checked.
-    "bilibili|yt-dlp": ("Bilibili keeps “1080p high bitrate” for its premium members: "
-                        "a normal log-in did not unlock it.", "2026-11-15"),
-}
+# The proofs this file starts from, each with its date, the evidence beside
+# it: the "sites_page" part of the sign list (signs.py, teleloadzai/signs.json),
+# which every user's app reads from GitHub. The quality check finds a change,
+# a review publishes it (2026-11-18; until then a table written here).
+# What a log-in does NOT unlock in a site's qualities -- the line beside
+# Quality -- is its "quality" part, read the same way.
 
 
 def quality_note(site: str, program: str) -> str:
     """The card's line under Quality for this site and program, or ""."""
-    seen = QUALITY_SEEN.get(f"{site}|{program}")
-    return f"{seen[0]} (checked {seen[1]})" if seen else ""
+    seen = signs.get("quality", site, program)
+    return f"{seen['text']} (checked {seen['seen']})" if seen else ""
 
 
 # What the quality check's DOWNLOAD TEST saw failing (dev/quality_check.py,
-# its "Does not download" section), filled ONLY after the user's review,
-# each with its date and its evidence. The app reads it so it does not pick
+# its "Does not download" section), filled ONLY after a review (since
+# 2026-11-18 mine, published on the user's yes), each with its date and its
+# evidence. The app reads it so it does not pick
 # what fails (the user's plan, 2026-11-16).
 #   "avoid" + "height" -- yt-dlp: a codec family its "Best" (or that height
 #                         chosen) must not take while another file of the
@@ -80,38 +52,21 @@ def quality_note(site: str, program: str) -> str:
 #   "fails"            -- another program: it fails on this site
 # An entry with "version" applies only while the program is at that version:
 # an update may fix it, and the check tests it again (a new version is due).
-DOWNLOAD_FAILS: dict[str, dict] = {
-    # BV1Gsnj6XE9M: Bilibili's main server cuts the AV1 1080p file (format
-    # 100026) -- 5.2 MB of 23.6 MB, "383 bytes read, 22199763 more expected.
-    # Giving up after 10 retries", on 2026-11-09 and 2026-11-16; the H.264
-    # 1080p (30080) came whole both times (88.6 MB, ffprobe 1080p, 257 s).
-    # 3 other videos' AV1 1080p came whole (11-09): H.264 is taken on every
-    # Bilibili video at 1080p -- the same height, a bigger file. AV1 720p came
-    # whole, so only 1080p. Not tied to a yt-dlp version: the cut is Bilibili's.
-    "bilibili|yt-dlp": {"avoid": "av01", "prefer": "h264", "height": 1080, "seen": "2026-11-16"},
-    # Rumble refused both test links, with and without cookies: "HTTP Error
-    # 403: Forbidden" (RumbleEmbed), on 2026-11-15 and 2026-11-16 (yt-dlp
-    # 2026.11.14.232655). Reviewed by the user 2026-11-16. Not tied to a
-    # yt-dlp version: the next check after a Rumble change in yt-dlp's
-    # release notes reads it again, and this line is reviewed then.
-    "rumble|yt-dlp": {"fails": True, "seen": "2026-11-16",
-                      "next": "Rumble refused it (403). It may work again after an update."},
-    # XHS-Downloader V2.8 crashes reading Xiaohongshu's page, which now holds
-    # JavaScript (`new Set([])`): "yaml.parser.ParserError … expected ',' or
-    # '}', but got '['", on both test links, 2026-11-16. Its authors: issue
-    # #497, opened 2026-10-17, closed as done 2026-10-23, no release after 2.8
-    # (2026-09-12; read the same day).
-    "xiaohongshu|xhs-downloader": {"fails": True, "version": "XHS-Downloader V2.8 Stable",
-                                   "seen": "2026-11-16", "who": "XHS-Downloader 2.8",
-                                   "next": "Its authors fixed it: the fix comes with its next version."},
-}
+# The lines and their evidence: the "download_fails" part of the sign list
+# (signs.py, teleloadzai/signs.json), read from GitHub by every user's app.
 
 
 def download_fail(site: str, program: str) -> dict | None:
     """The reviewed entry for this site and program, or None. None too when it
     names a version and the program is no longer at it (updated, or removed);
     a version that cannot be read keeps the entry."""
-    entry = DOWNLOAD_FAILS.get(f"{site}|{program}")
+    return applies(signs.get("download_fails", site, program), program)
+
+
+def applies(entry: dict | None, program: str) -> dict | None:
+    """`entry` (a download_fails line) if it still applies to the installed
+    program, else None -- the version rule, shared with the quality check,
+    which reads the list in the repository (signs.shipped)."""
     if not entry:
         return None
     if entry.get("version"):
@@ -223,7 +178,7 @@ def _read(strict: bool = False) -> dict | None:
 def all_needs() -> dict[str, dict]:
     """{"site|program": {"need": ..., "seen": "YYYY-MM-DD"}} -- what was seen
     last, the file over the proofs it started from."""
-    merged = {k: {"need": n, "seen": d} for k, (n, d) in SEEN_BEFORE.items()}
+    merged = {k: {"need": v["need"], "seen": v["seen"]} for k, v in signs.section("sites_page").items()}
     # Under the save's lock: on Windows a read and a replace of the same file
     # refuse each other (seen on this PC 2026-11-01): the Sites page would
     # lose what was learned for one look, and the result being saved be dropped.

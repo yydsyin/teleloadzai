@@ -28,13 +28,16 @@ day (no download, seconds). The full download test runs once a week, and at
 once when something changed: a yt-dlp release that touched the site, a
 program update, a read different from the last one, a failed download on
 this PC (data/jobs.json, failed rows by id), a failed test. What is in the
-reviewed table (needs.DOWNLOAD_FAILS) is tested every day, so a fixed site
+reviewed sign list (teleloadzai/signs.json, its download_fails) is tested every day, so a fixed site
 or program loses its warning. On a day with no test, the last result is
 kept with its date and gives no new message.
 
 Both are under data/, which git ignores: the report says which sites the
 developer is logged in on, and the repository is public. Nothing here
-changes the app; a change reaches the app's table only after a review.
+changes the app; a change reaches the app only after a review: a difference
+from the sign list seen on 2 days in a row is written to
+data/quality-check/to-review.md (signs_to_review), and the review publishes
+it in teleloadzai/signs.json, which every user's app reads from GitHub.
 
 Run from the project folder:
   python dev/quality_check.py                every site (the first table, or by hand)
@@ -67,6 +70,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
@@ -74,7 +78,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from teleloadzai import children, cookies, login, needs, runners, tools, ytdlp  # noqa: E402
+from teleloadzai import children, cookies, login, needs, runners, signs, tools, ytdlp  # noqa: E402
 from teleloadzai.paths import DATA_DIR  # noqa: E402
 from teleloadzai.platforms import PLATFORMS, tool_name  # noqa: E402
 
@@ -1201,7 +1205,7 @@ def report(new: dict, old: dict, header: list[str],
     lines += ["## Does not download", "",
               "yt-dlp: the file \"Best\" picks failed or came cut — what works instead is after "
               "the arrow. Other programs: the post failed on every link tried — the app can then "
-              "start on another program. Nothing here reaches the app before your review.", ""]
+              "start on another program. Nothing here reaches the app before a review (see \"Signs to review\" above).", ""]
     tested = new_programs or any((now.get(s) or {}).get("download")
                                  for now in new.values() for s in ("no_cookies", "your_cookies"))
     lines += fails or ["Nothing failed." if tested else "No download test in this run."]
@@ -1216,7 +1220,7 @@ def report(new: dict, old: dict, header: list[str],
                 login_only.append(f"- **{names.get(site, site)}** · yt-dlp: "
                                   f"{', '.join(f'{h}p' for h in extra)} only with your cookies")
     if table_lines:
-        lines += ["", "## The reviewed table (needs.DOWNLOAD_FAILS)", ""] + table_lines
+        lines += ["", "## The sign list (teleloadzai/signs.json, download_fails)", ""] + table_lines
     lines += ["", "## Sizes only with your log-in", "",
               "Candidates for the card's locked sizes (grey, with the log-in that unlocks them).", ""]
     lines += login_only or ["None found."]
@@ -1288,6 +1292,226 @@ def _keep_tested_download(now: dict, before: dict | None) -> dict:
                 and not old.get("skipped") and not old.get("same")):
             out[state] = {**is_, "download": {**old, "from": old.get("from") or before.get("downloaded")}}
     return out
+
+
+# ---------------------------------------------------------------- the signs to review
+
+# What users see about a site and a program is the sign list (teleloadzai/
+# signs.json, read from GitHub by every user's app). This run's results are
+# compared with it; a difference seen on 2 DAYS in a row (a site refusing for
+# an hour must not move a sign) goes to the review list, and a Windows
+# message says so once. The review (Claude, on the user's word "review")
+# changes the list, or sets "declined" on the line in PROPOSALS_FILE: the
+# same result is then not proposed again. Nothing here changes the app.
+PROPOSALS_FILE = OUT_DIR / "proposals.json"
+REVIEW_FILE = OUT_DIR / "to-review.md"
+SIGN_KINDS = {"fails": "Program fails (warning sign)", "codec": "File to avoid (yt-dlp)",
+              "needs": "Needs before Download", "quality": "A log-in does not unlock"}
+_SIGN_CODEC = {"avc1": "h264", "av01": "av01", "hvc1": "h265", "vp09": "vp9"}
+
+
+def _codec_value(entry: dict) -> str:
+    return f"avoid {entry['avoid']} -> {entry['prefer']} at {entry['height']}p"
+
+
+def _observe(new: dict, new_programs: dict, listed: dict | None = None) -> dict[str, tuple[str, str]]:
+    """"kind|site|program" -> (what this run saw, its evidence): only what it
+    really tested -- never a skipped test, a result carried from another day,
+    or a run our own check broke."""
+    seen: dict[str, tuple[str, str]] = {}
+    network = len(new) > 1 and all(n.get("broken") for n in new.values())
+
+    def err(state: dict | None) -> str:
+        state = state or {}
+        return str(state.get("error") or state.get("skipped") or "not run")[:160]
+
+    for key, now in new_programs.items():
+        if now.get("port_taken") or now.get("not_installed"):
+            continue
+        plain, mine = now.get("no_cookies") or {}, now.get("your_cookies") or {}
+        if now.get("link"):
+            seen[f"fails|{key}"] = ("works", f"link {now.get('link_number', 1)} downloaded whole")
+            if plain.get("ok"):
+                seen[f"needs|{key}"] = ("none", "downloaded with no cookies")
+            elif mine.get("ok") and not mine.get("login_unused"):
+                seen[f"needs|{key}"] = ("cookies", f"no cookies: {err(plain)}; worked with your cookies")
+        elif now.get("fails"):
+            runs = [f.get("your_cookies") or {} for f in now.get("failed_links") or []]
+            # Only when the cookie run was real (or the program takes none):
+            # a run skipped for want of a log-in is a need, not a failure.
+            # Nor when the list already says it needs a log-in and this site
+            # has none here: Instagram "visited", gallery-dl "redirect to login
+            # page" on 2026-11-19 -- our state, the known need, not a failure.
+            site, _, tool = key.partition("|")
+            need = ((listed or {}).get("before_download") or {}).get(key, {}).get("need")
+            known_need = need in ("login", "asked") and login.site_state(site) != "logged_in"
+            if runs and not known_need and all(("ok" in r and not r.get("check_broken"))
+                                               or str(r.get("skipped", "")).startswith("this program takes no cookies")
+                                               for r in runs):
+                seen[f"fails|{key}"] = ("fails", "; ".join(
+                    f"link {f['number']}: {err(f.get('no_cookies'))}" for f in now["failed_links"]))
+    for site, now in new.items():
+        key = f"{site}|yt-dlp"
+        if now.get("broken"):
+            if not network:         # every site failing is the network, not yt-dlp
+                seen[f"fails|{key}"] = ("fails", "no link could be read: " + "; ".join(
+                    f"link {f['number']}: {str(f.get('error', ''))[:160]}" for f in now.get("failed_links") or []))
+            continue
+        plain, mine = now.get("no_cookies") or {}, now.get("your_cookies") or {}
+        if plain.get("ok"):
+            seen[f"needs|{key}"] = ("none", "read with no cookies")
+        elif plain.get("needs_login") and not mine.get("check_broken"):
+            # What the cookies were is the site's sign: "login" only from a real
+            # log-in, "visit" when a visit's cookies were enough -- an expired
+            # log-in is not one (hunt 2026-11-18).
+            logged_in = now.get("sign") == "logged_in"
+            seen[f"needs|{key}"] = (
+                ("login" if logged_in else "visit",
+                 f"no cookies: {err(plain)}; read with your cookies ({now.get('sign')})") if mine.get("ok")
+                else ("asked", f"no cookies: {err(plain)}; your cookies ({now.get('sign')}): {err(mine)}"))
+        if mine.get("ok") and now.get("sign") == "logged_in":
+            gaps = mine.get("missing") or []
+            seen[f"quality|{key}"] = (
+                ("set", "with your log-in, missing: " + "; ".join(f"{g['names']} ({g['why']})" for g in gaps))
+                if gaps else ("none", "nothing missing with your log-in"))
+        d = plain.get("download")
+        if not d or d.get("same") or d.get("skipped") or d.get("from"):
+            continue                # no download test today
+        tries = d.get("instead") or []
+        good = next((t for t in tries if t.get("ok")), None)
+        seen[f"fails|{key}"] = ("works" if d.get("ok") or good else "fails", _download_said(d))
+        entry = needs.download_fail(site, "yt-dlp") or {}
+        if entry.get("prefer"):
+            avoided = d.get("avoided")
+            if avoided and not avoided.get("same") and not avoided.get("read_failed"):
+                seen[f"codec|{key}"] = ("none" if avoided.get("ok") else _codec_value(entry),
+                                        f"the avoided file: {_one_try(avoided)}")
+        elif d.get("ok"):
+            seen[f"codec|{key}"] = ("none", f"\"Best\" came whole: {_one_try(d)}")
+        elif good and d.get("height"):
+            bad = _SIGN_CODEC.get(_family(d.get("codec")))
+            alt = _SIGN_CODEC.get(_family(good.get("codec")))
+            if good.get("height") == d["height"] and bad and alt and bad != alt:
+                seen[f"codec|{key}"] = (f"avoid {bad} -> {alt} at {d['height']}p", _download_said(d))
+            else:
+                seen[f"codec|{key}"] = (f"\"Best\" {d['height']}p fails, {good.get('height')}p works",
+                                        _download_said(d))
+    return seen
+
+
+def _sign_now(kind: str, site: str, program: str, listed: dict) -> str:
+    """What the sign list in the repository (`listed`, signs.shipped) says,
+    in the same words as _observe -- never a copy fetched from GitHub, which
+    an edit made here does not change until it is pushed (hunt 2026-11-18)."""
+    line = lambda part, tool: (listed.get(part) or {}).get(f"{site}|{tool}")
+    if kind == "fails":
+        return "fails" if (needs.applies(line("download_fails", program), program) or {}).get("fails") else "works"
+    if kind == "codec":
+        entry = needs.applies(line("download_fails", "yt-dlp"), "yt-dlp") or {}
+        return _codec_value(entry) if entry.get("prefer") else "none"
+    if kind == "needs":
+        return (line("before_download", program) or {}).get("need", "none")
+    return "set" if line("quality", program) else "none"
+
+
+def _online() -> bool:
+    """Is the internet there now? Asked only when a failure was seen: no
+    internet at log-on made every program "fail" (hunt 2026-11-18)."""
+    try:
+        request = urllib.request.Request("https://github.com", method="HEAD",
+                                         headers={"User-Agent": "Teleloadzai quality check"})
+        with urllib.request.urlopen(request, timeout=15):
+            return True
+    except urllib.error.HTTPError:
+        return True                 # an answer is an answer
+    except Exception:
+        return False
+
+
+def _agrees(kind: str, seen: str, now: str) -> bool:
+    if kind == "needs":
+        # "cookies": failed without, worked with the developer's log-in --
+        # a visit or a log-in, which the list already tells apart.
+        return seen == now or (seen == "cookies" and now in ("login", "visit")) or (seen == "asked" and now == "login")
+    return seen == now
+
+
+def signs_to_review(new: dict, new_programs: dict, today: str) -> tuple[list, list, list[str]]:
+    """(every difference waiting for a review, the ones never said before,
+    the problems). Writes PROPOSALS_FILE and REVIEW_FILE."""
+    listed, list_problems = signs.shipped()
+    problems = [f"the sign list (teleloadzai/signs.json): {p}" for p in list_problems]
+    problems += [f"the sign list fetched from GitHub (data/signs.json): {p}" for p in signs.fetched_problems()]
+    if not listed:
+        # Nothing to compare with: every sign would read as a difference.
+        return [], [], problems + ["the signs were not compared today"]
+    try:
+        data = json.loads(PROPOSALS_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("not a list of lines")
+    except FileNotFoundError:
+        data = {}
+    except (OSError, ValueError, RecursionError) as error:
+        # Kept aside, never written over: its "declined" lines are the review's.
+        aside = PROPOSALS_FILE.with_name(f"proposals.bad-{time.strftime('%Y%m%d-%H%M%S')}.json")
+        try:
+            os.replace(PROPOSALS_FILE, aside)
+        except OSError as problem:
+            return [], [], problems + [f"the review list could not be read ({error}) nor set aside "
+                                       f"({problem.strerror or problem}): the signs were not compared today"]
+        problems.append(f"the review list could not be read ({error}): set aside as {aside.name}, started again")
+        data = {}
+    for key in list(data):          # a line edited by hand at the review
+        line = data[key]
+        if not (isinstance(line, dict) and isinstance(line.get("value"), str)
+                and isinstance(line.get("count"), int) and not isinstance(line.get("count"), bool)
+                and all(isinstance(line.get(f), str) for f in ("first", "last", "evidence"))
+                and key.count("|") == 2 and key.partition("|")[0] in SIGN_KINDS):
+            problems.append(f"a line of the review list was dropped (not a review line): {str(key)[:80]}")
+            del data[key]
+    seen = _observe(new, new_programs, listed)
+    if any(value == "fails" for value, _ in seen.values()) and not _online():
+        seen = {k: v for k, v in seen.items() if v[0] != "fails"}
+        problems.append("no internet at the end of the check: no failure was counted for the signs")
+    for key, (value, evidence) in seen.items():
+        line = data.get(key)
+        if line and line.get("value") == value:
+            if line.get("last") != today:
+                line["count"] = line.get("count", 1) + 1
+            line.update(last=today, evidence=evidence)
+        else:
+            data[key] = {"value": value, "count": 1, "first": today, "last": today, "evidence": evidence}
+    waiting = []
+    for key, line in data.items():
+        kind, _, pair = key.partition("|")
+        site, _, program = pair.partition("|")
+        now = _sign_now(kind, site, program, listed)
+        if _agrees(kind, line["value"], now):
+            line.pop("told", None)
+            line.pop("declined", None)
+        elif line.get("count", 1) >= 2 and not line.get("declined"):
+            waiting.append((key, line, now))
+    fresh = [w for w in waiting if not w[1].get("told")]
+    for _, line, _ in fresh:
+        line["told"] = today
+    names = {p.id: p.name for p in PLATFORMS}
+    text = [f"# Signs to review — {time.strftime('%Y-%m-%d %H:%M')}", "",
+            "Seen on 2 days in a row, and different from the sign list (teleloadzai/signs.json). "
+            "Nothing reaches users before a review. A change refused at the review: "
+            "\"declined\": true on its line in proposals.json.", ""]
+    for key, line, now in waiting:
+        kind, _, pair = key.partition("|")
+        site, _, program = pair.partition("|")
+        text.append(f"- **{SIGN_KINDS[kind]}** · {names.get(site, site)} · {tool_name(program)}: "
+                    f"the list says *{now}*, the check saw *{line['value']}* on {line['count']} days "
+                    f"({line['first']} → {line['last']}). Evidence: {line['evidence']}")
+    if not waiting:
+        text.append("Nothing to review.")
+    # The review file first: if it cannot be written, "told" is not saved
+    # either, and the next run says the waiting signs again (round 2).
+    _write(REVIEW_FILE, "\n".join(text) + "\n")
+    _write(PROPOSALS_FILE, json.dumps(data, ensure_ascii=False, indent=1))
+    return waiting, fresh, problems
 
 
 def _write(path: Path, text: str) -> None:
@@ -1461,6 +1685,13 @@ def main() -> int:
         missed = {s: n["full_test_none"] for s, n in new.items() if n.get("full_test_none")}
         if missed:
             header.append("- Due for a download test, none ran: " + "; ".join(f"{s}: {w}" for s, w in missed.items()))
+    try:
+        waiting, fresh, review_problems = signs_to_review(new, new_programs, time.strftime("%Y-%m-%d"))
+    except OSError as problem:      # the review list, not the check: said, the table still written
+        waiting, fresh, review_problems = [], [], [f"the review list could not be written: {problem.strerror or problem}"]
+    problems += review_problems
+    if waiting:
+        header.append(f"- **Signs to review: {len(waiting)}** — {REVIEW_FILE.name} (say \"review\" to Claude)")
     header += [f"- ⚠️ {p}" for p in problems]
     text, changed, broken, fails, new_fails = report(new, {s: old[s] for s in new if s in old}, header,
                                           new_programs, old_programs)
@@ -1501,8 +1732,9 @@ def main() -> int:
             + f" · {fails} not downloading"
             + "".join(f" · PROBLEM: {p}" for p in problems) + f" · {report_file.name}")
     print(f"\nReport: {report_file}")
-    if changed or broken or problems or new_fails:
-        parts = [f"{new_fails} new download failure{'s' if new_fails != 1 else ''}"] if new_fails else []
+    if changed or broken or problems or new_fails or fresh:
+        parts = [f"{len(fresh)} sign{'s' if len(fresh) != 1 else ''} to review"] if fresh else []
+        parts += [f"{new_fails} new download failure{'s' if new_fails != 1 else ''}"] if new_fails else []
         parts += [f"{changed} change{'s' if changed != 1 else ''} to review"] if changed else []
         parts += [f"{broken} broken check{'s' if broken != 1 else ''}"] if broken else []
         parts += ["a problem"] if problems else []

@@ -1,0 +1,31 @@
+{
+ "format": 1,
+ "updated": "2026-11-18T22:00",
+ "about": "What the app tells users about each site and program, from the quality check (dev/quality_check.py), each line reviewed. Every user's app reads this file from GitHub (teleloadzai/signs.py). 'why' is the evidence: never shown to users.",
+ "before_download": {
+  "instagram|gallery-dl": {"need": "login", "why": "\"HTTP redirect to login page\" on a public reel; yt-dlp got the same reel (audit 2026-09-26)."},
+  "tiktok|tiktokdownloader": {"need": "visit", "why": "\"Forbidden\" with NO cookies (audit); in the app, 2026-09-26, the whole video (26,964,923 bytes) with 9 visit cookies and no sid_tt / sessionid."},
+  "kuaishou|ks-downloader": {"need": "login", "why": "\"Failed to retrieve posts data\" with no cookies; worked with the user's QR log-in 2026-09-23."},
+  "douyin|tiktokdownloader": {"need": "visit", "why": "\"Failed to retrieve data!\" with 2 visit cookies (ttwid, __ac_nonce); the user's 4 downloads of 2026-09-26 worked with 35 cookies from one visit and NO sessionid."},
+  "vimeo|yt-dlp": {"need": "asked", "why": "\"Use --username and --password ... (vimeo) to provide account credentials\", on 2 links of 2. Never tried with a log-in."},
+  "reddit|yt-dlp": {"need": "asked", "why": "\"Account authentication is required. Use --cookies-from-browser or --cookies\", 4 public links of 4, no cookies AND a visit's (yt-dlp 2026.11.04.232659, quality check 2026-11-15). Worked with no log-in on 2026-09-26."}
+ },
+ "sites_page": {
+  "tiktok|tiktokdownloader": {"need": "visit", "seen": "2026-09-26", "why": "9 visit cookies, no sid_tt, the whole video (CLAUDE.md §4)."},
+  "douyin|tiktokdownloader": {"need": "visit", "seen": "2026-09-26", "why": "35 visit cookies and no sessionid: the user's 4 downloads worked (§4)."},
+  "instagram|gallery-dl": {"need": "account", "seen": "2026-09-26", "why": "gallery-dl: \"redirect to login page\" with no log-in (the audit, §4)."},
+  "kuaishou|ks-downloader": {"need": "account", "seen": "2026-09-26", "why": "KS-Downloader: \"Failed to retrieve posts data\"; worked with a log-in."},
+  "bilibili|yt-dlp": {"need": "none", "seen": "2026-11-09", "why": "\"Unable to extract initial state\" without a log-in on 2026-10-24; on 2026-11-09 (2026.11.04) 11 of 12 qualities came whole with NO cookies."},
+  "bilibili|yutto": {"need": "none", "seen": "2026-11-09", "why": "yutto 2.3.1 with no cookies: a whole 480p video (1080p needs the log-in, said on the card: runners.TOP_WITHOUT_LOGIN)."},
+  "reddit|yt-dlp": {"need": "account", "seen": "2026-11-15", "why": "Quality check 2026-11-15, reviewed by the user: yt-dlp asked for an account on every public link, with no cookies and with a visit's (\"Account authentication is required\"). Worked with none on 2026-09-26."},
+  "vimeo|yt-dlp": {"need": "account", "seen": "2026-11-15", "why": "Quality check 2026-11-15, reviewed by the user: yt-dlp asked for an account (\"only works when logged-in\")."}
+ },
+ "quality": {
+  "bilibili|yt-dlp": {"text": "Bilibili keeps “1080p high bitrate” for its premium members: a normal log-in did not unlock it.", "seen": "2026-11-15", "why": "BV1Gsnj6XE9M: \"Format(s) 1080P 高码率 are missing; you have to become a premium member\", with no cookies AND a non-premium log-in; 360p to 1080p came either way. yutto: not checked."}
+ },
+ "download_fails": {
+  "bilibili|yt-dlp": {"avoid": "av01", "prefer": "h264", "height": 1080, "seen": "2026-11-16", "why": "BV1Gsnj6XE9M: Bilibili's main server cuts the AV1 1080p file (100026), 5.2 MB of 23.6 MB, on 2026-11-09 and 2026-11-16; the H.264 1080p (30080) came whole both times (88.6 MB, ffprobe 1080p, 257 s). 3 other videos' AV1 1080p came whole; AV1 720p whole, so only 1080p. Not tied to a yt-dlp version."},
+  "rumble|yt-dlp": {"fails": true, "seen": "2026-11-16", "next": "Rumble refused it (403). It may work again after an update.", "why": "Both test links, with and without cookies: \"HTTP Error 403: Forbidden\" (RumbleEmbed), 2026-11-15 and 2026-11-16 (yt-dlp 2026.11.14.232655)."},
+  "xiaohongshu|xhs-downloader": {"fails": true, "version": "XHS-Downloader V2.8 Stable", "seen": "2026-11-16", "who": "XHS-Downloader 2.8", "next": "Its authors fixed it: the fix comes with its next version.", "why": "V2.8 crashes reading Xiaohongshu's page (`new Set([])`): \"yaml.parser.ParserError … expected ',' or '}', but got '['\", both links, 2026-11-16. Issue #497 closed as done 2026-10-23, no release after 2.8."}
+ }
+}

@@ -616,7 +616,7 @@ def _output_arguments(
             )
             sort = ["-S", f"res:{quality},{MP4_SORT}"]
         if prefer:
-            # A codec to prefer AT THE SAME HEIGHT (needs.DOWNLOAD_FAILS, the
+            # A codec to prefer AT THE SAME HEIGHT (the sign list signs.json, the
             # reviewed download test): the height is sorted first, so it is
             # never lowered. Probed 2026-11-16 on Bilibili BV1Gsnj6XE9M, yt-dlp
             # 2026.11.14: "res,vcodec" -> AV1 100026, ":h265" -> HEVC 30077,

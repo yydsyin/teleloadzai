@@ -924,7 +924,7 @@ class Queue:
                     on_live=on_live, on_title=on_title, job_id=job.id,
                     subs=job.subs, sub_lang=job.sub_lang, on_line=on_line,
                     # Bilibili's main server cuts one AV1 1080p file: H.264 at
-                    # the same height instead (needs.DOWNLOAD_FAILS, reviewed).
+                    # the same height instead (the sign list, signs.json, reviewed).
                     prefer_codec=needs.ytdlp_prefer(job.platform, job.mode, job.quality),
                 )
             else:

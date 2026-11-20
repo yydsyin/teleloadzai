@@ -36,7 +36,7 @@ from email.utils import parsedate_to_datetime
 from typing import Callable
 from urllib.parse import urlsplit
 
-from . import cookies
+from . import cookies, signs
 from .platforms import PLATFORMS
 
 # The profile of the login window: its own folder, inside ours, so nothing
@@ -171,31 +171,10 @@ _BADGES = {
 #   "login": the tool refused without cookies, and a real log-in worked.
 #   "visit": fresh cookies from one visit are enough -- no account needed.
 #   "asked": the tool itself asked for an account; never tried with one.
-_NEEDS = {
-    # "HTTP redirect to login page" on a public reel; yt-dlp got the same reel.
-    ("instagram", "gallery-dl"): "login",
-    # "Forbidden" with NO cookies (audit); but in the app, 2026-09-26, it
-    # delivered the whole video (26,964,923 bytes) with 9 visit cookies and
-    # no sid_tt / sessionid -- a visit is enough. This line said "login" for
-    # a few hours, from the audit alone: a claim the button test disproved.
-    ("tiktok", "tiktokdownloader"): "visit",
-    # "Failed to retrieve posts data" with no cookies; worked with the user's
-    # QR log-in 2026-09-23.
-    ("kuaishou", "ks-downloader"): "login",
-    # "Failed to retrieve data!" with 2 visit cookies (ttwid, __ac_nonce);
-    # the user's 4 downloads of 2026-09-26 worked with 35 cookies from one
-    # visit of the log-in window and NO sessionid -- a visit is enough.
-    ("douyin", "tiktokdownloader"): "visit",
-    # "Use --username and --password ... (vimeo) to provide account
-    # credentials", on 2 links of 2. Never tried with a log-in.
-    ("vimeo", "yt-dlp"): "asked",
-    # "Account authentication is required. Use --cookies-from-browser or
-    # --cookies", on 4 public links of 4, with no cookies AND with a visit's
-    # cookies (yt-dlp 2026.11.04.232659, dev/quality_check.py, 2026-11-15).
-    # It worked with no log-in on 2026-09-26: Reddit changed. Never tried
-    # with a log-in; gallery-dl not tried.
-    ("reddit", "yt-dlp"): "asked",
-}
+# The lines and their evidence: the "before_download" part of the sign list
+# (signs.py, teleloadzai/signs.json), which every user's app reads from
+# GitHub -- a change the quality check finds reaches users after a review,
+# without a new release (2026-11-18; until then a table written here).
 
 
 def need(platform_id: str, tool_id: str, cookies_on: bool) -> dict | None:
@@ -206,7 +185,7 @@ def need(platform_id: str, tool_id: str, cookies_on: bool) -> dict | None:
     log-in window) AND cookies are switched on. A "visit" need is said as a
     reminder only while the site has no cookie at all (`visited`).
     """
-    kind = _NEEDS.get((platform_id, tool_id))
+    kind = (signs.get("before_download", platform_id, tool_id) or {}).get("need")
     if kind is None:
         return None
     platform = next((p for p in PLATFORMS if p.id == platform_id), None)

@@ -1,6 +1,6 @@
 # Texts shown by Teleloadzai
 
-> Made 2026-11-17 by a script that reads the code (`web/index.html` and the Python files).
+> Made 2026-11-18 by a script that reads the code (`web/index.html` and the Python files).
 > It is the list for translation: every sentence the window, its messages and its errors can show.
 > It is made by reading the code, so a line may still be a word nobody sees: check before translating.
 > `{…}` or `${…}` marks a value put in by the program (a name, a number).
@@ -633,43 +633,41 @@
 | Line | Text |
 |---|---|
 | 126 | Douyin shows its QR code by itself after about 15 to 30 seconds. Scan it with the Douyin app. |
-| 436 | Teleloadzai is running in a browser tab, not in its own window, so it has no window to open the log-in in. Start it normally, or import a cookies.txt instead |
-| 433 | the window engine is not installed, so Teleloadzai cannot open a log-in window. Import a cookies.txt instead |
-| 811 | no log-in window is open |
-| 377 | could not be read ({…}) |
-| 545 | Teleloadzai does not know where to log in for |
-| 553 | a log-in window is already open. Finish that one first |
-| 558 | Log in to |
-| 657 | The cookies are saved, but “Use my log-ins” could not be switched on ({…}). |
-| 912 | delete the login profile at the next start |
-| 355 | not a table |
-| 383 | Teleloadzai: {…} {…}: the Sites page does not show how you logged in, and new log-ins are not noted in it. |
-| 413 | Teleloadzai: the log-in is saved, but {…} could not be written ({…}): the Sites page will not show when it was made. |
-| 840 | The site took too long to answer, so the cookies could not be read. Leave the window open on the site itself, wait for the page to finish, and press the button again. |
-| 368 | is damaged and could not be set aside ({…}) |
-| 371 | Teleloadzai: {…} was damaged. It was kept as {…}; the Sites page forgets how you logged in. |
-| 414 | ): the Sites page will not show when it was made. |
-| 769 | ; if (p) { const r = p.getBoundingClientRect(); if (r.width > 0 && r.height > 0) return true; } const b = |
-| 771 | ; if (b) b.click(); return false; })() |
-| 364 | logins (unreadable {…}).json |
-| 372 | ; the Sites page forgets how you logged in. |
+| 415 | Teleloadzai is running in a browser tab, not in its own window, so it has no window to open the log-in in. Start it normally, or import a cookies.txt instead |
+| 412 | the window engine is not installed, so Teleloadzai cannot open a log-in window. Import a cookies.txt instead |
+| 790 | no log-in window is open |
+| 356 | could not be read ({…}) |
+| 524 | Teleloadzai does not know where to log in for |
+| 532 | a log-in window is already open. Finish that one first |
+| 537 | Log in to |
+| 636 | The cookies are saved, but “Use my log-ins” could not be switched on ({…}). |
+| 891 | delete the login profile at the next start |
+| 334 | not a table |
+| 362 | Teleloadzai: {…} {…}: the Sites page does not show how you logged in, and new log-ins are not noted in it. |
+| 392 | Teleloadzai: the log-in is saved, but {…} could not be written ({…}): the Sites page will not show when it was made. |
+| 819 | The site took too long to answer, so the cookies could not be read. Leave the window open on the site itself, wait for the page to finish, and press the button again. |
+| 347 | is damaged and could not be set aside ({…}) |
+| 350 | Teleloadzai: {…} was damaged. It was kept as {…}; the Sites page forgets how you logged in. |
+| 393 | ): the Sites page will not show when it was made. |
+| 748 | ; if (p) { const r = p.getBoundingClientRect(); if (r.width > 0 && r.height > 0) return true; } const b = |
+| 750 | ; if (b) b.click(); return false; })() |
+| 343 | logins (unreadable {…}).json |
+| 351 | ; the Sites page forgets how you logged in. |
 
-## `needs.py` (12)
+## `needs.py` (10)
 
 | Line | Text |
 |---|---|
-| 62 | Bilibili keeps “1080p high bitrate” for its premium members: a normal log-in did not unlock it. |
-| 70 | {…} (checked {…}) |
-| 98 | Rumble refused it (403). It may work again after an update. |
-| 104 | XHS-Downloader V2.8 Stable |
-| 106 | Its authors fixed it: the fix comes with its next version. |
-| 150 | {…} failed on this site in our last check ({…}). |
-| 170 | not a table |
-| 185 | {…} was damaged. It was kept as {…}; the Sites page starts again from what Teleloadzai knew before. |
-| 190 | {…} could not be read ({…}): this download's result is not kept on the Sites page. |
-| 232 | {…} could not be written ({…}): this download's result is not kept on the Sites page. |
-| 178 | needs (unreadable {…}).json |
-| 182 | {…} is damaged and could not be set aside: what each site needs is not updated. |
+| 41 | {…} (checked {…}) |
+| 112 | {…} failed on this site in our last check ({…}). |
+| 140 | not a table |
+| 159 | {…} was damaged. It was kept as {…}; the Sites page starts again from what Teleloadzai knew before. |
+| 164 | {…} could not be read ({…}): this download's result is not kept on the Sites page. |
+| 213 | {…} could not be written ({…}): this download's result is not kept on the Sites page. |
+| 147 | {…} is damaged: the Sites page shows only what Teleloadzai knew before. It is set aside at the next download. |
+| 152 | needs (unreadable {…}).json |
+| 156 | {…} is damaged and could not be set aside: what each site needs is not updated. |
+| 168 | {…} could not be read ({…}): the Sites page shows only what Teleloadzai knew before. |
 
 ## `notify.py` (8)
 
@@ -758,7 +756,7 @@
 | 293 | Your settings could not be saved. |
 | 406 | your settings cannot be saved now |
 | 429 | The folder “{…}” no longer exists, so this download goes to {…}. |
-| 1172 | This program is being updated. Run the command when it is done. |
+| 1175 | This program is being updated. Run the command when it is done. |
 | 54 | settings (unreadable {…}).json |
 | 63 | ): Teleloadzai uses its usual settings, and changes are not saved until the file can be moved. |
 | 114 | Your settings file could not be read ({…}): Teleloadzai uses its usual settings, and changes are not saved until it can be read. |
@@ -776,22 +774,69 @@
 | 498 | p or less, or log in on the Sites page. |
 | 535 | Another download in the list is already saving to “{…}”. Choose another name. |
 | 666 | {…} installed: {…}. |
-| 1033 | Reading the title · yt-dlp · |
-| 1328 | Choose your cookies.txt |
+| 1036 | Reading the title · yt-dlp · |
+| 1331 | Choose your cookies.txt |
 | 667 | Updated: {…} → {…}. |
-| 1028 | Reading the title · |
-| 1175 | This command is too long (8,000 characters at most). |
-| 1250 | that download no longer exists |
-| 1282 | The file is no longer where it was saved: it may have been moved or deleted. |
+| 1031 | Reading the title · |
+| 1178 | This command is too long (8,000 characters at most). |
+| 1253 | that download no longer exists |
+| 1285 | The file is no longer where it was saved: it may have been moved or deleted. |
 | 668 | Switched to the {…} version: {…}. |
 | 669 | The update did not change {…}: {…} is kept. |
-| 994 | Teleloadzai hit an unexpected problem ({…}: {…}). |
-| 1159 | The clipboard could not be read: {…}. |
+| 997 | Teleloadzai hit an unexpected problem ({…}: {…}). |
+| 1162 | The clipboard could not be read: {…}. |
 | 645 | waits for {…} download{…} to finish |
 | 647 | waits for the Console's command to finish |
-| 1226 | Windows could not write the file: |
-| 1295 | Windows could not open it: |
-| 1385 | The log-in window could not be read: |
+| 1229 | Windows could not write the file: |
+| 1298 | Windows could not open it: |
+| 1388 | The log-in window could not be read: |
+
+## `signs.json` (3)
+
+| Line | Text |
+|---|---|
+| 18 | Bilibili keeps “1080p high bitrate” for its premium members: a normal log-in did not unlock it. |
+| 28 | Rumble refused it (403). It may work again after an update. |
+| 29 | Its authors fixed it: the fix comes with its next version. |
+
+## `signs.py` (34)
+
+| Line | Text |
+|---|---|
+| 60 | the sign list was not updated |
+| 102 | neither a warning nor a codec from the list |
+| 79 | not a set of fields |
+| 82 | its evidence is not a short text |
+| 101 | a bad height |
+| 244 | the answer is too big to be a sign list |
+| 253 | GitHub gave an older list than the one kept |
+| 84 | an unknown need |
+| 90 | no short text |
+| 94 | a bad '{…}' |
+| 152 | the sign list {…} is too big to be one ({…} bytes): not used. |
+| 156 | the sign list {…} is not used — {…}. |
+| 159 | a line of the sign list {…} was left out — {…}. |
+| 183 | shipped with the app |
+| 242 | GitHub could not be reached ({…}) |
+| 247 | the list was not used — |
+| 249 | fetched from GitHub |
+| 265 | the list could not be saved ({…}) |
+| 267 | a line of the sign list fetched from GitHub was left out — {…}. |
+| 109 | not a list of signs |
+| 114 | no date of update |
+| 123 | the part '{…}' is missing |
+| 127 | {…}: not a list |
+| 149 | the sign list {…} could not be read ({…}). |
+| 203 | it is too big |
+| 236 | the answer came from another address |
+| 287 | an error in Teleloadzai ({…}) |
+| 291 | {…}: {…}. The last one stays. |
+| 112 | it needs a newer Teleloadzai |
+| 112 | an unknown format |
+| 133 | an unknown site |
+| 169 | it is damaged |
+| 202 | it could not be read ({…}) |
+| 134 | an unknown program |
 
 ## `tools.py` (31)
 
@@ -855,7 +900,7 @@
 
 | Line | Text |
 |---|---|
-| 650 | [info] Writing video subtitles to: |
+| 661 | [info] Writing video subtitles to: |
 | 313 | {…} of {…} MP3s were saved without a cover picture. |
 | 71 | joining picture and sound |
 | 72 | making the MP3 |
@@ -867,7 +912,7 @@
 | 357 | Saved at {…} kbps, not {…}: the site's own MP3, kept as it is. |
 | 365 | ffmpeg is not installed |
 | 394 | yt-dlp did not answer within {…} seconds. |
-| 533 | The name chosen in "Save as" is too long for Windows. Choose a shorter name or folder. |
-| 866 | yt-dlp finished without downloading anything. |
-| 915 | "{…}" was made, but could not be given its name: {…}. It is in the folder as "{…}". |
-| 867 | Its last line: |
+| 543 | The name chosen in "Save as" is too long for Windows. Choose a shorter name or folder. |
+| 877 | yt-dlp finished without downloading anything. |
+| 926 | "{…}" was made, but could not be given its name: {…}. It is in the folder as "{…}". |
+| 878 | Its last line: |

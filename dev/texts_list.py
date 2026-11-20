@@ -103,6 +103,19 @@ for path in sorted(ROOT.glob("*.py")):
             if wordy(s) and len(s.split()) >= 3:
                 out.append((path.name, node.lineno, "py-f", s))
 
+# ---- The sign list (signs.json, decision 43): its shown fields only, never
+# the evidence ("why"). The "line" is the line in the file.
+signs_text = (ROOT / "signs.json").read_text(encoding="utf-8")
+signs_lines = signs_text.splitlines()
+for section, entries in json.loads(signs_text).items():
+    if not isinstance(entries, dict):
+        continue
+    for key, entry in entries.items():
+        for field in ("text", "next"):
+            if isinstance(entry, dict) and entry.get(field):
+                no = next((i for i, l in enumerate(signs_lines, 1) if f'"{key}"' in l), 0)
+                out.append(("signs.json", no, "sign", entry[field]))
+
 by_file = {}
 for f, *_ in out:
     by_file[f] = by_file.get(f, 0) + 1

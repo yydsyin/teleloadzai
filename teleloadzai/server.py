@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import commands, console, cookies, dialogs, explain, login, needs, notify, runners, toolservers, tools, ytdlp
+from . import commands, console, cookies, dialogs, explain, login, needs, notify, runners, signs, toolservers, tools, ytdlp
 from .config import APP_NAME, APP_VERSION
 from .detect import Detection, detect
 from .jobs import DONE, ERROR, Queue, TargetInUse, target_clashes
@@ -960,6 +960,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             if path == "/api/tools":
+                # The sign list from GitHub, with the update check: in the
+                # background, at most every 6 hours (signs.py).
+                signs.refresh_soon()
                 self._json({
                     "tools": tools.status_all(),
                     "python": tools.python_state(),
