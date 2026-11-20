@@ -262,12 +262,23 @@ def _save_seen(signs: dict) -> str:
         return problem.strerror or str(problem)
 
 
-_NEED_SAID = {"login": "now needs your log-in.", "visit": "now needs one visit of the site, no log-in.",
-              "asked": "now asks for an account."}
+_NEED_SAID = {"login": "Now needs your log-in.", "visit": "Now needs one visit of the site, no log-in.",
+              "asked": "Now asks for an account."}
+
+
+def _day(iso: str) -> str:
+    """"2026-11-16" -> "Nov 16", as the Sites page writes its dates."""
+    try:
+        return f"{_MONTHS[int(iso[5:7]) - 1]} {int(iso[8:10])}"
+    except (ValueError, IndexError):
+        return iso
+
+
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
 def changes() -> dict:
-    """{"changes": [{site, program, kind, text}], "date": the list's date}.
+    """{"changes": [{site, program, kind, added, text}], "date": the list's date}.
     The first time (no snapshot yet) the list in use is taken as seen: a new
     user must not get every existing sign as "new"."""
     signs = current()
@@ -296,20 +307,21 @@ def changes() -> dict:
             # The button's own first sentence, then its next step: "Its
             # authors fixed it…" alone did not say what failed (seen 2026-11-20).
             entry = signs["download_fails"][key]
-            out.append((key, "warning", " ".join(filter(None, [
-                f"now warned: it failed in our last check ({entry['seen']}).", entry.get("next", "")]))))
+            out.append((key, "warning", True, " ".join(filter(None, [
+                f"Now warned: it failed in our last check ({_day(entry['seen'])}).", entry.get("next", "")]))))
         elif key in seen["warning"] and key not in now["warning"]:
-            out.append((key, "warning", "works again: its warning is removed."))
+            out.append((key, "warning", False, "Works again: its warning is removed."))
     for key in sorted(set(now["need"]) | set(seen["need"])):
         if now["need"].get(key) != seen["need"].get(key):
-            out.append((key, "need", _NEED_SAID.get(now["need"].get(key), "no longer asks for a log-in.")))
+            out.append((key, "need", key in now["need"],
+                        _NEED_SAID.get(now["need"].get(key), "No longer asks for a log-in.")))
     from .platforms import PLATFORMS, tool_name
     names = {p.id: p.name for p in PLATFORMS}
     listed = []
-    for key, kind, text in out:
+    for key, kind, added, text in out:
         site, _, program = key.partition("|")
         listed.append({"site": site, "site_name": names.get(site, site), "program": program,
-                       "program_name": tool_name(program), "kind": kind, "text": text})
+                       "program_name": tool_name(program), "kind": kind, "added": added, "text": text})
     return {"changes": listed, "date": signs["updated"]}
 
 
