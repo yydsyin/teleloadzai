@@ -229,6 +229,98 @@ def section(name: str) -> dict[str, dict]:
     return {k: dict(v) for k, v in current().get(name, {}).items()}
 
 
+# ---------------------------------------------------------------- what changed
+
+# The user's model A, 2026-11-20: a red "!" on Sites and a "What changed"
+# box until OK. Only what the user sees counts -- a warning (a program that
+# fails) or a need before Download, added or removed; a new date, a codec
+# to avoid (the app just takes the other file) or new evidence says nothing.
+SEEN = DATA_DIR / "signs-seen.json"
+_seen_lock = threading.Lock()               # signs-seen.json's reads and its replace
+
+
+def _visible(signs: dict) -> dict[str, dict[str, str]]:
+    return {"warning": {k: v.get("next", "") for k, v in signs.get("download_fails", {}).items() if v.get("fails")},
+            "need": {k: v["need"] for k, v in signs.get("before_download", {}).items()}}
+
+
+def _save_seen(signs: dict) -> str:
+    """"" when the snapshot of what the user saw was written, else why not."""
+    temp = SEEN.with_suffix(".tmp")
+    try:
+        with _seen_lock:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            temp.write_text(json.dumps({"updated": signs.get("updated", ""), **_visible(signs)},
+                                       ensure_ascii=False), encoding="utf-8")
+            os.replace(temp, SEEN)
+        return ""
+    except OSError as problem:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return problem.strerror or str(problem)
+
+
+_NEED_SAID = {"login": "now needs your log-in.", "visit": "now needs one visit of the site, no log-in.",
+              "asked": "now asks for an account."}
+
+
+def changes() -> dict:
+    """{"changes": [{site, program, kind, text}], "date": the list's date}.
+    The first time (no snapshot yet) the list in use is taken as seen: a new
+    user must not get every existing sign as "new"."""
+    signs = current()
+    if not signs:
+        return {"changes": [], "date": ""}
+    try:
+        with _seen_lock:
+            seen = json.loads(SEEN.read_text(encoding="utf-8-sig"))
+        if not (isinstance(seen, dict) and all(isinstance(seen.get(k), dict) for k in ("warning", "need"))):
+            raise ValueError("not a snapshot")
+    except FileNotFoundError:
+        why = _save_seen(signs)
+        if why:
+            _say(f"what changed in the sign list cannot be followed: {SEEN.name} could not be written ({why}).")
+        return {"changes": [], "date": signs["updated"]}
+    except (OSError, ValueError, RecursionError) as problem:
+        # Damaged: said, and started again from the list in use (nothing
+        # here is the user's work -- it only marks what was seen).
+        _say(f"{SEEN.name} could not be read ({getattr(problem, 'strerror', None) or problem}): "
+             "the signs in use are taken as seen.")
+        _save_seen(signs)
+        return {"changes": [], "date": signs["updated"]}
+    now, out = _visible(signs), []
+    for key in sorted(set(now["warning"]) | set(seen["warning"])):
+        if key in now["warning"] and key not in seen["warning"]:
+            # The button's own first sentence, then its next step: "Its
+            # authors fixed it…" alone did not say what failed (seen 2026-11-20).
+            entry = signs["download_fails"][key]
+            out.append((key, "warning", " ".join(filter(None, [
+                f"now warned: it failed in our last check ({entry['seen']}).", entry.get("next", "")]))))
+        elif key in seen["warning"] and key not in now["warning"]:
+            out.append((key, "warning", "works again: its warning is removed."))
+    for key in sorted(set(now["need"]) | set(seen["need"])):
+        if now["need"].get(key) != seen["need"].get(key):
+            out.append((key, "need", _NEED_SAID.get(now["need"].get(key), "no longer asks for a log-in.")))
+    from .platforms import PLATFORMS, tool_name
+    names = {p.id: p.name for p in PLATFORMS}
+    listed = []
+    for key, kind, text in out:
+        site, _, program = key.partition("|")
+        listed.append({"site": site, "site_name": names.get(site, site), "program": program,
+                       "program_name": tool_name(program), "kind": kind, "text": text})
+    return {"changes": listed, "date": signs["updated"]}
+
+
+def mark_seen() -> str:
+    """OK pressed: the list in use is now what the user saw. "" or why not."""
+    signs = current()
+    if not signs:       # an empty snapshot would show every sign as "new" later
+        return "the sign list is not loaded"
+    return _save_seen(signs)
+
+
 # ---------------------------------------------------------------- the fetch
 
 def _due() -> bool:

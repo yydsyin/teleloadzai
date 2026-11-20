@@ -970,6 +970,13 @@ class Handler(BaseHTTPRequestHandler):
                 })
                 return
 
+            if path == "/api/signs":
+                # What changed in the sign list since the user's last OK (model
+                # A, 2026-11-20); asking also fetches it when due (signs.py).
+                signs.refresh_soon()
+                self._json(signs.changes())
+                return
+
             if path == "/api/tools/progress":
                 self._json({"progress": install_progress()})
                 return
@@ -1091,6 +1098,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             tools.latest_release(tool_id, max_age_hours=1)
             self._json({"tool": tools.status(tool_id)})
+            return
+
+        if path == "/api/signs/seen":
+            why = signs.mark_seen()
+            self._json({"ok": not why, "error": f"Not saved: {why}." if why else ""})
             return
 
         if path == "/api/tools/refresh":

@@ -364,6 +364,18 @@
   /* The site's name, and under it what it needs (2026-10-25). */
   #sites-table .site-name { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
   #sites-table .need-line { font-size: 12px; color: var(--soft); font-weight: 400; }
+  /* Model A (2026-11-20): what changed in the sign list, until OK. */
+  .sign-news { background: color-mix(in srgb, var(--ink) 5%, var(--card)); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; font-size: 14px; }
+  .sign-news-head { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    font-weight: 600; margin-bottom: 6px; }
+  .sign-news ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .sign-news li { display: flex; gap: 8px; align-items: baseline; }
+  .sign-news li .tip-icon { align-self: center; }
+  .sign-news li b { font-weight: 600; white-space: nowrap; }
+  .sign-news li span { color: var(--soft); }
+  .new-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px; font-size: 11px;
+    font-weight: 600; line-height: 17px; color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, var(--card)); }
   #sites-table .program-pick { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }
   #sites-table .login { justify-content: flex-end; }
   /* The column names stay in sight while 23 sites scroll under them; they
@@ -950,7 +962,7 @@
   <button type="button" data-go="main" aria-current="page"><span class="nav-icon icon-download" aria-hidden="true"></span>Download</button>
   <button type="button" data-go="console"><span class="nav-icon icon-terminal" aria-hidden="true"></span>Console</button>
   <button type="button" data-go="programs" id="nav-programs"><span class="nav-icon icon-tool" aria-hidden="true"></span>Programs<span class="side-badge hidden" id="programs-badge" aria-hidden="true">!</span><span class="sr-only" id="programs-badge-words"></span></button>
-  <button type="button" data-go="sites"><span class="nav-icon icon-globe" aria-hidden="true"></span>Sites</button>
+  <button type="button" data-go="sites" id="nav-sites"><span class="nav-icon icon-globe" aria-hidden="true"></span>Sites<span class="side-badge hidden" id="sites-badge" aria-hidden="true">!</span><span class="sr-only" id="sites-badge-words"></span></button>
   <button type="button" data-go="settings" class="side-bottom"><span class="nav-icon icon-gear" aria-hidden="true"></span>Settings</button>
 </nav>
 <div class="wrap" data-showing="main">
@@ -1329,6 +1341,16 @@
          warning box; the longer explanation and the file road are folded. -->
     <section class="pane" id="pane-sites" data-view="sites">
       <h2 class="pane-title page-title" id="set-accounts" tabindex="-1">Sites</h2>
+      <!-- Model A, the user's choice 2026-11-20: what changed in the sign list
+           (signs.py, from GitHub) since the last OK. Filled with textContent
+           only: its sentences come from a file fetched from the internet. -->
+      <div class="sign-news hidden" id="sign-news" role="region" aria-labelledby="sign-news-title">
+        <div class="sign-news-head">
+          <span id="sign-news-title">What changed</span>
+          <button type="button" class="ghost tiny" id="sign-news-ok">OK</button>
+        </div>
+        <ul id="sign-news-list"></ul>
+      </div>
       <div class="set-group" id="logins-group">
         <div class="set-row" id="logins-switch-row">
           <span class="opt-icon icon-key" aria-hidden="true"></span>
@@ -5604,6 +5626,57 @@ function renderLogin(platforms, blocked) {
   redrawFailedRows();
 }
 
+// ---- What changed in the sign list (model A, the user's choice 2026-11-20) --
+// The list comes from GitHub (signs.py): a warning or a need added or removed
+// since the user's last OK shows a red "!" on Sites, a box at the top of the
+// page and a "new" tag on the site's row, until OK. Every sentence goes in by
+// textContent: it comes from a file fetched from the internet.
+let signNews = [];
+
+async function loadSignNews() {
+  const data = await api("/api/signs");
+  if (!data || data.error) return;          // api() already said what went wrong
+  signNews = data.changes || [];
+  renderSignNews(data.date || "");
+  renderSites();
+}
+
+function renderSignNews(date) {
+  const count = signNews.length;
+  const words = count ? `${count} sign${count > 1 ? "s" : ""} changed` : "";
+  $("sites-badge").classList.toggle("hidden", !count);
+  $("sites-badge-words").textContent = words ? `, ${words}` : "";
+  $("nav-sites").dataset.tip = words;
+  $("sign-news").classList.toggle("hidden", !count);
+  const day = /^\d{4}-\d{2}-\d{2}/.test(date)
+    ? new Date(date.slice(0, 10) + "T12:00").toLocaleDateString([], { day: "numeric", month: "short" }) : "";
+  $("sign-news-title").textContent = day ? `What changed · ${day}` : "What changed";
+  const list = $("sign-news-list");
+  list.textContent = "";
+  for (const change of signNews) {
+    const item = document.createElement("li");
+    if (change.kind === "warning" && change.text.startsWith("now")) item.appendChild(warnSign());
+    const who = document.createElement("b");
+    who.textContent = `${change.site_name} · ${change.program_name}`;
+    const what = document.createElement("span");
+    what.textContent = `— ${change.text}`;
+    item.append(who, what);
+    list.appendChild(item);
+  }
+}
+
+$("sign-news-ok").addEventListener("click", async () => {
+  const result = await api("/api/signs/seen", {});
+  if (!result || !result.ok) {              // nothing hidden on a failed save
+    notify((result && result.error) || "Not saved: the server did not answer.");
+    return;
+  }
+  signNews = [];
+  renderSignNews("");
+  renderSites();
+  $("set-accounts").focus();                // the box is gone: the keyboard goes to the page title
+});
+
 function renderSites() {
   const table = $("sites-table");
   if (siteTools === null) return;           // the programs are not known yet
@@ -5646,6 +5719,13 @@ function renderSites() {
     row.setAttribute("role", "row");
     const name = cell("span", "label site-name");
     name.append(cell("span", "", site.name));
+    // Model A: a site whose sign changed since the last OK.
+    if (signNews.some((c) => c.site === site.id)) {
+      const tag = cell("span", "new-tag", "new");
+      tag.dataset.tip = "Its sign changed. See “What changed” at the top.";
+      tag.tabIndex = 0;                     // a hover box opens on Tab too (pass 1)
+      name.firstChild.append(tag);
+    }
     const program = cell("span", "program");
     const login = cell("span", "login");
     for (const c of [name, program, login]) c.setAttribute("role", "cell");
@@ -5730,9 +5810,10 @@ function renderSites() {
     // Nothing to set: one program, no log-in state, nothing seen. Folded
     // under "N more sites" (critique of 2026-10-31).
     const state = site.login ? site.login.state || "none" : "none";
-    // A warning sign is something to say: never folded (2026-11-16).
+    // A warning sign is something to say: never folded (2026-11-16). Nor a
+    // "new" tag: Xiaohongshu's sat under "N more sites", unseen (2026-11-20).
     if (tools.length <= 1 && state === "none" && needLine.classList.contains("hidden")
-        && !program.querySelector(".tool-solo")) {
+        && !program.querySelector(".tool-solo") && !name.querySelector(".new-tag")) {
       quiet.push(row);
       continue;
     }
@@ -6018,6 +6099,12 @@ function showSettings(settings, start = true) {
   loadTools().then(() => {
     if (updateMode === "auto" && pendingUpdates().length) updateAll();
   });
+  // The sign list (model A): at start, then every 10 minutes -- asking also
+  // fetches it from GitHub when 6 hours have passed, and a fetch started now
+  // shows its "!" at the next ask, even in an app left open for days.
+  loadSignNews();
+  setTimeout(loadSignNews, 30 * 1000);      // a fetch started by the first ask
+  setInterval(loadSignNews, 10 * 60 * 1000);
   if (!settings.setup_done) {      // first launch: one line (decision 17)
     $("welcome").classList.remove("hidden");
   }
