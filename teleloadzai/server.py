@@ -1100,6 +1100,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"tool": tools.status(tool_id)})
             return
 
+        if path == "/api/signs/tags-seen":
+            # The Sites page was looked at: its "new" tags go (the user, 2026-11-20).
+            ids = body.get("ids") if isinstance(body.get("ids"), list) else []
+            why = signs.mark_tags_seen(ids)
+            self._json({"ok": not why, "error": f"Not saved: {why}." if why else ""})
+            return
+
         if path == "/api/signs/seen":
             why = signs.mark_seen()
             self._json({"ok": not why, "error": f"Not saved: {why}." if why else ""})

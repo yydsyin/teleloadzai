@@ -311,145 +311,145 @@
 | 4250 | Windows is installing Python. Answer its window if it asks. This can take minutes… |
 | 4253 | Python installed. |
 | 4254 | Not installed: |
-| 4303 | ── ${line.text} ── |
-| 4333 | Your ${tool ? tool.name : ""} command is running |
-| 4335 | 1 download: ${running[0].title} (${running[0].tool}) |
-| 4336 | ${running.length} downloads: |
-| 4352 | The Console's program list could not be loaded. Open the Console again. |
-| 4360 | No program installed |
-| 4374 | No examples yet. --help lists its options. |
-| 4375 | Install a program on Programs first. |
-| 4391 | Put in box |
-| 4392 | Put ${example.args} in the box |
-| 4418 | ${APP_NAME} did not answer. Restart ${APP_NAME}. |
-| 4442 | Clear all? Click again |
-| 4448 | Nothing to copy yet. |
-| 4459 | Could not copy the console. |
-| 4461 | Console copied. |
-| 4465 | Not saved: |
-| 4538 | Updating… |
-| 4544 | The update did not finish: ${(result && result.error) \|\| "no answer after 6 minutes"}. |
-| 4553 | Installing… this can take a moment. |
-| 4559 | This program needs Python: see Programs. |
-| 4560 | Install failed: |
-| 4584 | Read again |
-| 4629 | No link in what you copied. |
-| 4638 | Your copied link is in the box. Press Continue. |
-| 4639 | Your ${links.length} copied links are in the box. Press Continue. |
-| 4646 | Using the link you copied. |
-| 4646 | Using the ${links.length} links you copied. |
-| 4663 | Click to close |
-| 4736 | Waiting for the title… |
-| 4741 | Download not started: a new link was pasted. Press Download again for it. |
-| 4756 | Download not started: |
-| 4768 | Choose a folder: ${tool.name} names the file… |
-| 4774 | Choose where to save it… |
-| 4799 | Added to Downloads. |
-| 4893 | Format for |
-| 4922 | Quality for |
-| 4955 | Subtitle language for |
-| 4958 | Not this video |
-| 4979 | no subtitles |
-| 4989 | Program for |
-| 5031 | ${info.title} · ${info.items.length} videos |
-| 5087 | ${all.length ? all[0].name : "its program"} is not installed. Paste this link alone to install it. |
-| 5095 | no program here makes an MP3 of it. |
-| 5125 | ${shortLink(url)}: the same video as link ${seen.get(key)}. |
-| 5170 | ${f.platform}: Teleloadzai does not download ${f.platform}. |
-| 5178 | ${batchExtra} links left out: ${BATCH_MAX} at most at once. Paste the rest after. |
-| 5182 | ${batchExtra} videos left out: ${BATCH_MAX} at most when choosing for each video. |
-| 5183 | “Same for all” takes the whole playlist. |
-| 5188 | ${list0.count} videos, one row each: the list may be slow. |
-| 5203 | ${list0.title \|\| "Playlist"} · ${list0.count} videos |
-| 5213 | · Videos not read yet come at their best size. |
-| 5241 | title not read |
-| 5251 | …and ${batchExtra} more videos |
-| 5272 | “${line.length > 40 ? line.slice(0, 40) + "…" : line}”: not a link. |
-| 5273 | FFmpeg is missing. Paste one link alone to install it. |
-| 5278 | Not added: |
-| 5298 | <option value="${v}">${v === "best" ? "Best" : v + " kbps"}</option> |
-| 5310 | Each video asks where to save it |
-| 5335 | Could not save this choice: |
-| 5350 | Choose the folder for these downloads… |
-| 5383 | Adding ${added + refused.length + 1} of ${jobs.length}… |
-| 5399 | ${added} videos of the playlist added, one row each. |
-| 5400 | 1 download added. |
-| 5400 | ${added} downloads added. |
-| 5423 | Choosing ${n + 1} of ${ready.length}… |
-| 5427 | Choose the folder for “${label}”: ${tool.name} names the file… |
-| 5428 | Choose where to save “${label}”… |
-| 5437 | Adding ${n + 1} of ${ready.length}… |
-| 5469 | Remove ${ended}? Click again |
-| 5480 | Choose a folder… |
-| 5484 | Folder saved. |
-| 5508 | Saved: live recordings stop after |
-| 5515 | Saved: a message when a download ends. |
-| 5516 | Saved: no message. |
-| 5522 | Saved: a pasted link is read at once. |
-| 5523 | Saved: a pasted link waits for Continue. |
-| 5528 | Saved: copied links are used when you come back. |
-| 5529 | Saved: copied links are left alone. |
-| 5536 | Saved: Windows will ask where to save each file. |
-| 5537 | Saved: files go to your Download folder without asking. |
-| 5556 | Import a cookie file… |
-| 5576 | None saved |
-| 5577 | Not usable: import a new file |
-| 5578 | ${state.total} cookies, ${state.sites.length + (state.more_sites \|\| 0)} sites |
-| 5580 | off · none saved |
-| 5589 | not usable |
-| 5591 | <span class="warn-text">⚠️ ${state.broken}</span> |
-| 5595 | off · paused |
-| 5603 | 1 of them has already expired. |
-| 5604 | ${state.expired} of them have already expired. |
-| 5626 | ⚠️ Cannot log in here: |
-| 5650 | ${count} sign${count > 1 ? "s" : ""} changed |
-| 5681 | Not saved: the server did not answer. |
-| 5713 | Logged in |
-| 5714 | , until ${new Date(p.ends * 1000).toLocaleDateString()}. |
-| 5715 | Log-in expired on ${new Date(p.ends * 1000).toLocaleDateString()}. |
-| 5716 | Visited, no account. |
-| 5717 | Not logged in. |
-| 5719 | Log in |
-| 5730 | label site-name |
-| 5734 | badge new new-tag |
-| 5735 | Its sign changed. See “What changed” at the top. |
-| 5751 | ${NEED_WORDS[seen.need]} · seen |
-| 5778 | Saved: ${site.name} uses ${tool.name}. |
-| 5806 | login-sign login- |
-| 5812 | ghost tiny login-site |
-| 5840 | Fewer sites |
-| 5841 | ${quiet.length} more site${quiet.length === 1 ? "" : "s"} with nothing to set |
-| 5860 | just now |
-| 5860 | ${minutes} min ago |
-| 5862 | ${hours} h ago |
-| 5863 | ${Math.round(hours / 24)} days ago |
-| 5874 | The log-in window could not open: |
-| 5877 | Log in to |
-| 5879 | A window has opened on |
-| 5880 | It closes by itself once you are in. |
-| 5892 | Log in with an e-mail or a phone number: a Facebook or Google log-in |
-| 5893 | would open in your browser, where Teleloadzai cannot see it. |
-| 5939 | Teleloadzai could not take the cookies: |
-| 5941 | 1 cookie |
-| 5942 | Logged in to |
-| 5942 | Window closed: |
-| 5943 | saved. If a download failed, press Retry on it. |
-| 5949 | You closed the window before Teleloadzai could take anything from |
-| 5955 | Taking the cookies… |
-| 5961 | No cookies came back: the log-in may not have finished. Try again. |
-| 5965 | cookies saved from the log-in. |
-| 6010 | Saved: when |
-| 6011 | every log-in is forgotten. |
-| 6011 | you stay logged in. |
-| 6016 | A visit is enough |
-| 6016 | Works without a log-in |
-| 6016 | Needs your account |
-| 6028 | Choose your cookies.txt in the window that opens… |
-| 6037 | ${result.imported} cookies kept, ${result.ignored} from other sites left out. |
-| 6038 | ${result.imported} cookies kept. |
-| 6045 | Forget every log-in? Click again |
-| 6058 | Cookies forgotten. |
-| 6091 | Works with ${sites.slice(0, 5).join(", ")} and ${sites.length - 5} other sites. |
+| 4308 | ── ${line.text} ── |
+| 4338 | Your ${tool ? tool.name : ""} command is running |
+| 4340 | 1 download: ${running[0].title} (${running[0].tool}) |
+| 4341 | ${running.length} downloads: |
+| 4357 | The Console's program list could not be loaded. Open the Console again. |
+| 4365 | No program installed |
+| 4379 | No examples yet. --help lists its options. |
+| 4380 | Install a program on Programs first. |
+| 4396 | Put in box |
+| 4397 | Put ${example.args} in the box |
+| 4423 | ${APP_NAME} did not answer. Restart ${APP_NAME}. |
+| 4447 | Clear all? Click again |
+| 4453 | Nothing to copy yet. |
+| 4464 | Could not copy the console. |
+| 4466 | Console copied. |
+| 4470 | Not saved: |
+| 4543 | Updating… |
+| 4549 | The update did not finish: ${(result && result.error) \|\| "no answer after 6 minutes"}. |
+| 4558 | Installing… this can take a moment. |
+| 4564 | This program needs Python: see Programs. |
+| 4565 | Install failed: |
+| 4589 | Read again |
+| 4634 | No link in what you copied. |
+| 4643 | Your copied link is in the box. Press Continue. |
+| 4644 | Your ${links.length} copied links are in the box. Press Continue. |
+| 4651 | Using the link you copied. |
+| 4651 | Using the ${links.length} links you copied. |
+| 4668 | Click to close |
+| 4741 | Waiting for the title… |
+| 4746 | Download not started: a new link was pasted. Press Download again for it. |
+| 4761 | Download not started: |
+| 4773 | Choose a folder: ${tool.name} names the file… |
+| 4779 | Choose where to save it… |
+| 4804 | Added to Downloads. |
+| 4898 | Format for |
+| 4927 | Quality for |
+| 4960 | Subtitle language for |
+| 4963 | Not this video |
+| 4984 | no subtitles |
+| 4994 | Program for |
+| 5036 | ${info.title} · ${info.items.length} videos |
+| 5092 | ${all.length ? all[0].name : "its program"} is not installed. Paste this link alone to install it. |
+| 5100 | no program here makes an MP3 of it. |
+| 5130 | ${shortLink(url)}: the same video as link ${seen.get(key)}. |
+| 5175 | ${f.platform}: Teleloadzai does not download ${f.platform}. |
+| 5183 | ${batchExtra} links left out: ${BATCH_MAX} at most at once. Paste the rest after. |
+| 5187 | ${batchExtra} videos left out: ${BATCH_MAX} at most when choosing for each video. |
+| 5188 | “Same for all” takes the whole playlist. |
+| 5193 | ${list0.count} videos, one row each: the list may be slow. |
+| 5208 | ${list0.title \|\| "Playlist"} · ${list0.count} videos |
+| 5218 | · Videos not read yet come at their best size. |
+| 5246 | title not read |
+| 5256 | …and ${batchExtra} more videos |
+| 5277 | “${line.length > 40 ? line.slice(0, 40) + "…" : line}”: not a link. |
+| 5278 | FFmpeg is missing. Paste one link alone to install it. |
+| 5283 | Not added: |
+| 5303 | <option value="${v}">${v === "best" ? "Best" : v + " kbps"}</option> |
+| 5315 | Each video asks where to save it |
+| 5340 | Could not save this choice: |
+| 5355 | Choose the folder for these downloads… |
+| 5388 | Adding ${added + refused.length + 1} of ${jobs.length}… |
+| 5404 | ${added} videos of the playlist added, one row each. |
+| 5405 | 1 download added. |
+| 5405 | ${added} downloads added. |
+| 5428 | Choosing ${n + 1} of ${ready.length}… |
+| 5432 | Choose the folder for “${label}”: ${tool.name} names the file… |
+| 5433 | Choose where to save “${label}”… |
+| 5442 | Adding ${n + 1} of ${ready.length}… |
+| 5474 | Remove ${ended}? Click again |
+| 5485 | Choose a folder… |
+| 5489 | Folder saved. |
+| 5513 | Saved: live recordings stop after |
+| 5520 | Saved: a message when a download ends. |
+| 5521 | Saved: no message. |
+| 5527 | Saved: a pasted link is read at once. |
+| 5528 | Saved: a pasted link waits for Continue. |
+| 5533 | Saved: copied links are used when you come back. |
+| 5534 | Saved: copied links are left alone. |
+| 5541 | Saved: Windows will ask where to save each file. |
+| 5542 | Saved: files go to your Download folder without asking. |
+| 5561 | Import a cookie file… |
+| 5581 | None saved |
+| 5582 | Not usable: import a new file |
+| 5583 | ${state.total} cookies, ${state.sites.length + (state.more_sites \|\| 0)} sites |
+| 5585 | off · none saved |
+| 5594 | not usable |
+| 5596 | <span class="warn-text">⚠️ ${state.broken}</span> |
+| 5600 | off · paused |
+| 5608 | 1 of them has already expired. |
+| 5609 | ${state.expired} of them have already expired. |
+| 5631 | ⚠️ Cannot log in here: |
+| 5670 | ${count} sign${count > 1 ? "s" : ""} changed |
+| 5701 | Not saved: the server did not answer. |
+| 5733 | Logged in |
+| 5734 | , until ${new Date(p.ends * 1000).toLocaleDateString()}. |
+| 5735 | Log-in expired on ${new Date(p.ends * 1000).toLocaleDateString()}. |
+| 5736 | Visited, no account. |
+| 5737 | Not logged in. |
+| 5739 | Log in |
+| 5750 | label site-name |
+| 5754 | badge new new-tag |
+| 5755 | Its sign changed. See “What changed” at the top. |
+| 5771 | ${NEED_WORDS[seen.need]} · seen |
+| 5798 | Saved: ${site.name} uses ${tool.name}. |
+| 5826 | login-sign login- |
+| 5832 | ghost tiny login-site |
+| 5860 | Fewer sites |
+| 5861 | ${quiet.length} more site${quiet.length === 1 ? "" : "s"} with nothing to set |
+| 5880 | just now |
+| 5880 | ${minutes} min ago |
+| 5882 | ${hours} h ago |
+| 5883 | ${Math.round(hours / 24)} days ago |
+| 5894 | The log-in window could not open: |
+| 5897 | Log in to |
+| 5899 | A window has opened on |
+| 5900 | It closes by itself once you are in. |
+| 5912 | Log in with an e-mail or a phone number: a Facebook or Google log-in |
+| 5913 | would open in your browser, where Teleloadzai cannot see it. |
+| 5959 | Teleloadzai could not take the cookies: |
+| 5961 | 1 cookie |
+| 5962 | Logged in to |
+| 5962 | Window closed: |
+| 5963 | saved. If a download failed, press Retry on it. |
+| 5969 | You closed the window before Teleloadzai could take anything from |
+| 5975 | Taking the cookies… |
+| 5981 | No cookies came back: the log-in may not have finished. Try again. |
+| 5985 | cookies saved from the log-in. |
+| 6030 | Saved: when |
+| 6031 | every log-in is forgotten. |
+| 6031 | you stay logged in. |
+| 6036 | A visit is enough |
+| 6036 | Works without a log-in |
+| 6036 | Needs your account |
+| 6048 | Choose your cookies.txt in the window that opens… |
+| 6057 | ${result.imported} cookies kept, ${result.ignored} from other sites left out. |
+| 6058 | ${result.imported} cookies kept. |
+| 6065 | Forget every log-in? Click again |
+| 6078 | Cookies forgotten. |
+| 6111 | Works with ${sites.slice(0, 5).join(", ")} and ${sites.length - 5} other sites. |
 
 ## `__main__.py` (21)
 
@@ -761,7 +761,7 @@
 | 293 | Your settings could not be saved. |
 | 406 | your settings cannot be saved now |
 | 429 | The folder “{…}” no longer exists, so this download goes to {…}. |
-| 1187 | This program is being updated. Run the command when it is done. |
+| 1194 | This program is being updated. Run the command when it is done. |
 | 54 | settings (unreadable {…}).json |
 | 63 | ): Teleloadzai uses its usual settings, and changes are not saved until the file can be moved. |
 | 114 | Your settings file could not be read ({…}): Teleloadzai uses its usual settings, and changes are not saved until it can be read. |
@@ -780,22 +780,22 @@
 | 535 | Another download in the list is already saving to “{…}”. Choose another name. |
 | 666 | {…} installed: {…}. |
 | 1043 | Reading the title · yt-dlp · |
-| 1343 | Choose your cookies.txt |
+| 1350 | Choose your cookies.txt |
 | 667 | Updated: {…} → {…}. |
 | 1038 | Reading the title · |
-| 1105 | Not saved: {…}. |
-| 1190 | This command is too long (8,000 characters at most). |
-| 1265 | that download no longer exists |
-| 1297 | The file is no longer where it was saved: it may have been moved or deleted. |
+| 1107 | Not saved: {…}. |
+| 1197 | This command is too long (8,000 characters at most). |
+| 1272 | that download no longer exists |
+| 1304 | The file is no longer where it was saved: it may have been moved or deleted. |
 | 668 | Switched to the {…} version: {…}. |
 | 669 | The update did not change {…}: {…} is kept. |
 | 1004 | Teleloadzai hit an unexpected problem ({…}: {…}). |
-| 1174 | The clipboard could not be read: {…}. |
+| 1181 | The clipboard could not be read: {…}. |
 | 645 | waits for {…} download{…} to finish |
 | 647 | waits for the Console's command to finish |
-| 1241 | Windows could not write the file: |
-| 1310 | Windows could not open it: |
-| 1400 | The log-in window could not be read: |
+| 1248 | Windows could not write the file: |
+| 1317 | Windows could not open it: |
+| 1407 | The log-in window could not be read: |
 
 ## `signs.json` (3)
 
@@ -805,7 +805,7 @@
 | 28 | Rumble refused it (403). It may work again after an update. |
 | 29 | Its authors fixed it: the fix comes with its next version. |
 
-## `signs.py` (45)
+## `signs.py` (46)
 
 | Line | Text |
 |---|---|
@@ -817,9 +817,9 @@
 | 79 | not a set of fields |
 | 82 | its evidence is not a short text |
 | 101 | a bad height |
-| 332 | the sign list is not loaded |
-| 364 | the answer is too big to be a sign list |
-| 373 | GitHub gave an older list than the one kept |
+| 360 | the sign list is not loaded |
+| 392 | the answer is too big to be a sign list |
+| 401 | GitHub gave an older list than the one kept |
 | 84 | an unknown need |
 | 90 | no short text |
 | 94 | a bad '{…}' |
@@ -827,11 +827,11 @@
 | 160 | the sign list {…} is not used — {…}. |
 | 163 | a line of the sign list {…} was left out — {…}. |
 | 188 | shipped with the app |
-| 362 | GitHub could not be reached ({…}) |
-| 367 | the list was not used — |
-| 369 | fetched from GitHub |
-| 385 | the list could not be saved ({…}) |
-| 387 | a line of the sign list fetched from GitHub was left out — {…}. |
+| 390 | GitHub could not be reached ({…}) |
+| 395 | the list was not used — |
+| 397 | fetched from GitHub |
+| 413 | the list could not be saved ({…}) |
+| 415 | a line of the sign list fetched from GitHub was left out — {…}. |
 | 109 | not a list of signs |
 | 114 | no date of update |
 | 123 | the part '{…}' is missing |
@@ -840,9 +840,10 @@
 | 219 | it is too big |
 | 291 | not a snapshot |
 | 300 | {…} could not be read ({…}): the signs in use are taken as seen. |
-| 356 | the answer came from another address |
-| 407 | an error in Teleloadzai ({…}) |
-| 411 | {…}: {…}. The last one stays. |
+| 342 | the record is not readable |
+| 384 | the answer came from another address |
+| 435 | an error in Teleloadzai ({…}) |
+| 439 | {…}: {…}. The last one stays. |
 | 112 | it needs a newer Teleloadzai |
 | 112 | an unknown format |
 | 133 | an unknown site |

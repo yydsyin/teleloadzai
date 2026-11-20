@@ -318,11 +318,39 @@ def changes() -> dict:
     from .platforms import PLATFORMS, tool_name
     names = {p.id: p.name for p in PLATFORMS}
     listed = []
+    # A row's "new" tag shows on the first look only (the user, 2026-11-20);
+    # the box and the "!" stay until Got it.
+    tags_seen = set(x for x in seen.get("tags_seen", []) if isinstance(x, str))         if isinstance(seen.get("tags_seen"), list) else set()
     for key, kind, added, text in out:
         site, _, program = key.partition("|")
-        listed.append({"site": site, "site_name": names.get(site, site), "program": program,
-                       "program_name": tool_name(program), "kind": kind, "added": added, "text": text})
+        change_id = f"{kind}|{key}"
+        listed.append({"id": change_id, "site": site, "site_name": names.get(site, site), "program": program,
+                       "program_name": tool_name(program), "kind": kind, "added": added, "text": text,
+                       "tag": change_id not in tags_seen})
     return {"changes": listed, "date": signs["updated"]}
+
+
+def mark_tags_seen(ids: list) -> str:
+    """The Sites page was looked at: these changes' "new" tags are not shown
+    again. "" or why not. A Got it later rewrites the file without them."""
+    ids = [x for x in ids if isinstance(x, str) and len(x) <= 120][:200]
+    temp = SEEN.with_suffix(".tmp")
+    try:
+        with _seen_lock:
+            seen = json.loads(SEEN.read_text(encoding="utf-8-sig"))
+            if not isinstance(seen, dict):
+                return "the record is not readable"
+            old = seen.get("tags_seen") if isinstance(seen.get("tags_seen"), list) else []
+            seen["tags_seen"] = sorted(set(old) | set(ids))
+            temp.write_text(json.dumps(seen, ensure_ascii=False), encoding="utf-8")
+            os.replace(temp, SEEN)
+        return ""
+    except (OSError, ValueError, RecursionError) as problem:
+        try:
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return getattr(problem, "strerror", None) or str(problem)
 
 
 def mark_seen() -> str:

@@ -4261,7 +4261,12 @@ $("python-install").addEventListener("click", async () => {
 // questions stay separate (see the CSS note on data-showing).
 function showView(name) {
   const wrap = document.querySelector(".wrap");
+  const leaving = wrap.dataset.showing;
   wrap.dataset.showing = name;
+  // The "new" tags show on the first look at Sites only (the user,
+  // 2026-11-20): seen now, gone when the page is left.
+  if (name === "sites") lookAtTags();
+  else if (leaving === "sites" && tagsThisVisit.size) { tagsThisVisit = new Set(); renderSites(); }
   // The left menu says which page is on (model S1, 2026-10-25).
   for (const item of document.querySelectorAll(".side [data-go]")) {
     if (item.dataset.go === name) item.setAttribute("aria-current", "page");
@@ -5636,13 +5641,28 @@ function renderLogin(platforms, blocked) {
 // page and a "new" tag on the site's row, until OK. Every sentence goes in by
 // textContent: it comes from a file fetched from the internet.
 let signNews = [];
+let tagsThisVisit = new Set();              // tags shown during this look at Sites
 
 async function loadSignNews() {
   const data = await api("/api/signs");
   if (!data || data.error) return;          // api() already said what went wrong
   signNews = data.changes || [];
   renderSignNews(data.date || "");
+  // A change arriving while Sites is open is seen now, like the others.
+  if (document.querySelector(".wrap").dataset.showing === "sites") lookAtTags();
   renderSites();
+}
+
+// Sites is looked at: its tags stay for this visit, and the server is told
+// they were seen. A refused save is said; the tags then come back next time.
+function lookAtTags() {
+  const fresh = signNews.filter((c) => c.tag).map((c) => c.id);
+  if (!fresh.length) return;
+  for (const id of fresh) tagsThisVisit.add(id);
+  for (const c of signNews) c.tag = false;
+  api("/api/signs/tags-seen", { ids: fresh }).then((result) => {
+    if (result && !result.ok) notify(result.error);
+  });
 }
 
 function renderSignNews(date) {
@@ -5730,7 +5750,7 @@ function renderSites() {
     const name = cell("span", "label site-name");
     name.append(cell("span", "", site.name));
     // Model A: a site whose sign changed since the last OK.
-    if (signNews.some((c) => c.site === site.id)) {
+    if (signNews.some((c) => c.site === site.id && (c.tag || tagsThisVisit.has(c.id)))) {
       const tag = cell("span", "badge new new-tag", "new");
       tag.dataset.tip = "Its sign changed. See “What changed” at the top.";
       tag.tabIndex = 0;                     // a hover box opens on Tab too (pass 1)
