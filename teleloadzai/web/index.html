@@ -871,16 +871,26 @@
   .link-btn:hover { color: var(--accent); }
   /* A failed row: one line and its reason (chosen 2026-10-25 from drawn
      pictures; it was 173-198 px, two rows filled the small window). The red
-     "Failed" says it stopped; the program's words and the other ways out
-     wait under Details. */
+     "Failed" says it stopped; the other ways out wait in ⋯, and the
+     program's words are in the report under it (2026-11-21). */
   .fail-why:empty { display: none; }
   .fail-why { color: var(--soft); font-size: 13px; margin-top: 3px; line-height: 1.45; }
   .fail-why b { font-weight: inherit; }
-  .fail-more { margin-top: 8px; padding: 10px 12px; border-radius: 8px;
-               background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
-  .fail-more .err { margin: 0 0 8px; }
-  .fail-more .tool-words > summary { margin-top: 0; }
-  .fail-more .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  /* The report, on the row itself (the user, 2026-11-21: Details and the
+     report were the same thing), with its copy button in its corner. */
+  .fail-note { margin-top: 4px; }
+  .report { position: relative; margin-top: 8px; border-radius: 8px;
+            background: color-mix(in srgb, var(--ink) 4%, var(--card)); }
+  .report-text { margin: 0; padding: 8px 40px 8px 12px; font: 12px/1.55 Consolas, "Cascadia Mono", monospace;
+                 color: var(--soft); white-space: pre-wrap; word-break: break-word; user-select: text; }
+  .report-copy { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; padding: 0;
+                 display: inline-flex; align-items: center; justify-content: center;
+                 background: none; border: 0; border-radius: 6px; color: var(--soft); cursor: pointer; }
+  .report-copy:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+  .report-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .copy-icon { width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: var(--copy) center / contain no-repeat; mask: var(--copy) center / contain no-repeat;
+    --copy: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z'/%3E%3Cpath d='M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1'/%3E%3C/svg%3E"); }
   /* Model D (chosen by the user 2026-10-25, the list was "so busy"): a mark
      at the start of each ended row, ONE button, the rest behind "⋯"; the
      failed rows grouped under a thin red line, their reason said once. */
@@ -898,7 +908,7 @@
     animation: turn 1s linear infinite; }
   @keyframes turn { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .mark.run { animation: none; } }
-  .job.failrow .fail-why, .job.failrow .fail-more { margin-left: 32px; }
+  .job.failrow .fail-why, .job.failrow .fail-note, .job.failrow .report { margin-left: 32px; }
   /* A playlist's label above its rows, one row per video (2026-11-01). */
   .group-label { font-size: 12px; color: var(--soft); padding: 12px 0 4px; border-top: 1px solid var(--line); }
   .more-wrap { position: relative; display: inline-flex; }
@@ -1219,6 +1229,7 @@
            failed" from two failed rows a retry can help (the red group's
            "Retry all" until the rows took one grammar, 2026-11-01). -->
       <span class="head-tools">
+        <button class="ghost tiny hidden" id="stop-all">Stop all</button>
         <button class="ghost tiny hidden" id="retry-failed">Retry failed</button>
         <button class="ghost tiny" id="clear">Clear finished</button>
         <span class="more-wrap hidden" id="list-more"><button class="more-btn" type="button" aria-haspopup="menu"
@@ -1604,6 +1615,7 @@
 const TOKEN = "__APP_TOKEN__";
 // Injected by the server from config.py, so the name stays in one place.
 const APP_NAME = "__APP_NAME__";
+const APP_VERSION = "__APP_VERSION__";
 const $ = (id) => document.getElementById(id);
 
 // 403 = the server refused our token: this tab belongs to a Teleloadzai
@@ -2892,7 +2904,7 @@ function failChoice(job) {
 }
 
 /** { primary: the filled button, on the row's line (or ""), rest: the
- *  others, under Details }. Remove is the row's own link, always there:
+ *  others, in the row's ⋯ }. Remove is the row's own link, always there:
  *  "Clear finished" leaves failed rows alone (loop round 1, 2026-10-23). */
 function failButtons(job) {
   const { hopeless, canUpdate, primary } = failChoice(job);
@@ -2934,8 +2946,50 @@ function failButtons(job) {
            rest: all.filter((b) => b !== first).map(([, inner]) => `<button type="button" role="menuitem" ${inner}</button>`) };
 }
 
-// Failed rows whose Details are open: kept when a row is drawn again.
-const openDetails = new Set();
+/** A link for a report: the query values that may be a pass (Xiaohongshu's
+ *  `xsec_token`, a signed link's `sign`, `expires`) become [hidden]; the rest
+ *  stays, so the link still says which video. */
+function reportLink(url) {
+  try {
+    const link = new URL(url);
+    for (const key of [...link.searchParams.keys()]) {
+      if (/token|sign|auth|key|sess|expire|pass|secret/i.test(key)) link.searchParams.set(key, "[hidden]");
+    }
+    return link.toString().replace(/%5Bhidden%5D/g, "[hidden]");
+  } catch { return url; }
+}
+
+/** A failed row's report: what a bug report needs, the program's words
+ *  already washed by the server (decision 37). */
+function failReport(job) {
+  const tool = job.tool_name || job.tool;
+  const format = job.mode === "mp3" ? "MP3" : "MP4";
+  const quality = !job.quality || job.quality === "best" ? "Best"
+    : job.mode === "mp3" ? `${job.quality} kbps` : `${job.quality}p`;
+  return [
+    `${APP_NAME} ${APP_VERSION} · ${tool} ${job.tool_version || "(version unknown)"}`,
+    `Link: ${reportLink(job.url || "")}`,
+    `Format: ${format} · ${quality}`,
+    `${job.error_from_tool ? tool : APP_NAME} said:`,
+    job.error || "",
+  ].join("\n");
+}
+
+/** Copy text; false when the window refuses both ways. */
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch {
+    // The window may refuse the clipboard API: the older way, a hidden box.
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed"; area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const done = document.execCommand("copy");
+    area.remove();
+    return done;
+  }
+}
 
 /** A finished row with its file(s): ONE line -- a format tag, the name, "In
  *  your folder · 4.7 MB", Open · Show in folder. Its tracking line said
@@ -3202,9 +3256,7 @@ function jobRow(job) {
   const failed = job.state === "error";
   if (failed) row.classList.add("failrow");
   const fails = failed ? failButtons(job) : { primary: "", rest: [] };
-  const toolSaid = failed && job.error && job.error_from_tool;
   const pieces = failed ? job.pieces_on_disk || 0 : 0;
-  const hasDetails = failed && Boolean(toolSaid || douyinNote(job) || pieces);
   // The mark says the state at a glance; the words stay for screen readers
   // (sayState) and on the line itself ("Gone").
   // Every row has one (2026-11-01): a running row had none, and its name
@@ -3215,7 +3267,6 @@ function jobRow(job) {
     : job.state === "waiting" ? '<span class="mark wait" aria-hidden="true"></span>'
     : '<span class="mark gone" aria-hidden="true">–</span>';
   const menu = failed ? moreMenu([
-      hasDetails && `<button type="button" role="menuitem" data-details="${job.id}">Details</button>`,
       ...fails.rest,
       // A fresh card for this link: the program and choices chosen NOW
       // (a log-in since, another format); its Download takes this row's
@@ -3263,8 +3314,7 @@ function jobRow(job) {
     ${job.state === "running" ? `<div class="jprog" aria-hidden="true">
         <div class="pbar"><i></i></div><div class="prog-line"></div>
       </div>` : ""}
-    ${job.error && !(job.state === "error" && (job.error_from_tool || (job.explain || {}).known))
-      ? '<div class="err"></div>' : ""}
+    ${job.error && job.state !== "error" ? '<div class="err"></div>' : ""}
     ${job.cookie_note && job.state !== "done" ? `<div class="hint warn-text" style="margin-top:6px">
         ⚠️ Running without your log-in: ${job.cookie_note}.
       </div>` : ""}
@@ -3283,16 +3333,15 @@ function jobRow(job) {
       </div>` : ""}
     ${failed && job.group_title ? '<div class="hint group-from hidden"></div>' : ""}
     ${failed ? `<div class="fail-why">${errorExplanation(job)}</div>
-      ${hasDetails ? `<div class="fail-more hidden">
-        ${toolSaid ? `<details class="more tool-words">
-            <summary>Show ${job.tool_name || job.tool}'s exact words, for a bug report</summary>
-            <div class="err"></div>
-          </details>` : ""}
-        ${douyinNote(job)}
-        ${pieces ? `<div class="hint" style="margin-bottom:8px">${pieces === 1
-          ? "1 unfinished piece of this download is still in your folder."
-          : `${pieces} unfinished pieces of this download are still in your folder.`}
-          <button class="link-btn" data-reveal="${job.id}">Show in folder</button></div>` : ""}
+      ${douyinNote(job)}
+      ${pieces ? `<div class="hint fail-note">${pieces === 1
+        ? "1 unfinished piece of this download is still in your folder."
+        : `${pieces} unfinished pieces of this download are still in your folder.`}
+        <button class="link-btn" data-reveal="${job.id}">Show in folder</button></div>` : ""}
+      ${job.error ? `<div class="report">
+        <pre class="report-text"></pre>
+        <button type="button" class="report-copy" data-copy-report="${job.id}" data-tip="Copy report"
+          aria-label="Copy report"><span class="copy-icon" aria-hidden="true"></span></button>
       </div>` : ""}` : ""}`;
   // A failure used to open on the tool's raw words in red ("Use --cookies,
   // --username…"), then four equal grey buttons, and "failed" in small grey
@@ -3360,22 +3409,18 @@ function jobRow(job) {
   // Its own words, raw English with its own advice ("…using yt-dlp -U"):
   // said as such, so they are not read as Teleloadzai's advice (critique of
   // 2026-10-31: they contradicted "already the newest version").
-  // Since round 2 they sit in their own fold under Details, its line saying
-  // what they are for: raw English read first looked like the advice.
+  // On a failed row they are in its report instead (2026-11-21), under
+  // "<program> said:", so they are never read as our advice.
   if (errorText) errorText.textContent = job.error || "";
-  const details = row.querySelector("[data-details]");
-  if (details) {
-    const more = row.querySelector(".fail-more");
-    const show = (open) => {
-      more.classList.toggle("hidden", !open);
-      details.textContent = open ? "Hide details" : "Details";
-      details.setAttribute("aria-expanded", String(open));
-    };
-    show(openDetails.has(job.id));
-    details.addEventListener("click", () => {
-      const open = !openDetails.has(job.id);
-      if (open) openDetails.add(job.id); else openDetails.delete(job.id);
-      show(open);
+  // The report, shown on the row (the user, 2026-11-21: Details and the
+  // report were the same thing). Text only, never HTML: the words are a
+  // program's.
+  const report = row.querySelector(".report-text");
+  if (report) {
+    report.textContent = failReport(job);
+    row.querySelector("[data-copy-report]").addEventListener("click", async () => {
+      if (await copyText(report.textContent)) notify("Report copied.");
+      else setStatus("Could not copy the report. Select its text instead.");
     });
   }
   // What a finished job did not get ("Saved without a cover picture."):
@@ -3401,7 +3446,9 @@ function jobRow(job) {
   const nameNode = row.querySelector(".job-name").lastChild;
   const spoken = (nameNode && nameNode.textContent.trim()) || shown;
   for (const button of row.querySelectorAll("button")) {
-    button.setAttribute("aria-label", `${button.textContent.trim()}: ${spoken}`);
+    // An icon button has no words: its own label ("Copy report") is kept.
+    const words = button.textContent.trim() || button.getAttribute("aria-label") || "";
+    button.setAttribute("aria-label", `${words}: ${spoken}`);
   }
   const moreButton = row.querySelector(".more-btn");
   if (moreButton) moreButton.setAttribute("aria-label", `More: ${spoken}`);
@@ -3707,6 +3754,11 @@ async function refresh() {
   // One form of title: it changed to "Downloads · 2 running, 2 waiting"
   // and back, and the filters under it say those counts (2026-11-01).
   $("queue-info").textContent = jobs.length ? `Downloads (${jobs.length})` : "Downloads";
+  // "Stop all" from 2 rows that run or wait (the GUI study, 2026-11-21):
+  // one row has its own Stop. Its count is left alone while it asks.
+  const stoppable = running + waiting;
+  $("stop-all").classList.toggle("hidden", stoppable < 2);
+  if ($("stop-all").dataset.armed !== "yes") $("stop-all").textContent = `Stop all (${stoppable})`;
   // Only when it has something to clear (decision 40): failed and
   // interrupted rows stay.
   $("clear").classList.toggle("hidden",
@@ -4233,7 +4285,7 @@ async function tryPreview(job, button) {
 /** Douyin's signing is no longer fixed upstream: an update may not help. */
 function douyinNote(job) {
   if (job.tool !== "tiktokdownloader" || job.platform !== "douyin" || (job.explain || {}).known) return "";
-  return `<div class="hint" style="margin-top:4px">TikTokDownloader's author no longer
+  return `<div class="hint fail-note">TikTokDownloader's author no longer
     maintains the part that signs Douyin's requests (its own README, 2026). If Douyin
     changed it, an update will not fix this.</div>`;
 }
@@ -4491,18 +4543,7 @@ $("con-clear").addEventListener("click", () => twoClicks($("con-clear"), "Clear 
 $("con-copy").addEventListener("click", async () => {
   const text = [...$("con-box").children].map((row) => row.textContent).join("\n");
   if (!text) { notify("Nothing to copy yet."); return; }
-  try { await navigator.clipboard.writeText(text); }
-  catch {
-    // The window may refuse the clipboard API: the older way, a hidden box.
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.style.position = "fixed"; area.style.opacity = "0";
-    document.body.appendChild(area);
-    area.select();
-    const done = document.execCommand("copy");
-    area.remove();
-    if (!done) { setStatus("Could not copy the console."); return; }
-  }
+  if (!(await copyText(text))) { setStatus("Could not copy the console."); return; }
   notify("Console copied.");
 });
 $("con-save").addEventListener("click", async () => {
@@ -5505,6 +5546,17 @@ async function downloadEach(ready) {
 }
 
 $("clear").addEventListener("click", async () => { await api("/api/jobs/clear", {}); refresh(); });
+// Two clicks, like everything that ends work: each download stops as its
+// own Stop does, keeping only finished files.
+$("stop-all").addEventListener("click", () => {
+  const count = lastJobs.filter((j) => j.state === "running" || j.state === "waiting").length;
+  twoClicks($("stop-all"), `Stop ${count} downloads? Click again`, async () => {
+    const answer = await api("/api/jobs/stop-all", {});
+    if (answer.error) setStatus("Error: " + answer.error);
+    else notify(answer.stopped === 1 ? "1 download stopped." : `${answer.stopped} downloads stopped.`);
+    refresh();
+  });
+});
 // Two clicks: it takes the failed rows too, with their reasons.
 $("clear-all").addEventListener("click", (event) => {
   // In the list's ⋯ since 2026-11-01: its first click keeps the menu open

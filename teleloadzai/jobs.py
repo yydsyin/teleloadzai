@@ -54,7 +54,7 @@ _KEPT = ("id", "url", "mode", "quality", "title", "folder", "target", "tool",
          # Kept through a restart: a failed "Download again" on a split post
          # still owes the old rows their removal, else a later Retry listed
          # every file twice (hunt of 2026-11-08).
-         "old_parts")
+         "old_parts", "tool_version")
 # Rows kept; the oldest finished ones go first. Measured 2026-11-01 with the
 # page's own refresh(): each update while downloading took 14-19 ms at 200
 # rows, 40 ms at 500, 84-91 ms at 1,000 (felt as stutter), 177-217 ms at
@@ -305,6 +305,9 @@ class Job:
     reason_for: dict | None = field(default=None, repr=False)
     error: str = ""
     error_from_tool: bool = False   # is `error` the tool's own words? (decision 38)
+    # The program's version when it failed, for the row's report (asked
+    # once the run has failed: a success never waits for it).
+    tool_version: str = ""
     # A finished job's one plain sentence about what it did not get: "Saved
     # without a cover picture." (Phase 2 item 5, decision 34).
     note: str = ""
@@ -390,6 +393,7 @@ class Job:
             # (decision 38). {"known": False} makes the page say so honestly.
             "explain": explain.explain(self.error, self.tool),
             "error_from_tool": self.error_from_tool,
+            "tool_version": self.tool_version,
             # Seconds since it started, measured here: the page and this
             # server share a clock, but the server is the one that knows.
             "elapsed": int(time.time() - self.started)
@@ -679,6 +683,25 @@ class Queue:
         self._pump()
         self.save()
         return True
+
+    def cancel_all(self) -> int:
+        """The list's "Stop all": what each row's Stop does, for every running
+        or waiting row at once (the GUI study, 2026-11-21: 20 rows meant 20
+        Stops). All are marked first, so a waiting one cannot start while the
+        others stop. Not `stop_all`: that one is the app closing, and keeps
+        each row as Interrupted to continue later."""
+        with self._lock:
+            active = [self._jobs[i] for i in self._order if self._jobs[i].state in ACTIVE_STATES]
+            for job in active:
+                job.state = CANCELLED
+                job.stop.set()
+            processes = [job.process for job in active]
+        for process in processes:
+            if process and process.poll() is None:
+                stop_tree(process)  # each worker sees CANCELLED and stays quiet
+        self._pump()
+        self.save()
+        return len(active)
 
     # Retry lives in server.py now (`queue_download(..., replace=)`): it must
     # decide the cookies from the CURRENT settings, which this module does not
@@ -1047,6 +1070,17 @@ class Queue:
                     # yt-dlp's videos finished before the failure (on_final)
                     # when the tool names none.
                     job.files = [str(f) for f in getattr(exc, "saved", [])] or job.files
+                failed_now = job.state == ERROR
+            if failed_now:
+                # Outside the lock: the first ask may start the program (~1 s).
+                from . import tools
+                try:
+                    version = tools.installed_version(job.tool)
+                except Exception as version_exc:     # the report says "unknown"
+                    console.add(job.id, f"Its version could not be read: {version_exc}")
+                    version = ""
+                with self._lock:
+                    job.tool_version = version
         finally:
             with self._lock:
                 job.process = None

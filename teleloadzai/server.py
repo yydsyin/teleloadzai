@@ -884,7 +884,8 @@ class Handler(BaseHTTPRequestHandler):
             page = (WEB_DIR / "index.html").read_text(encoding="utf-8")
             # The app name lives only in config.py (decision 1), so it is
             # injected here instead of being written inside the page.
-            page = page.replace("__APP_TOKEN__", TOKEN).replace("__APP_NAME__", APP_NAME)
+            page = (page.replace("__APP_TOKEN__", TOKEN).replace("__APP_NAME__", APP_NAME)
+                    .replace("__APP_VERSION__", APP_VERSION))
             self._send(page.encode("utf-8"), "text/html; charset=utf-8")
             return
 
@@ -1341,6 +1342,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/jobs/clear":
             self._json({"removed": QUEUE.clear_finished()})
+            return
+
+        if path == "/api/jobs/stop-all":
+            self._json({"stopped": QUEUE.cancel_all()})
             return
 
         if path == "/api/jobs/clear-all":
