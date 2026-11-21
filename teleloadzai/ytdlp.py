@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field, replace
@@ -408,11 +409,48 @@ def _cookie_arguments(cookie_file: Path | None) -> list[str]:
     return ["--cookies", str(cookie_file)]
 
 
-def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> MediaInfo:
+# ---- The card's reading, reused by its download (the user, 2026-11-21) ----
+# Measured that day: from pressing Download to the bar moving, 5 s on YouTube
+# and 6-7 s on Bilibili, because yt-dlp read the link a second time; from the
+# card's own reading (--load-info-json) 0.9-1 s. The reading names the files
+# yt-dlp downloads from, and those links expire (YouTube's after hours), so
+# it is kept READ_KEEP only, used once, and a download it starts that fails
+# on an expired link reads the link again by itself (_EXPIRED). It may hold
+# the user's cookies (not seen on YouTube or Bilibili, 2026-11-21 -- kept
+# carefully anyway, docs/BELIEFS.md): memory only,
+# written for one run into the private cookie folder (cookies.RUN_DIR,
+# emptied at every start and close) and deleted after -- never logged.
+READ_KEEP = 20 * 60
+_READS_KEPT = 10
+_reads: dict[str, tuple[float, tuple, str]] = {}
+_reads_lock = threading.Lock()
+_EXPIRED = re.compile(r"HTTP Error (403|404|410)")
+
+
+def _keep_read(url: str, key: tuple, raw: str) -> None:
+    with _reads_lock:
+        _reads[url] = (time.monotonic(), key, raw)
+        for old in sorted(_reads, key=lambda u: _reads[u][0])[:-_READS_KEPT]:
+            del _reads[old]
+
+
+def _take_read(url: str, key: tuple) -> str | None:
+    """The card's reading of this link, if fresh and read with the same
+    cookies and log-in (another log-in can offer other sizes); used once."""
+    with _reads_lock:
+        kept = _reads.pop(url, None)
+    if kept and kept[1] == key and time.monotonic() - kept[0] < READ_KEEP:
+        return kept[2]
+    return None
+
+
+def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None,
+          keep_key: tuple | None = None) -> MediaInfo:
     """Read the title, duration and thumbnail of a link. Downloads nothing.
 
     The cookies matter here too: without them a private post has no title to
-    read, and the user would see "(no title)" with no idea why.
+    read, and the user would see "(no title)" with no idea why. With
+    ``keep_key`` a one-video answer is kept for its download (_keep_read).
     """
     tool = require_ytdlp()
     command = [
@@ -445,6 +483,8 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None) -> M
     data = json.loads(finished.stdout)
     entries = data.get("entries")
     is_playlist = isinstance(entries, list)
+    if keep_key is not None and not is_playlist:
+        _keep_read(url, keep_key, finished.stdout)
     # Heights of the formats that carry a picture (seen 2026-09-26: YouTube
     # "Me at the zoo" 144/240, TikTok 576/720, Bilibili up to 1080).
     heights = sorted({f.get("height") for f in data.get("formats") or []
@@ -714,6 +754,7 @@ def download(
     on_line: Callable[[str], None] | None = None,
     job_id: str = "",
     prefer_codec: str = "",
+    reuse_key: tuple | None = None,
 ) -> DownloadResult:
     """Download one link as MP3 or MP4, reporting progress line by line.
 
@@ -725,8 +766,23 @@ def download(
     otherwise yt-dlp would silently skip and we would report a success that
     did not happen.
     """
+    asked = dict(locals())                  # to start again from the link (_EXPIRED)
     tool = require_ytdlp()
     make_folder(out_dir)
+    # The card's reading instead of a second one (_take_read): never for a
+    # playlist, whose reading listed its videos without reading them.
+    saved = _take_read(url, reuse_key) if reuse_key is not None and not playlist else None
+    info_file = None
+    if saved:
+        info_file = cookies.RUN_DIR / f"{uuid.uuid4().hex}.json"
+        try:
+            cookies.RUN_DIR.mkdir(parents=True, exist_ok=True)
+            info_file.write_text(saved, encoding="utf-8")
+        except OSError as problem:          # said; the link is read as before
+            if on_line:
+                on_line(f"Teleloadzai: the card's reading could not be used "
+                        f"({problem.strerror or problem}); reading the link again.")
+            info_file = None
     # One tag per download, kept by its Retry / Continue (`job_id`, the same
     # row): a new random tag each run never found the old `.part`, so an MP3
     # cut off by closing started from zero and left that piece behind (hunt
@@ -762,9 +818,28 @@ def download(
         *_ffmpeg_arguments(),
         *_output_arguments(mode, out_dir, quality, out_path, tag, prefer_codec),
         *_subtitle_arguments(mode, subs, sub_lang),
-        url,
+        # 4 pieces at once on a site that sends its video in pieces (HLS,
+        # DASH): Dailymotion 1.5-2.0 -> 3.9 MB/s, TED 2.1-3.5 -> 4.1 MB/s,
+        # measured 2026-11-21; YouTube and Bilibili send one file -- no
+        # change there (the same run, both ways).
+        "--concurrent-fragments", "4",
+        *(["--load-info-json", str(info_file)] if info_file else [url]),
     ]
+    try:
+        return _run_download(command, asked, info_file, mode, tag, out_path, force, subs, sub_lang,
+                             on_progress, on_start, on_step, on_destination, on_writing, on_final,
+                             on_live, on_title, on_line)
+    finally:
+        if info_file is not None:
+            try:
+                info_file.unlink(missing_ok=True)
+            except OSError:
+                pass                        # cookies.RUN_DIR is emptied at start and close
 
+
+def _run_download(command, asked, info_file, mode, tag, out_path, force, subs, sub_lang,
+                  on_progress, on_start, on_step, on_destination, on_writing, on_final,
+                  on_live, on_title, on_line) -> DownloadResult:
     files: list[Path] = []
     tail: list[str] = []
     # Anything whose date is older than this was NOT written by this run.
@@ -852,6 +927,13 @@ def download(
             del tail[:-40]          # keep only the last 40 lines
 
     if process.wait() != 0:
+        # Started from the card's reading and refused by the site before any
+        # file: its links had expired -- the link is read again, once. Only
+        # on the site's refusal, never after a Stop (no HTTP error then).
+        if info_file is not None and not files and _EXPIRED.search("\n".join(tail)):
+            if on_line:
+                on_line("Teleloadzai: the card's reading had expired; reading the link again.")
+            return download(**{**asked, "reuse_key": None})
         problem = _tool_said("\n".join(tail))
         # An MP3 run that failed on its 2nd item had finished the others
         # under tagged names: never renamed, never said, one more set with

@@ -926,6 +926,9 @@ class Queue:
                     # Bilibili's main server cuts one AV1 1080p file: H.264 at
                     # the same height instead (the sign list, signs.json, reviewed).
                     prefer_codec=needs.ytdlp_prefer(job.platform, job.mode, job.quality),
+                    # The card's reading, if fresh and read with the same
+                    # cookies and log-in: the bar moves in ~1 s, not 5-7 s.
+                    reuse_key=(cookie_file is not None, login.site_state(job.platform)),
                 )
             else:
                 # A specialist tool cannot be told an exact file name, so it

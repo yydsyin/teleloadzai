@@ -1048,7 +1048,10 @@ class Handler(BaseHTTPRequestHandler):
                 # its jar back when it exits (cookies.for_one_run).
                 with cookies.for_one_run(cookies.path_for(
                         "yt-dlp", load_settings()["cookies_enabled"])) as run_cookies:
-                    info = ytdlp.probe(url, cookie_file=run_cookies)
+                    # Kept for its download, which then starts in about 1 s
+                    # instead of reading the link again (ytdlp._keep_read).
+                    info = ytdlp.probe(url, cookie_file=run_cookies,
+                                       keep_key=(run_cookies is not None, login.site_state(platform_id)))
             except ytdlp.ToolMissing as exc:
                 console.add(read_id, f"Could not read the title: {exc}", "err")
                 self._json({"error": str(exc), "kind": "tool_missing"})
