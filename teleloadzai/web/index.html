@@ -1039,7 +1039,9 @@
     <!-- Closes the card by hand; Download closes it too (2026-09-27). -->
     <button class="ghost tiny" id="result-close" aria-label="Close this card">×</button>
     <div class="preview">
-      <img class="thumb hidden" id="thumb" alt="">
+      <!-- no-referrer: Bilibili's image server answers 403 to a picture asked
+           from our page, 200 when the page is not named (curl, 2026-11-21). -->
+      <img class="thumb hidden" id="thumb" alt="" referrerpolicy="no-referrer">
       <div style="min-width:0">
         <div class="title" id="title" role="heading" aria-level="2">…</div>
         <div class="meta" id="meta"></div>
