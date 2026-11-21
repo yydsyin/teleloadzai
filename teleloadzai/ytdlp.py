@@ -232,6 +232,12 @@ class MediaInfo:
     # read command). Empty: the card says nothing about subtitles at all.
     subtitles: tuple[tuple[str, str, bool], ...] = ()
     language: str = ""          # the video's own language, when the site says
+    # A link to ONE part of a Bilibili video in several parts (`?p=3`):
+    # (3, 16), said under the card's title. None for anything else.
+    part_of: tuple[int, int] | None = None
+    # The parts list could not be read: said on the card, never swallowed
+    # (decision 34); the part read stays downloadable.
+    parts_problem: str = ""
 
 
 # Not subtitles: YouTube lists a live's chat replay among them (json only).
@@ -445,7 +451,7 @@ def _take_read(url: str, key: tuple) -> str | None:
 
 
 def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None,
-          keep_key: tuple | None = None) -> MediaInfo:
+          keep_key: tuple | None = None, list_parts: bool = True) -> MediaInfo:
     """Read the title, duration and thumbnail of a link. Downloads nothing.
 
     The cookies matter here too: without them a private post has no title to
@@ -483,6 +489,31 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None,
     data = json.loads(finished.stdout)
     entries = data.get("entries")
     is_playlist = isinstance(entries, list)
+    # A Bilibili video in several parts read with --no-playlist is its part 1
+    # ALONE -- the other 15 were never offered (seen 2026-11-21,
+    # BV1ys411472E, 16 parts). yt-dlp marks such a video "<id>_p<n>"; a
+    # single one has no "_p" (BV1Gsnj6XE9M). Its parts, then: one quick list.
+    part = _PART_ID.search(str(data.get("id") or ""))
+    part_of, parts_problem = None, ""
+    # Not for a row of the card, already one part: 16 parts read 16 lists.
+    if part and list_parts and not is_playlist and data.get("extractor_key") == "BiliBili":
+        try:
+            title, links = _parts(tool, url, cookie_file, timeout)
+        except Exception as exc:        # the part read stays downloadable
+            parts_problem = f"This video has several parts, but their list could not be read: {exc}"
+        else:
+            if not _asks_one_part(url) and len(links) > 1:
+                # The series itself: the several-videos card, one row per
+                # part. Names come later, as a playlist's titles do.
+                return MediaInfo(
+                    title=title or data.get("title") or "(no title)",
+                    uploader=data.get("uploader") or "", duration=None,
+                    thumbnail=data.get("thumbnail"),
+                    extractor=data.get("extractor_key") or "",
+                    webpage_url=data.get("webpage_url") or url,
+                    is_playlist=True, entries=len(links),
+                    items=tuple((link, "", None) for link in links))
+            part_of = (int(part.group(1)), len(links))
     if keep_key is not None and not is_playlist:
         _keep_read(url, keep_key, finished.stdout)
     # Heights of the formats that carry a picture (seen 2026-09-26: YouTube
@@ -512,7 +543,39 @@ def probe(url: str, timeout: float = 60.0, cookie_file: Path | None = None,
         items=items,
         subtitles=() if is_playlist else _subtitle_tracks(data),
         language=data.get("language") or "",
+        part_of=part_of,
+        parts_problem=parts_problem,
     )
+
+
+_PART_ID = re.compile(r"_p(\d+)$")
+
+
+def _asks_one_part(url: str) -> bool:
+    """A link naming its part (`?p=3`): that part alone, as yt-dlp gives it."""
+    from urllib.parse import parse_qs, urlsplit
+    return bool(parse_qs(urlsplit(url).query).get("p"))
+
+
+def _parts(tool: Path, url: str, cookie_file: Path | None,
+           timeout: float) -> tuple[str, list[str]]:
+    """A Bilibili video's parts: the series' name and each part's own link
+    (`…?p=3`). The quick list carries no names (read 2026-11-21: each entry
+    is only `_type`, `url`, `ie_key`); the card reads them after. Asked
+    without `p=`: with it, yt-dlp listed 0 parts (seen 2026-11-21)."""
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+    split = urlsplit(url)
+    url = urlunsplit(split._replace(query=urlencode(
+        [(k, v) for k, v in parse_qsl(split.query) if k != "p"])))
+    finished = _run([str(tool), "--dump-single-json", "--flat-playlist", "--yes-playlist",
+                     "--encoding", "utf-8", "--no-warnings", "--no-colors",
+                     *_cookie_arguments(cookie_file), url], timeout)
+    if finished.returncode != 0:
+        raise _tool_said(finished.stderr)
+    data = json.loads(finished.stdout)
+    links = [str(e.get("url")) for e in data.get("entries") or []
+             if isinstance(e, dict) and str(e.get("url") or "").startswith("http")]
+    return data.get("title") or "", links
 
 
 # What the quality dropdown offers. "best" is always first and is the default.

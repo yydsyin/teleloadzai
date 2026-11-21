@@ -308,6 +308,11 @@ def _yutto(_exe: Path, r: Request) -> list[str]:
     # With no title, yutto's own (it reads the video's) beats "unknown".
     if r.out_name or r.title:
         command += ["-tp", _file_name(r).replace("{", "{{").replace("}", "}}")]
+    elif "p" in urllib.parse.parse_qs(urllib.parse.urlsplit(r.url).query):
+        # One part of a video in several (`?p=2`): yutto's own name is the
+        # series' alone, the same for every part (seen 2026-11-21: part 2 saved
+        # as "…系列合集.mp4"). Its own `{name}` is the part's.
+        command += ["-tp", "{title} - {name}"]
     # The log-in, from yutto's own file made for this run (cookies.yutto_auth,
     # handed in as `cookie_file` by `run`). Never on the command line.
     if r.cookie_file:

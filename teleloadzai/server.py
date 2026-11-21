@@ -1052,7 +1052,10 @@ class Handler(BaseHTTPRequestHandler):
                     # Kept for its download, which then starts in about 1 s
                     # instead of reading the link again (ytdlp._keep_read).
                     info = ytdlp.probe(url, cookie_file=run_cookies,
-                                       keep_key=(run_cookies is not None, login.site_state(platform_id)))
+                                       keep_key=(run_cookies is not None, login.site_state(platform_id)),
+                                       # A row of the several-videos card is one
+                                       # part already: no list of its parts.
+                                       list_parts=not body.get("row"))
             except ytdlp.ToolMissing as exc:
                 console.add(read_id, f"Could not read the title: {exc}", "err")
                 self._json({"error": str(exc), "kind": "tool_missing"})
@@ -1074,6 +1077,8 @@ class Handler(BaseHTTPRequestHandler):
                 "items": [{"url": u, "title": t, "duration": d} for u, t, d in info.items],
                 "subtitles": [{"code": c, "name": n, "auto": a} for c, n, a in info.subtitles],
                 "language": info.language,
+                "part_of": list(info.part_of) if info.part_of else None,
+                "parts_problem": cookies.redact(info.parts_problem),
             })
             return
 

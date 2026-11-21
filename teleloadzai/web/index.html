@@ -164,6 +164,11 @@
   .batch-links .link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .batch-links .prog { flex: none; color: var(--soft); }
   .batch-links .link.untitled { color: var(--soft); }
+  .batch-all { display: flex; align-items: center; gap: 8px; margin-top: 10px; width: fit-content;
+               font-size: 13px; color: var(--soft); cursor: pointer; }
+  .batch-links .pick-wrap { display: flex; align-items: center; gap: 8px; min-width: 0; cursor: pointer; }
+  .batch-links .pick { flex: none; margin: 0; }
+  .batch-links li.unpicked .link, .batch-links li.unpicked .each-title { color: var(--soft); text-decoration: line-through; }
   #batch-row-mode { margin-top: 10px; }
   /* "Choose for each": a row of choices per video, so the list gets more
      room; Format and Quality for all are not drawn (each row has its own). */
@@ -1182,6 +1187,11 @@
         <button type="button" class="bsubs" data-bsubs="file" aria-pressed="false">Separate file</button>
       </span>
     </div>
+    <!-- Which videos come down (model of 2026-11-21, the GUI study): every
+         one ticked at first, so Download does what it did; "All" ticks or
+         unticks them all, the videos past the 50 rows too. -->
+    <label class="batch-all hidden" id="batch-all-row"><input type="checkbox" id="batch-all">
+      <span id="batch-all-text"></span></label>
     <ul class="batch-links" id="batch-links"></ul>
     <div class="hint hidden" id="batch-skipped"></div>
     <div class="controls">
@@ -2780,7 +2790,10 @@ async function readLink(url, mine) {
     // (seen 2026-09-27). The title read uses the download's own rule, so
     // "N items" is what the download gets.
     if (info.is_playlist) bits.push(`${info.entries} items: you get all ${info.entries}`);
+    // A link to one part of a Bilibili video: that part alone, said.
+    if (info.part_of && info.part_of[1] > 1) bits.push(`Part ${info.part_of[0]} of ${info.part_of[1]}`);
     $("meta").textContent = bits.join(" · ");
+    if (info.parts_problem) setStatus(info.parts_problem);
     if (info.thumbnail) { $("thumb").src = info.thumbnail; $("thumb").classList.remove("hidden"); }
     else { $("thumb").classList.add("hidden"); }
   }
@@ -4916,6 +4929,10 @@ let batchFolder = "";       // chosen with Change…, for this card only; else t
 // The card is a playlist: {url, title, count, found}. Its videos are the rows
 // (50 at most); "Same for all" downloads the whole list as one job.
 let batchPlaylist = null;
+// The videos past the card's 50 rows follow "All" (model of 2026-11-21).
+let batchRestPicked = true;
+// Download held while the links are read or FFmpeg is missing (renderBatch).
+let batchBlocked = false;
 let eachRead = 0;           // reads of the "each" rows: a newer card drops an older one
 
 /** The programs a row may use: the site's, installed. */
@@ -4959,12 +4976,78 @@ function rowHasSubs(item) {
 
 /** One video's row of choices ("Choose for each"). Text only, never HTML:
  *  titles and links are whatever the site or the paste said. */
+/** Ticked: the video comes down (every row starts ticked). */
+const isPicked = (item) => item.picked !== false;
+
+/** How many videos Download will add: a playlist's videos past the rows
+ *  follow "All". */
+function pickedCount() {
+  const ready = batch.filter((i) => i.tool);
+  if (batchPlaylist && severalMode !== "each" && ready.length) {
+    return batchPlaylist.entries.filter((_, k) => (k < batch.length ? isPicked(batch[k]) : batchRestPicked)).length;
+  }
+  return ready.filter(isPicked).length;
+}
+
+/** "All", its count, and Download's number. */
+function paintPicks() {
+  const ready = batch.filter((i) => i.tool);
+  const whole = batchPlaylist && severalMode !== "each" && ready.length ? batchPlaylist.count : ready.length;
+  const n = pickedCount();
+  $("batch-all-row").classList.toggle("hidden", ready.length < 2);
+  $("batch-all").checked = whole > 0 && n === whole;
+  $("batch-all").indeterminate = n > 0 && n < whole;
+  $("batch-all-text").textContent = `All · ${n} of ${whole} ticked`;
+  const go = $("batch-go");
+  go.textContent = n ? `Download ${n}` : "Download";
+  // None ticked: nothing to add, and the count beside "All" says why.
+  go.disabled = batchBlocked || n === 0;
+}
+
+/** A row's tickbox, wrapped with its name so the name ticks it too. */
+function pickWrap(item, nameNode, li) {
+  const wrap = document.createElement("label");
+  wrap.className = "pick-wrap";
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.className = "pick";
+  box.checked = isPicked(item);
+  box.setAttribute("aria-label", "Download: " + (item.title || item.placeholder || shortLink(item.url)));
+  li.classList.toggle("unpicked", !box.checked);
+  box.addEventListener("change", () => {
+    item.picked = box.checked;
+    li.classList.toggle("unpicked", !box.checked);
+    paintPicks();
+  });
+  wrap.append(box, nameNode);
+  return wrap;
+}
+
+/** A Bilibili part's link (`…?p=7`): "Part 7" until its name is read. */
+function partName(url) {
+  try {
+    const p = new URL(url).searchParams.get("p");
+    return /^\d+$/.test(p || "") ? `Part ${p}` : "";
+  } catch { return ""; }
+}
+
+/** The name a row shows. A part's title repeats its series' name: the row
+ *  keeps what differs ("p03 02 - 线性组合、张成"). */
+function rowName(item) {
+  if (!item.title) return item.placeholder || shortLink(item.url);
+  const series = batchPlaylist && batchPlaylist.title;
+  if (item.placeholder && series && item.title.startsWith(series) && item.title.length > series.length + 1) {
+    return item.title.slice(series.length).replace(/^[\s\-·:]+/, "");
+  }
+  return item.title;
+}
+
 function eachRow(item) {
   const li = document.createElement("li");
   li.className = "each";
   const name = document.createElement("span");
   name.className = "each-title" + (item.info === undefined && !item.title ? " reading" : "");
-  name.textContent = item.title || shortLink(item.url);
+  name.textContent = rowName(item);
   name.title = item.url;
   const box = document.createElement("span");
   box.className = "each-choices";
@@ -5078,7 +5161,7 @@ function eachRow(item) {
     p.addEventListener("change", () => { item.toolId = p.value; redrawRow(item); });
     box.appendChild(p);
   }
-  li.append(name, box);
+  li.append(pickWrap(item, name, li), box);
   li._item = item;
   return li;
 }
@@ -5107,7 +5190,7 @@ async function readEach() {
       const item = todo[next++];
       if (!(item.found && item.found.read_by)) { item.info = null; continue; }
       let info;
-      try { info = await api("/api/probe", { url: item.url }); }
+      try { info = await api("/api/probe", { url: item.url, row: true }); }
       catch (problem) { info = { error: String(problem) }; }
       if (mine !== eachRead) return;
       item.info = info.error ? null : info;
@@ -5140,11 +5223,16 @@ function openPlaylist(found, info, url) {
                     entries: info.items.map((it) => ({ url: it.url, title: it.title || "" })) };
   batchExtra = Math.max(0, info.items.length - BATCH_MAX);
   batch = info.items.slice(0, BATCH_MAX).map((it) => ({
-    url: it.url, found, tool: null, title: it.title || "", duration: it.duration }));
+    url: it.url, found, tool: null, title: it.title || "", duration: it.duration,
+    placeholder: it.title ? "" : partName(it.url) }));
+  batchRestPicked = true;
+  // A Bilibili video's parts come without names (the quick list has none):
+  // they are read as a link's title is, Download never held for them.
+  batchPlaylist.untitled = batch.some((i) => !i.title);
   batchMode = mode;
   $("batch").classList.remove("hidden");
   renderBatch();
-  if (severalMode === "each") readEach();
+  if (severalMode === "each" || batchPlaylist.untitled) readEach();
   $("announce").textContent = $("batch-title").textContent;
 }
 
@@ -5201,6 +5289,7 @@ async function readMany(links) {
   setStatus("");
   batchExtra = Math.max(0, links.length - BATCH_MAX);
   batchPlaylist = null;
+  batchRestPicked = true;
   eachRead++;                 // an older card's reads must not come back
   // The same video twice is said under "Not added", never downloaded twice.
   const seen = new Map();
@@ -5279,14 +5368,14 @@ function renderBatch() {
   // the count, never a frozen card).
   const pendingRows = each ? ready.filter((i) => i.info === undefined).length : 0;
   // "Same for all": the titles being read (a playlist has its own already).
-  const titlesPending = !each && !list0
+  const titlesPending = !each && (!list0 || list0.untitled)
     ? ready.filter((i) => i.info === undefined && i.found.read_by).length : 0;
   const allTitled = ready.length > 0 && ready.every((i) => i.title);
 
   // While reading, a real count (decision 33); then how many will come down.
   $("batch-title").textContent = reading ? `Reading the links… ${read} of ${batch.length}`
     : pendingRows ? `Reading the videos… ${ready.length - pendingRows} of ${ready.length}`
-    : list0 ? `${list0.title || "Playlist"} · ${list0.count} videos`
+    : list0 ? `${list0.title || "Playlist"} · ${list0.count} ${list0.untitled ? "parts" : "videos"}`
     : `${ready.length} ${allTitled ? "video" : "link"}${ready.length === 1 ? "" : "s"}`;
   const sites = new Map();
   for (const item of ready) sites.set(item.found.platform, (sites.get(item.found.platform) || 0) + 1);
@@ -5295,7 +5384,7 @@ function renderBatch() {
   // a row not read yet will get is said instead.
   $("batch-sites").textContent = (sites.size === 1 ? [...sites.keys()][0]
       : [...sites].map(([name, n]) => `${name} ${n}`).join(" · "))
-    + (titlesPending ? ` · reading the titles… ${ready.length - titlesPending} of ${ready.length}` : "")
+    + (titlesPending ? ` · reading the ${list0 && list0.untitled ? "part names" : "titles"}… ${ready.length - titlesPending} of ${ready.length}` : "")
     + (pendingRows ? " · Videos not read yet come at their best size." : "");
   // The program on each line only when they differ: "yt-dlp" on every line
   // told a beginner nothing.
@@ -5318,23 +5407,23 @@ function renderBatch() {
     const li = document.createElement("li");
     const link = document.createElement("span");
     link.className = "link" + (item.title ? "" : " untitled");
-    link.textContent = item.title || shortLink(item.url);
+    link.textContent = rowName(item);
     link.title = item.url;
     const prog = document.createElement("span");
     prog.className = "prog";
     const length = (item.info && item.info.duration) || item.duration;
     prog.textContent = !item.tool ? "…"
       : [item.title ? "" : item.titleFailed ? "title not read"
-          : item.info === undefined && item.found.read_by && !list0 ? "reading…" : "",
+          : item.info === undefined && item.found.read_by && (!list0 || list0.untitled) ? "reading…" : "",
          length ? formatTime(length) : "",
          oneProgram ? "" : item.tool.name].filter(Boolean).join(" · ");
-    li.append(link, prog);
+    li.append(item.tool ? pickWrap(item, link, li) : link, prog);
     list.appendChild(li);
   }
   if (list0 && !each && batchExtra) {
     const li = document.createElement("li");
     li.className = "prog";
-    li.textContent = `…and ${batchExtra} more videos`;
+    li.textContent = `…and ${batchExtra} more videos${batchRestPicked ? "" : " (not ticked)"}`;
     list.appendChild(li);
   }
   list.classList.toggle("hidden", !list.children.length);
@@ -5398,11 +5487,17 @@ function renderBatch() {
   $("batch-folder-change").classList.toggle("hidden", ownWindow);
 
   const go = $("batch-go");
-  const count = list0 && !each && ready.length ? list0.count : ready.length;
-  go.textContent = count ? `Download ${count}` : "Download";
   go.classList.toggle("hidden", !reading && !ready.length);
-  go.disabled = reading || noFfmpeg;
+  batchBlocked = reading || noFfmpeg;
+  paintPicks();
 }
+
+$("batch-all").addEventListener("change", () => {
+  const on = $("batch-all").checked;
+  for (const item of batch) item.picked = on;
+  batchRestPicked = on;
+  renderBatch();
+});
 
 for (const b of document.querySelectorAll(".bsubs")) {
   b.addEventListener("click", () => {
@@ -5444,7 +5539,7 @@ $("batch-folder-change").addEventListener("click", async () => {
 });
 
 $("batch-go").addEventListener("click", async () => {
-  const ready = batch.filter((i) => i.tool);
+  const ready = batch.filter((i) => i.tool && isPicked(i));
   if (!ready.length) return;
   if (severalMode === "each") { downloadEach(ready); return; }
   // The folder the card shows: no window at Download (the user, 2026-11-05;
@@ -5460,9 +5555,12 @@ $("batch-go").addEventListener("click", async () => {
   // user, 2026-11-01: "always one video by one video"; until then the
   // whole list was one row). They share a group: one label, in order.
   const pl = playlistGroup();
+  // Only the ticked videos; past the rows, what "All" says. A part's name
+  // read on the card names its file.
   const jobs = batchPlaylist
     ? batchPlaylist.entries.map((it, k) => ({ url: it.url, found: batchPlaylist.found, tool: ready[0].tool,
-        title: it.title, group: { ...pl, group_index: k + 1 } }))
+        title: it.title || (batch[k] && batch[k].title) || "", group: { ...pl, group_index: k + 1 }, k }))
+      .filter((job) => (job.k < batch.length ? isPicked(batch[job.k]) : batchRestPicked))
     : ready;
   let lost = false;
   for (const item of jobs) {
@@ -5478,11 +5576,12 @@ $("batch-go").addEventListener("click", async () => {
     else added++;
   }
   const whole = batchPlaylist ? batchPlaylist.count : 0;
+  const what = batchPlaylist && batchPlaylist.untitled ? "parts of the video" : "videos of the playlist";
   closeCard();
   refresh();
   if (lost) { setStatus(lostSentence(added, jobs.length)); return; }
   // Every link accounted for: a refused one is said, never dropped (decision 34).
-  const done = whole && added ? `${added} videos of the playlist added, one row each.`
+  const done = whole && added ? `${added} ${what} added, one row each.`
     : added === 1 ? "1 download added." : `${added} downloads added.`;
   if (refused.length) setStatus(`${done} Not added: ${refused.join(" · ")}`);
   else notify(done);
