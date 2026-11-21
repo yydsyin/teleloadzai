@@ -80,7 +80,35 @@ KNOWN: tuple[Known, ...] = (
               "word."),
     ),
     Known(
-        words=("for the authentication",),
+        # yt-dlp's cookie hint, "…for the authentication", ends the errors of
+        # EVERY site that wants a log-in; alone it named Instagram for
+        # YouTube's bot check and Reddit (the grids, 2026-11-21). The site
+        # is part of the words now.
+        words=("sign in to confirm you", "not a bot"),
+        tools=("yt-dlp",),
+        title="YouTube asks this computer to prove it is not a robot.",
+        action="login",
+        next_step=("Log in to YouTube here, then try again. YouTube sometimes asks "
+                   "this of one internet connection and not another."),
+        seen=("2026-11-19, the quality check, no cookies: a9LDPn-MO4I -- 'Sign in "
+              "to confirm you're not a bot. ... Use --cookies-from-browser or "
+              "--cookies for the authentication'; read the same day with the "
+              "developer's YouTube log-in: it worked. Again 2026-11-21 in the test "
+              "copy, no cookies, jNQXAC9IVRw."),
+    ),
+    Known(
+        words=("account authentication is required",),
+        tools=("yt-dlp",),
+        title="Reddit shows this video only to a logged-in account.",
+        action="login",
+        next_step="Logging in to Reddit may let you download it.",
+        seen=("2026-11-15, the quality check, yt-dlp 2026.11.04: 'Account "
+              "authentication is required. Use --cookies-from-browser or --cookies "
+              "for the authentication', 4 public links of 4, with no cookies and "
+              "with a visit's. Never tried with a Reddit log-in: 'may'."),
+    ),
+    Known(
+        words=("[instagram]", "for the authentication"),
         tools=("yt-dlp",),
         title="Instagram gave nothing for this post without a log-in.",
         action="login",

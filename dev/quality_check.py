@@ -35,7 +35,7 @@ kept with its date and gives no new message.
 Both are under data/, which git ignores: the report says which sites the
 developer is logged in on, and the repository is public. Nothing here
 changes the app; a change reaches the app only after a review: a difference
-from the sign list seen on 2 days in a row is written to
+from the sign list seen on 2 different days is written to
 data/quality-check/to-review.md (signs_to_review), and the review publishes
 it in teleloadzai/signs.json, which every user's app reads from GitHub.
 
@@ -1298,7 +1298,7 @@ def _keep_tested_download(now: dict, before: dict | None) -> dict:
 
 # What users see about a site and a program is the sign list (teleloadzai/
 # signs.json, read from GitHub by every user's app). This run's results are
-# compared with it; a difference seen on 2 DAYS in a row (a site refusing for
+# compared with it; a difference seen on 2 DIFFERENT days (a site refusing for
 # an hour must not move a sign) goes to the review list, and a Windows
 # message says so once. The review (Claude, on the user's word "review")
 # changes the list, or sets "declined" on the line in PROPOSALS_FILE: the
@@ -1496,7 +1496,7 @@ def signs_to_review(new: dict, new_programs: dict, today: str) -> tuple[list, li
         line["told"] = today
     names = {p.id: p.name for p in PLATFORMS}
     text = [f"# Signs to review — {time.strftime('%Y-%m-%d %H:%M')}", "",
-            "Seen on 2 days in a row, and different from the sign list (teleloadzai/signs.json). "
+            "Seen on 2 different days, and different from the sign list (teleloadzai/signs.json). "
             "Nothing reaches users before a review. A change refused at the review: "
             "\"declined\": true on its line in proposals.json.", ""]
     for key, line, now in waiting:
