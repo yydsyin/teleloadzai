@@ -331,6 +331,22 @@
   #settings .set-main#cookies-summary { display: block; line-height: 1.6; max-width: none; }
   .set-warning { margin: 0 0 14px; padding: 12px 16px; font-size: 14px; line-height: 1.5; }
   #settings .card.warn:not(.set-warning), #programs-page .card.warn { margin: 0 0 14px; }
+  /* About (2026-11-21): two plain cards, as in the model the user chose. */
+  .about-card { padding: 14px 16px; }
+  .about-name { font-size: 19px; font-weight: 600; }
+  .about-version { color: var(--soft); font-weight: 400; }
+  .about-line { margin: 4px 0 0; }
+  .about-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+  .about-actions button { display: inline-flex; align-items: center; gap: 7px; }
+  .about-actions .nav-icon, .about-actions .copy-icon { width: 16px; height: 16px; }
+  .about-title { font-size: inherit; margin: 0 0 8px; }
+  /* Capped: in full screen the version stood 700 px from its name. */
+  .about-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 7px 18px; align-items: baseline; max-width: 620px; }
+  .about-tools .soft { color: var(--soft); }
+  .about-tools + .about-line { margin-top: 12px; }
+  .about-tools a { color: var(--accent); text-decoration: none; white-space: nowrap; border-radius: 4px; }
+  .about-tools a:hover { text-decoration: underline; }
+  .about-tools a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .set-group #tools-list { padding: 0 16px; }
   .set-group #tools-list .tool:first-child { border-top: 1px solid var(--line); }
   /* Windows' own on/off switch, drawn on the checkbox itself (the box and
@@ -501,7 +517,8 @@
   .wrap:not([data-showing="programs"]) [data-view="programs"],
   .wrap:not([data-showing="console"])  [data-view="console"],
   .wrap:not([data-showing="sites"])    [data-view="sites"],
-  .wrap:not([data-showing="settings"]) [data-view="settings"] { display: none !important; }
+  .wrap:not([data-showing="settings"]) [data-view="settings"],
+  .wrap:not([data-showing="about"])    [data-view="about"] { display: none !important; }
 
   /* A maximised window (asked by the user 2026-09-26: "if I turn into full
      screen it seems weird"). Measured at 1920x1040: one 720 px column, 62 %
@@ -804,6 +821,8 @@
   button .tip-icon, .tool-solo .tip-icon { width: 15px; height: 15px; margin-left: 5px; }
   .icon-warn { color: var(--accent); --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z'/%3E%3Cpath d='M12 16h.01'/%3E%3C/svg%3E"); }
   .icon-lock { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z'/%3E%3Cpath d='M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0'/%3E%3Cpath d='M8 11v-4a4 4 0 1 1 8 0v4'/%3E%3C/svg%3E"); }
+  .icon-github { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5'/%3E%3C/svg%3E"); }
+  .icon-bug { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 9v-1a3 3 0 0 1 6 0v1'/%3E%3Cpath d='M8 9h8a6 6 0 0 1 1 3v3a5 5 0 0 1 -10 0v-3a6 6 0 0 1 1 -3'/%3E%3Cpath d='M3 13h4'/%3E%3Cpath d='M17 13h4'/%3E%3Cpath d='M12 20v-6'/%3E%3Cpath d='M4 19l3.35 -2'/%3E%3Cpath d='M20 19l-3.35 -2'/%3E%3Cpath d='M4 7l3.75 2.4'/%3E%3Cpath d='M20 7l-3.75 2.4'/%3E%3C/svg%3E"); }
   .icon-info { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0'/%3E%3Cpath d='M12 9h.01'/%3E%3Cpath d='M11 12h1v4h1'/%3E%3C/svg%3E"); }
   #row-quality .tip-icon { margin-right: 8px; }
   .tool-solo { display: inline-flex; align-items: center; font-size: 14px; }
@@ -1001,6 +1020,7 @@
   <button type="button" data-go="programs" id="nav-programs"><span class="nav-icon icon-tool" aria-hidden="true"></span>Programs<span class="side-badge hidden" id="programs-badge" aria-hidden="true">!</span><span class="sr-only" id="programs-badge-words"></span></button>
   <button type="button" data-go="sites" id="nav-sites"><span class="nav-icon icon-globe" aria-hidden="true"></span>Sites<span class="side-badge hidden" id="sites-badge" aria-hidden="true">!</span><span class="sr-only" id="sites-badge-words"></span></button>
   <button type="button" data-go="settings" class="side-bottom"><span class="nav-icon icon-gear" aria-hidden="true"></span>Settings</button>
+  <button type="button" data-go="about"><span class="nav-icon icon-info" aria-hidden="true"></span>About</button>
 </nav>
 <div class="wrap" data-showing="main">
 
@@ -1619,6 +1639,30 @@
     </div>
   </div>
 
+  <!-- About (the user, 2026-11-21: "you can see the GitHub of the project,
+       the version"), from the model he chose: the app, its page, and the
+       programs it runs with their licences -- each licence read from that
+       program's own project (tools.ToolSpec.licence). -->
+  <div data-view="about" id="about-page">
+    <h2 class="pane-title page-title" id="set-about" tabindex="-1">About</h2>
+    <div class="set-group about-card">
+      <div class="about-name">__APP_NAME__ <span class="about-version">__APP_VERSION__</span></div>
+      <p class="set-sub about-line">One window for the best video and audio download programs.
+        Free and open source (MIT licence).</p>
+      <div class="about-actions">
+        <button type="button" class="ghost" id="about-github"><span class="nav-icon icon-github" aria-hidden="true"></span>Open on GitHub</button>
+        <button type="button" class="ghost" id="about-report"><span class="nav-icon icon-bug" aria-hidden="true"></span>Report a problem</button>
+        <button type="button" class="ghost" id="about-copy"><span class="copy-icon" aria-hidden="true"></span>Copy version</button>
+      </div>
+      <p class="set-sub about-line">github.com/__APP_REPO__</p>
+    </div>
+    <div class="set-group about-card">
+      <h3 class="set-name about-title">The programs __APP_NAME__ runs</h3>
+      <div class="about-tools" id="about-tools"><span class="soft" style="grid-column:1/-1">Loading…</span></div>
+      <p class="set-sub about-line">Each belongs to its own authors. __APP_NAME__ only starts them.</p>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -1626,7 +1670,8 @@ const TOKEN = "__APP_TOKEN__";
 // Injected by the server from config.py, so the name stays in one place.
 const APP_NAME = "__APP_NAME__";
 const APP_VERSION = "__APP_VERSION__";
-const $ = (id) => document.getElementById(id);
+const APP_REPO = "__APP_REPO__";          // GitHub "owner/name", for About
+const $ =(id) => document.getElementById(id);
 
 // 403 = the server refused our token: this tab belongs to a Teleloadzai
 // that has restarted since. Said once, instead of every screen going quiet
@@ -3955,6 +4000,13 @@ async function tick() {
 let toolsData = { tools: [], python: {}, progress: {} };
 let toolsPolling = false;
 
+/** An installed program's version, the same words on Programs and About.
+ *  No version known (TikTokDownloader and KS-Downloader are never started
+ *  just to ask, decision 31): said, not left blank. */
+function installedVersion(tool) {
+  return shortVersion(tool.version || tool.release_installed || "") || "version not known";
+}
+
 function toolRow(tool, progress) {
   const row = document.createElement("div");
   row.className = "tool";
@@ -3996,10 +4048,8 @@ function toolRow(tool, progress) {
 
   const size = tool.size ? ` · ${Math.round(tool.size / 1048576)} MB` : "";
   const version = tool.installed
-    // No version known (TikTokDownloader and KS-Downloader are never started
-    // just to ask, decision 31): said, not left blank.
-    ? shortVersion(tool.version || tool.release_installed || "") || "version not known"
-    : (tool.latest ? "not installed · latest " + shortVersion(tool.latest) + size : "not installed");
+    ? installedVersion(tool)
+    :(tool.latest ? "not installed · latest " + shortVersion(tool.latest) + size : "not installed");
 
   row.innerHTML = `
     <div class="tool-top">
@@ -4069,7 +4119,61 @@ function renderTools() {
       : `${who} Python is not on this PC. Install it from python.org.`;
     $("python-install").classList.toggle("hidden", !python.winget);
   }
+  renderAbout();
 }
+
+// ---- About (2026-11-21) ----------------------------------------------------
+const APP_PAGE = `https://github.com/${APP_REPO}`;
+
+/** The programs Teleloadzai runs: the installed ones, each with its version
+ *  (as on Programs) and its licence, read from that program's own project
+ *  (tools.ToolSpec.licence). Text only: names come from the server. */
+function renderAbout() {
+  const list = $("about-tools");
+  list.textContent = "";
+  const installed = toolsData.tools.filter((t) => t.installed);
+  if (!installed.length) {
+    const empty = document.createElement("span");
+    empty.className = "soft";
+    empty.style.gridColumn = "1 / -1";
+    empty.textContent = toolsData.tools.length
+      ? "No program is installed yet. Programs lists them all." : "Loading…";
+    list.appendChild(empty);
+    return;
+  }
+  for (const tool of installed) {
+    const name = document.createElement("span");
+    name.textContent = tool.name;
+    const version = document.createElement("span");
+    version.className = "soft";
+    version.textContent = installedVersion(tool);
+    list.append(name, version);
+    if (!tool.licence_url) { list.appendChild(document.createElement("span")); continue; }
+    // A link to the program's own page: pywebview sends a new window to the
+    // PC's browser (its edgechromium.py, 2026-11-21), never into this one.
+    const link = document.createElement("a");
+    link.href = tool.licence_url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = `${tool.licence} ↗`;
+    link.setAttribute("aria-label", `${tool.name} licence: ${tool.licence}, opens in your browser`);
+    list.appendChild(link);
+  }
+}
+
+/** What "Copy version" gives: the app and every installed program, one per
+ *  line -- what a problem report needs. */
+function versionsText() {
+  return [`${APP_NAME} ${APP_VERSION}`,
+    ...toolsData.tools.filter((t) => t.installed).map((t) => `${t.name} ${installedVersion(t)}`)].join("\n");
+}
+
+$("about-github").addEventListener("click", () => window.open(APP_PAGE, "_blank", "noopener,noreferrer"));
+$("about-report").addEventListener("click", () => window.open(`${APP_PAGE}/issues/new`, "_blank", "noopener,noreferrer"));
+$("about-copy").addEventListener("click", async () => {
+  if (await copyText(versionsText())) notify("Version copied.");
+  else setStatus("Could not copy the version.");
+});
 
 async function loadTools(refresh) {
   const data = refresh ? await api("/api/tools/refresh", {}) : await api("/api/tools");
@@ -4377,7 +4481,7 @@ function showView(name) {
     if (item.dataset.go === name) item.setAttribute("aria-current", "page");
     else item.removeAttribute("aria-current");
   }
-  if (name === "programs") loadTools();   // versions from the cache: instant
+  if (name === "programs" || name === "about") loadTools();   // versions from the cache: instant
   // The Console reads the server's lines once a second, only while shown.
   clearInterval(consoleTimer);
   if (name === "console") { loadConsoleTools(); pollConsole(); consoleTimer = setInterval(pollConsole, 1000); }
@@ -4391,6 +4495,7 @@ function showView(name) {
   // button and heard nothing of the new screen (round 1, 2026-09-26).
   (name === "settings" ? $("set-downloads") : name === "sites" ? $("set-accounts")
     : name === "programs" ? $("set-tools") : name === "console" ? $("con-title")
+    : name === "about" ? $("set-about")
     : $("url")).focus({ preventScroll: true });
 }
 

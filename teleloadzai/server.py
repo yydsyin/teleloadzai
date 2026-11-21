@@ -26,7 +26,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from . import commands, console, cookies, dialogs, explain, login, needs, notify, runners, signs, toolservers, tools, ytdlp
-from .config import APP_NAME, APP_VERSION
+from .config import APP_NAME, APP_REPO, APP_VERSION
 from .detect import Detection, detect
 from .jobs import DONE, ERROR, Queue, TargetInUse, target_clashes
 from .paths import DATA_DIR, DEFAULT_DOWNLOAD_DIR, WEB_DIR, ensure_dirs
@@ -885,7 +885,8 @@ class Handler(BaseHTTPRequestHandler):
             # The app name lives only in config.py (decision 1), so it is
             # injected here instead of being written inside the page.
             page = (page.replace("__APP_TOKEN__", TOKEN).replace("__APP_NAME__", APP_NAME)
-                    .replace("__APP_VERSION__", APP_VERSION))
+                    .replace("__APP_VERSION__", APP_VERSION)
+                    .replace("__APP_REPO__", APP_REPO))
             self._send(page.encode("utf-8"), "text/html; charset=utf-8")
             return
 

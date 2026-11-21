@@ -85,6 +85,13 @@ class ToolSpec:
     # A second release channel the user may choose (Settings -> Tools):
     # yt-dlp's preview builds get fixes for broken sites days earlier.
     preview_repo: str = ""
+    # Shown on the About page (2026-11-21): the program's licence and where
+    # to read it. Each read that day from GitHub's own record of the
+    # project (`/repos/<repo>/license`), FFmpeg's from the program itself
+    # (`ffmpeg -L`). A fact about somebody else's project: re-read on a
+    # change of repository (docs/BELIEFS.md).
+    licence: str = ""
+    licence_url: str = ""
 
 
 SPECS: tuple[ToolSpec, ...] = (
@@ -93,17 +100,23 @@ SPECS: tuple[ToolSpec, ...] = (
              exe_name="yt-dlp.exe", asset_keywords=("yt-dlp.exe",),
              requires=("FFmpeg",),       # for MP3, and to join video with sound
              # Read 2026-10-21: its latest release holds a plain yt-dlp.exe.
-             preview_repo="yt-dlp/yt-dlp-nightly-builds"),
+             preview_repo="yt-dlp/yt-dlp-nightly-builds",
+             licence="Unlicense", licence_url="https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE"),
 
     ToolSpec("ffmpeg", "FFmpeg", "GyanD/codexffmpeg", "zip",
              what_for="Makes MP3s, and joins picture and sound.", essential=True,
              exe_name="ffmpeg.exe", asset_keywords=("essentials_build.zip",),
-             asset_exclude=("shared",), extract_only=("ffmpeg.exe", "ffprobe.exe")),
+             asset_exclude=("shared",), extract_only=("ffmpeg.exe", "ffprobe.exe"),
+             # The build's repository has no licence file (GitHub: 404); the
+             # program says "GNU General Public License ... version 3 of the
+             # License, or (at your option) any later version" (9.0.2).
+             licence="GPL-3.0 or later", licence_url="https://ffmpeg.org/legal.html"),
 
     ToolSpec("n-m3u8dl-re", "N_m3u8DL-RE", "nilaoda/N_m3u8DL-RE", "zip",
              what_for="Stream links (.m3u8, .mpd).",
              exe_name="N_m3u8DL-RE.exe", asset_keywords=("win-x64",),
-             extract_only=("N_m3u8DL-RE.exe",)),
+             extract_only=("N_m3u8DL-RE.exe",),
+             licence="MIT", licence_url="https://github.com/nilaoda/N_m3u8DL-RE/blob/main/LICENSE"),
 
     # No command line at all: `--help` opens a language menu (checked 2026-09-21).
     # version_args empty = never start it just to read a version.
@@ -116,7 +129,8 @@ SPECS: tuple[ToolSpec, ...] = (
              # silent-failure hunt, 2026-10-18; both names read from the 5.8
              # release the same day).
              exe_name="DouK-Downloader.exe", asset_keywords=("Windows", "X64"),
-             version_args=()),
+             version_args=(),
+             licence="GPL-3.0", licence_url="https://github.com/JoeanAmier/TikTokDownloader/blob/master/license"),
 
     # The same author's Kuaishou tool, driven the same way (by its server).
     # Its program is called `main.exe`; the release has an ARM64 twin, hence
@@ -125,23 +139,29 @@ SPECS: tuple[ToolSpec, ...] = (
     ToolSpec("ks-downloader", "KS-Downloader", "JoeanAmier/KS-Downloader", "zip",
              what_for="Kuaishou.",
              exe_name="main.exe", asset_keywords=("Windows", "X64"),
-             version_args=()),
+             version_args=(),
+             licence="GPL-3.0", licence_url="https://github.com/JoeanAmier/KS-Downloader/blob/master/LICENSE"),
 
     # Ships two programs; the plain one is the command-line one. Without
     # exe_name we picked XHS-Downloader-GUI.exe, the graphical one.
     ToolSpec("xhs-downloader", "XHS-Downloader", "JoeanAmier/XHS-Downloader", "zip",
              what_for="Xiaohongshu, video and photos.",
              # "X64" for the same reason as TikTokDownloader (2.8 release).
-             exe_name="XHS-Downloader.exe", asset_keywords=("Windows", "X64")),
+             exe_name="XHS-Downloader.exe", asset_keywords=("Windows", "X64"),
+             licence="GPL-3.0", licence_url="https://github.com/JoeanAmier/XHS-Downloader/blob/master/LICENSE"),
 
     ToolSpec("streamlink", "Streamlink", "streamlink/windows-builds", "zip",
              what_for="Records live streams.",
-             exe_name="streamlink.exe", asset_keywords=(".zip",)),
+             exe_name="streamlink.exe", asset_keywords=(".zip",),
+             # The program's own licence; its Windows builds' repository has
+             # the same one (both BSD-2-Clause, read 2026-11-21).
+             licence="BSD-2-Clause", licence_url="https://github.com/streamlink/streamlink/blob/master/LICENSE"),
 
     ToolSpec("gallery-dl", "gallery-dl", "mikf/gallery-dl", "pip",
              what_for="Instagram and Pinterest photos and videos.",
              pip_name="gallery-dl", module="gallery_dl", needs_python=True,
-             requires=("Python",)),
+             requires=("Python",),
+             licence="GPL-2.0", licence_url="https://github.com/mikf/gallery-dl/blob/master/LICENSE"),
 
     # The second Bilibili tool, the user's choice 2026-11-09: with a log-in
     # it saved the whole 1080p video where yt-dlp's "Best" got a file
@@ -150,7 +170,8 @@ SPECS: tuple[ToolSpec, ...] = (
     ToolSpec("yutto", "yutto", "yutto-dev/yutto", "pip",
              what_for="Bilibili: 1080p with your log-in, 480p without.",
              pip_name="yutto", module="yutto", needs_python=True,
-             python_min=(3, 11), requires=("Python",)),
+             python_min=(3, 11), requires=("Python",),
+             licence="GPL-3.0", licence_url="https://github.com/yutto-dev/yutto/blob/main/LICENSE"),
 
 )
 
@@ -1185,6 +1206,8 @@ def status(tool_id: str, check_online: bool = True) -> dict:
         "id": tool.id,
         "name": tool.name,
         "what_for": tool.what_for,
+        "licence": tool.licence,
+        "licence_url": tool.licence_url,
         "essential": tool.essential,
         "kind": tool.kind,
         "needs_python": tool.needs_python,
