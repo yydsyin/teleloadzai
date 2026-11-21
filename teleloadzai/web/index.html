@@ -560,6 +560,24 @@
   /* No picture yet: the frame keeps its place, so the text beside it does not
      jump sideways when the thumbnail arrives. */
   .thumb.waiting { opacity: .55; }
+  /* Model A (2026-11-21): while the link is read, the picture and the title
+     are soft shimmering shapes of their real size -- the card looks busy,
+     not empty -- then the answer fades in. Still when Windows asks for less
+     motion: a grey shape, never a measure (pass 1, moving signs). */
+  .thumb.waiting, .title.reading {
+    opacity: 1; border-color: transparent;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--ink) 7%, var(--card)) 30%,
+      color-mix(in srgb, var(--ink) 3%, var(--card)) 50%, color-mix(in srgb, var(--ink) 7%, var(--card)) 70%);
+    background-size: 300% 100%; animation: reading 1.4s ease-in-out infinite;
+  }
+  /* A fixed width: its box shrinks to the short line under it (91 px seen). */
+  .title.reading { height: 16px; width: 260px; max-width: 100%; border-radius: 6px; margin: 3px 0 8px; }
+  @keyframes reading { from { background-position: 100% 0; } to { background-position: 0 0; } }
+  .preview.arrived .thumb, .preview.arrived .title { animation: arrive .15s ease-out; }
+  @keyframes arrive { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .thumb.waiting, .title.reading, .preview.arrived .thumb, .preview.arrived .title { animation: none; }
+  }
   .title { font-weight: 600; margin-bottom: 2px; word-break: break-word; }
   .meta { color: var(--soft); font-size: 13px; }
   /* yt-dlp could not read a link it would itself download: say it as a
@@ -1865,7 +1883,9 @@ function applyChoices(tool) {
     mp4.setAttribute("aria-pressed", "true");
     fillQualities();
   }
-  const hasQuality = Boolean(can[mode]) && $("quality").dataset.single !== "true";
+  // While the link is read the list holds "Best" alone and is shown anyway
+  // (model A): the user sees the choice is there, the sizes come after.
+  const hasQuality = Boolean(can[mode]) && ($("quality").dataset.single !== "true" || titleReading);
   // An MP3 is made from the site's own sound: asking more gives a bigger
   // file, never better sound.
   $("quality").title = mode === "mp3"
@@ -1989,8 +2009,20 @@ for (const button of $("subs-pick").children) {
 // The title read is running (its answer brings the sizes).
 let titleReading = false;
 
+// Model A (2026-11-21): the reading shapes end, and what came fades in.
+function endReadingShapes() {
+  $("title").classList.remove("reading");
+  $("title").removeAttribute("aria-label");
+  const preview = $("result").querySelector(".preview");
+  preview.classList.remove("arrived");
+  void preview.offsetWidth;           // restart the fade for this answer
+  preview.classList.add("arrived");
+}
+
 function qualityWhy() {
-  if (titleReading) return "Quality: after the title is read";
+  // Model A: "Best" is offered at once while the link is read; the other
+  // sizes join the list when the answer comes. Nothing to explain meanwhile.
+  if (titleReading) return "";
   // The title read failed: the card already says it, and a size line was
   // one block too many on a card that will likely fail (Vimeo, TED --
   // reviews of 2026-10-05).
@@ -2642,6 +2674,7 @@ async function readLink(url, mine) {
   readBy = found.read_by || null;
   if (!readBy) {
     titleReading = false;     // nobody reads it: no sizes will come
+    endReadingShapes();       // a shape left by the link before
     applyChoices(chosenTool());
     const tool = currentTools[0];
     $("title").textContent = "Ready to download";
@@ -2652,14 +2685,18 @@ async function readLink(url, mine) {
     return;
   }
 
-  $("title").textContent = "…";
+  // Model A: a shimmering title shape, not "…" (still read aloud as reading).
+  $("title").textContent = "";
+  $("title").classList.add("reading");
+  $("title").setAttribute("aria-label", "Reading the title");
+  $("result").querySelector(".preview").classList.remove("arrived");
   $("thumb").classList.remove("hidden");
   $("thumb").classList.add("waiting");
   $("result").classList.remove("hidden");
   const asking = found.platform_id === "unknown" ? "the site" : found.platform;
   // Their servers take 12-22 s to start and answer (measured 2026-09-26):
   // said, so the wait never looks frozen (decision 33).
-  startWaiting(readBy.id === "yt-dlp" ? `Asking ${asking} for the title…`
+  startWaiting(readBy.id === "yt-dlp" ? `Reading ${asking}…`
     : `${readBy.name} is reading the post. This takes about 20 seconds…`);
 
   let titleArrived;
@@ -2679,6 +2716,7 @@ async function readLink(url, mine) {
   titleReading = false;       // only the newest read may end it
   stopWaiting();
   $("thumb").classList.remove("waiting");
+  endReadingShapes();         // the answer fades in (model A)
   if (info.error) {
     // Known error -> its plain meaning. Unknown -> the tool's words, said to
     // be the tool's words (decision 38). Whether it is a warning or only
