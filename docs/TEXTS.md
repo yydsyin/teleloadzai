@@ -731,33 +731,33 @@
 
 | Line | Text |
 |---|---|
-| 700 | "{…}" is already in this folder. |
-| 404 | The file is already in this folder, so gallery-dl did not download it again. |
-| 418 | XHS-Downloader already downloaded this note once. Press "Download again" to get it here. |
-| 1261 | Teleloadzai does not know how to drive this program yet |
-| 1590 | yutto said it had no Bilibili log-in, so this video is {…}p at most. |
-| 431 | Live stream found |
-| 524 | reading the post |
-| 539 | TikTokDownloader found no file to download. It may be a photo post, or an ended live stream. |
-| 598 | KS-Downloader found the post (type: {…}) but gave no single video file to download. |
-| 636 | making the MP3 |
-| 762 | The video was downloaded ({…}), but FFmpeg is not installed, so it could not be turned into an MP3. |
-| 791 | The video was downloaded ({…}), but turning it into an MP3 failed. The video is kept. |
-| 838 | The program downloaded no video or sound file, so there is no MP3 to make. |
-| 845 | The program downloaded a video with no sound, so there is no MP3 to make. |
-| 1553 | {…} finished without downloading anything, and said nothing about why. |
-| 921 | Teleloadzai could not write in {…}. Choose another folder. (Windows says: {…}) |
-| 1114 | The name chosen in "Save as" is too long for Windows. Choose a shorter name or folder. |
-| 1175 | The download came back empty. |
-| 1183 | The download was cut off at {…} MB of {…} MB. Nothing was kept: try again. |
-| 1346 | no recipe for |
-| 1352 | {…} is not installed |
-| 1620 | Traceback (most recent call last) |
-| 898 | Could not note the work folder {…} in {…}. |
-| 1184 | MB. Nothing was kept: try again. |
-| 1188 | The video could not be downloaded: |
-| 1528 | stopped with code |
-| 1044 | "{…}" was downloaded, but could not be put in the folder: {…}. It is moved there at the next start. |
+| 705 | "{…}" is already in this folder. |
+| 409 | The file is already in this folder, so gallery-dl did not download it again. |
+| 423 | XHS-Downloader already downloaded this note once. Press "Download again" to get it here. |
+| 1266 | Teleloadzai does not know how to drive this program yet |
+| 1595 | yutto said it had no Bilibili log-in, so this video is {…}p at most. |
+| 436 | Live stream found |
+| 529 | reading the post |
+| 544 | TikTokDownloader found no file to download. It may be a photo post, or an ended live stream. |
+| 603 | KS-Downloader found the post (type: {…}) but gave no single video file to download. |
+| 641 | making the MP3 |
+| 767 | The video was downloaded ({…}), but FFmpeg is not installed, so it could not be turned into an MP3. |
+| 796 | The video was downloaded ({…}), but turning it into an MP3 failed. The video is kept. |
+| 843 | The program downloaded no video or sound file, so there is no MP3 to make. |
+| 850 | The program downloaded a video with no sound, so there is no MP3 to make. |
+| 1558 | {…} finished without downloading anything, and said nothing about why. |
+| 926 | Teleloadzai could not write in {…}. Choose another folder. (Windows says: {…}) |
+| 1119 | The name chosen in "Save as" is too long for Windows. Choose a shorter name or folder. |
+| 1180 | The download came back empty. |
+| 1188 | The download was cut off at {…} MB of {…} MB. Nothing was kept: try again. |
+| 1351 | no recipe for |
+| 1357 | {…} is not installed |
+| 1625 | Traceback (most recent call last) |
+| 903 | Could not note the work folder {…} in {…}. |
+| 1189 | MB. Nothing was kept: try again. |
+| 1193 | The video could not be downloaded: |
+| 1533 | stopped with code |
+| 1049 | "{…}" was downloaded, but could not be put in the folder: {…}. It is moved there at the next start. |
 
 ## `server.py` (46)
 
