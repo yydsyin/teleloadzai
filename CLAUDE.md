@@ -210,7 +210,7 @@ The proofs (sizes, ffprobe results, links, dates) are in `docs/HISTORY.md` §4.
 | Platform | Tool | Status |
 |---|---|---|
 | YouTube, Vimeo, Dailymotion, Facebook, X, Reddit, Bilibili, SoundCloud, Bandcamp, any `.m3u8` | **yt-dlp** | ✅ alive |
-| Rumble | **yt-dlp** | ⚠ **failed 2026-11-16** (403 on both test links, also 2026-11-15 and 11-17 — the card warns, the sign list `signs.json`) |
+| Rumble | **yt-dlp** | ✅ **works again 2026-11-21** (the quality check, 2 days: 1080p whole; its warning removed at the user's review). Failed 2026-11-15 → 17 (403 on both test links). |
 | Instagram, Pinterest (galleries) | **gallery-dl** | ✅ alive. Instagram without a log-in: the card starts on yt-dlp (decision 13). |
 | Twitch live | **streamlink** | ✅ alive |
 | **Douyin** | **TikTokDownloader** (renamed DouK-Downloader) | ✅ proven 2026-09-22, through its Web API. **A visit is enough.** |

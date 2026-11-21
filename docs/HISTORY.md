@@ -434,3 +434,11 @@ Measured first (yt-dlp, the same 720p file, alternating runs): on sites sending 
 ### 2026-11-21 — The grids before the compact
 
 Code: 1 real defect, fixed at the user's yes — a YouTube link refused with "Sign in to confirm you're not a bot" showed "Instagram gave nothing for this post without a log-in": the rule caught yt-dlp's words "for the authentication", which end every site's log-in error. It now needs "[instagram]" too; YouTube's bot check and Reddit's "Account authentication is required" have their own sentences, with their evidence (11-19 / 11-21 and 11-15). Seen red first (YouTube and Reddit named Instagram), then 4 checks green. Passed: names, routes, requirements, `docs/TEXTS.md`, the token on the new routes, a real download from the card's reading (1.3 s, no second reading), "Already in your folder" then Download again (533,067 bytes), the Programs page, 0 console errors, the one-scrollbar rule at both sizes with a card, nothing left behind, the scheduled check (result 0). Notes, at the user's yes: decision 43 and the review file said "2 days in a row" while the code counts 2 different days — the words follow the code; the 5d "Last" entry; a pass-0 line for another program's answer saved and reused. Not checked: today's UI in the real pywebview window. My broken probes, said: a loop that read the old title before the new reading began; an identifier check that took file names for names.
+
+### 2026-11-21 — The first review of the sign proposals
+
+The user said "all ok" to Claude's review of `data/quality-check/to-review.md`:
+- **Rumble + yt-dlp works again** — downloaded whole on 2026-11-20 and 21 (1080p, 33.2 MB, 104 s): its `download_fails` line removed.
+- **Reddit + gallery-dl warned** — "You've been blocked by network security." on both links, with and without cookies, 2026-11-19 → 21 (gallery-dl 1.32.20). Reddit says this when it does not trust the network (a VPN, a work network, a server), so the sentence says "in our last check" and "may work on another network"; yt-dlp on the same network got a different answer (asks for an account).
+- **Instagram + gallery-dl declined** — "redirect to login page" is the known log-in need (`before_download`), not a failure; `"declined": true` in `proposals.json`.
+`updated` 2026-11-21T12:00; `signs.shipped()` 0 problems; CLAUDE.md §4's Rumble row changed at the user's yes.

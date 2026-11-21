@@ -806,7 +806,7 @@
 | Line | Text |
 |---|---|
 | 18 | Bilibili keeps “1080p high bitrate” for its premium members: a normal log-in did not unlock it. |
-| 28 | Rumble refused it (403). It may work again after an update. |
+| 28 | Reddit blocked it in our last check, with and without a log-in. It may work on another network, or after an update. |
 | 29 | Its authors fixed it: the fix comes with its next version. |
 
 ## `signs.py` (46)
