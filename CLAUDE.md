@@ -287,6 +287,9 @@ What each step did, found and checked, round by round: `docs/HISTORY.md` §7 (wo
 - **The Downloads list**: a finished row is one line (2026-10-24); failed rows grouped, one button each, the rest behind ⋯ (model D, 2026-10-25).
 - **One row per video** ✅ 2026-11-01, from a drawn mock (the user: "always one video by one video") — a playlist, "Same for all" or "Choose for each", is one row per video under one label, every video; a post fetched whole by XHS-Downloader or gallery-dl becomes one row per file, only the first offering "Download the whole post again". The list keeps **500** rows (`jobs.HISTORY_LIMIT`, measured: 40 ms per update at 500). The folder window is Windows' modern one (`dialogs._PICK_FOLDER`). ⚠️ Not seen: a folder chosen by hand in the real window; a Retry of a post.
 
+- **The GUI study** ✅ 2026-11-21 — `reports/GUI study 2026-11-21.md`: 11 apps (6 English, 5 Chinese), every screen read in their code, our defects verified; the functions to build come from it, each chosen by the user.
+- **After the GUI-study functions: the interface in French and Chinese** (the user, 2026-11-21) — `docs/TEXTS.md` is the list of sentences to translate.
+
 **Safety rule for this phase:** the "video downloader" category is full of adware.
 - **Open source** → safe to install and to read the code.
 - **Commercial / closed source** → screenshots, videos and documentation **only**. Never install.
