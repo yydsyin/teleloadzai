@@ -38,6 +38,9 @@ changes the app; a change reaches the app only after a review: a difference
 from the sign list seen on 2 different days is written to
 data/quality-check/to-review.md (signs_to_review), and the review publishes
 it in teleloadzai/signs.json, which every user's app reads from GitHub.
+Since 2026-11-22 a NEW sign to review starts Claude Code by itself, read-only
+(auto_review): its verdict goes to data/quality-check/review-<date>.md and the
+Windows message opens it. It publishes nothing; the user still decides.
 
 Run from the project folder:
   python dev/quality_check.py                every site (the first table, or by hand)
@@ -1521,6 +1524,89 @@ def _write(path: Path, text: str) -> None:
     os.replace(temp, path)
 
 
+# ------------------------------------------------ Claude reviews by itself
+# The user, 2026-11-22: "better that you are noticed automatically, and I'm
+# coming just for checking". A new sign to review starts Claude Code once,
+# READ-ONLY; its verdict is saved and the Windows message opens it. Nothing
+# is published: the user still says yes or no in a session (decision 43).
+
+CLAUDE_TIMEOUT = 600            # seconds; a review read 5 files in under 2 min
+# Read-only, each seen with claude 2.1.330 on 2026-11-22 (docs/BELIEFS.md):
+# asked to write a file it answered CANNOT and none appeared; its tools were
+# exactly Glob, Grep, Read; with Write given, the same request wrote it.
+CLAUDE_READ_ONLY = ("--tools", "Read,Grep,Glob",   # no other tool exists at all
+                    "--restricted",                # file tools stay in the working folders
+                    "--strict-mcp-config",         # no connectors (browser, Drive...)
+                    "--permission-prompts", "none",  # anything that would ask: refused
+                    "--no-session-persistence")
+
+
+def claude_program() -> str | None:
+    """Claude Code's command, or None. The native installer puts it in
+    ~/.local/bin, which a log-on task's PATH may not hold yet."""
+    found = shutil.which("claude")
+    if found:
+        return found
+    native = Path.home() / ".local" / "bin" / "claude.exe"
+    return str(native) if native.is_file() else None
+
+
+def auto_review(waiting: list, report_file: Path) -> tuple[Path | None, str]:
+    """(the review file, "") or (None, why it was not done). Never raises:
+    a review that cannot run leaves the old way -- the user says "review"."""
+    program = claude_program()
+    if not program:
+        return None, "Claude Code is not installed on this PC"
+    keys = ", ".join(key for key, _, _ in waiting)
+    prompt = f"""You review proposed changes to Teleloadzai's sign list, on the developer's PC, with nobody watching. You can only read files. Nothing you write is published: the developer reads your verdict and decides.
+
+Read:
+- {REVIEW_FILE} : the changes waiting, each seen on 2 different days by the daily quality check ({keys}).
+- {PROPOSALS_FILE} : the same lines with their evidence and dates; "declined": true means refused before.
+- {report_file} : today's full report.
+- {ROOT / 'teleloadzai' / 'signs.json'} : the sign list users get now.
+- {RUNS_LOG} : one line per past run.
+- {ROOT / 'CLAUDE.md'} : decision 43 gives the rules of a review.
+
+For each change waiting, answer in this form:
+### <site> · <program>: <what would change>
+- Verdict: ACCEPT, DECLINE, or ASK THE DEVELOPER
+- Why: the evidence, quoted with its dates. A site that blocks one network or one PC is not every user's problem.
+- If ACCEPT: the exact change to teleloadzai/signs.json, as JSON (the line to add, change or remove).
+- Not checked: what the files do not let you verify.
+
+Rules: never guess a cause; write "unknown" when the files do not show it. Short, simple English sentences: the developer is a French speaker. Markdown only, no greeting, no closing."""
+    try:
+        process = subprocess.Popen(
+            [program, "-p", prompt, *CLAUDE_READ_ONLY, "--add-dir", str(OUT_DIR)],
+            cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except OSError as problem:
+        return None, f"Claude Code could not start: {problem.strerror or problem}"
+    children.bind(process)          # dies with this script, whatever happens
+    try:
+        out, err = process.communicate(timeout=CLAUDE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        children.stop_tree(process)
+        process.communicate()
+        return None, f"Claude took more than {CLAUDE_TIMEOUT // 60} minutes and was stopped"
+    answer = cookies.redact((out or "").strip())
+    if process.returncode != 0 or not answer:
+        said = cookies.redact(((err or "").strip() or answer or "no words").splitlines()[-1])
+        return None, f"Claude Code failed (exit {process.returncode}): {said[:120]}"
+    review_file = OUT_DIR / f"review-{time.strftime('%Y-%m-%d-%H%M%S')}.md"
+    try:
+        _write(review_file, "\n".join([
+            f"# Claude's review — {time.strftime('%Y-%m-%d %H:%M')}", "",
+            f"Started by the quality check for {len(waiting)} sign{'s' if len(waiting) != 1 else ''} "
+            f"({keys}). Claude could only read files. **Nothing is published**: say yes or no "
+            f"to Claude in a session. Report: {report_file.name}", "", "---", "", answer, ""]))
+    except OSError as problem:
+        return None, f"the review could not be saved: {problem.strerror or problem}"
+    return review_file, ""
+
+
 def main() -> int:
     if sys.stdout is not None:      # None under pythonw.exe (the daily task: no black window)
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -1732,13 +1818,24 @@ def main() -> int:
             + f" · {fails} not downloading"
             + "".join(f" · PROBLEM: {p}" for p in problems) + f" · {report_file.name}")
     print(f"\nReport: {report_file}")
+    # A NEW sign to review: Claude reads the evidence by itself (2026-11-22).
+    review_file, review_problem = auto_review(waiting, report_file) if fresh else (None, "")
+    if review_problem:
+        log_run(f"AUTOMATIC REVIEW NOT DONE: {review_problem}")
+    elif review_file:
+        log_run(f"automatic review: {review_file.name}")
     if changed or broken or problems or new_fails or fresh:
         parts = [f"{len(fresh)} sign{'s' if len(fresh) != 1 else ''} to review"] if fresh else []
         parts += [f"{new_fails} new download failure{'s' if new_fails != 1 else ''}"] if new_fails else []
         parts += [f"{changed} change{'s' if changed != 1 else ''} to review"] if changed else []
         parts += [f"{broken} broken check{'s' if broken != 1 else ''}"] if broken else []
         parts += ["a problem"] if problems else []
-        tell("Quality check", ", ".join(parts) + ". Click to open the report.", report_file)
+        if review_file:
+            tell("Quality check", ", ".join(parts) + ". Claude's review is ready: click to read it.", review_file)
+        else:
+            missed = (f". No automatic review ({review_problem[:80]}): say \"review\" to Claude"
+                      if review_problem else "")
+            tell("Quality check", ", ".join(parts) + missed + ". Click to open the report.", report_file)
     return 0
 
 
