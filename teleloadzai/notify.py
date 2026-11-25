@@ -107,10 +107,15 @@ def words(ends: list[tuple[str, str, int]]) -> tuple[str, str]:
             # arrived" when 29 did (found 2026-10-24).
             return "Download finished", f"{name}: {files} files are in your folder."
         return "Download finished", f"{name} is in your folder."
-    done = len(ends) - failed
-    title = "Downloads finished" if not failed else "Downloads ended"
-    text = (f"{done} download{'s' if done != 1 else ''} finished"
-            + (f" · {failed} failed" if failed else "") + f". Open {APP_NAME} to see them.")
+    # "Already there" wrote nothing: never counted as finished (round 8 of the
+    # hunt, 2026-11-22: "3 downloads finished" when one brought nothing).
+    already = sum(1 for _, how, _n in ends if how == "already")
+    done = len(ends) - failed - already
+    title = "Downloads finished" if not failed and not already else "Downloads ended"
+    parts = ([f"{done} download{'s' if done != 1 else ''} finished"] if done else []) \
+        + ([f"{already} already in your folder"] if already else []) \
+        + ([f"{failed} failed"] if failed else [])
+    text = " · ".join(parts) + f". Open {APP_NAME} to see them."
     return title, text
 
 
@@ -224,6 +229,15 @@ def _loop(ready: threading.Event) -> None:
             showing["on"] = True
             nid.uVersion = 4
             shell32.Shell_NotifyIconW(4, ctypes.byref(nid))           # NIM_SETVERSION
+        else:
+            # Refused (Explorer restarting, no tray): said once, as a refused
+            # window is -- it was lost with no word (round 2 of the hunt, 2026-11-22).
+            global _refusal_said
+            if not _refusal_said:
+                _refusal_said = True
+                from . import console
+                console.add("app", f"{APP_NAME}: Windows did not show {APP_NAME}'s message. "
+                            "The list still shows how each download ended.", "err")
 
     def proc(hwnd, msg, wparam, lparam):
         if msg == _SHOW:

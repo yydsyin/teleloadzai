@@ -62,7 +62,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import children, explain, tools
+from . import children, cookies, explain, paths, tools
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -207,7 +207,9 @@ class _Server:
             if line.startswith(("File ", "Traceback")):
                 continue
             if any(w in low for w in ("error", "failed", "exception", "失败")):
-                return " Its last words: " + cookies.redact(line[:220])
+                # Washed, then cut: a token across the cut kept up to 23
+                # characters, too few for redact to see (round 20).
+                return " Its last words: " + cookies.redact(line)[:220]
         return ""
 
     def start(self) -> None:
@@ -232,6 +234,13 @@ class _Server:
                 probe.settimeout(1.0)
                 if probe.connect_ex((HOST, self.port)) == 0:
                     holder = port_holder(self.port)
+                    if paths.quality_check_running():
+                        # Its holder is our own check: "Close it" pointed
+                        # at a process the user cannot find (round 16).
+                        raise ToolServerError(
+                            f"Port {self.port}, which {self.name} must use, is taken by "
+                            "Teleloadzai's quality check, running right now. Try again "
+                            "in a few minutes, or use another program.")
                     raise ToolServerError(
                         f"Port {self.port}, which {self.name} must use, is taken by "
                         + (holder if holder else "another program")
@@ -259,14 +268,21 @@ class _Server:
             except Exception:
                 self._kill()
                 raise
-            self._users = 1
+            # One more, not "1": a job still counted from a server that died
+            # will call release() too, and a reset to 1 let that release stop
+            # this new server under the job using it (silent-failure hunt,
+            # 2026-11-22). Every start() is paired with one release().
+            self._users += 1
 
     def _kill(self) -> None:
         process, self._process = self._process, None
         if process is None:
             return
         try:
-            process.terminate()
+            # The whole family (decision 34), as every other tool: both are
+            # one-folder builds with no child today (seen 2026-11-22), but a
+            # server left on 0.0.0.0 with the user's cookie is the worst leak.
+            children.stop_tree(process)
             process.wait(timeout=10)
         except Exception:
             try:
@@ -364,7 +380,12 @@ def _post(path: str, body: dict, timeout: float = 90.0,
         server.base + path, data=data, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as answer:
-            return json.loads(answer.read().decode("utf-8"))
+            said = json.loads(answer.read().decode("utf-8"))
+        # A list or a word, not an object: every caller's `.get` gave the row
+        # Python's "'list' object has no attribute 'get'" (round 14).
+        if not isinstance(said, dict):
+            raise ToolServerError(f"{server.name} answered something Teleloadzai does not understand")
+        return said
     except urllib.error.URLError as problem:
         raise ToolServerError(
             f"{server.name} did not answer: {problem.reason}") from problem
@@ -392,13 +413,42 @@ def video_id(url: str, douyin: bool) -> str:
         return found.group(1)
 
     answer = _post(f"/{'douyin' if douyin else 'tiktok'}/share", {"text": url})
-    full = answer.get("url") or ""
+    full = answer.get("url")
+    full = full if isinstance(full, str) else ""      # a number gave Python's words (round 14)
+    if not full and not _NOT_A_VIDEO.search(url):
+        # It could not open the link: its own words, not "no video number"
+        # -- that blamed a good link the tool failed to follow (round 13).
+        said = answer.get("message")
+        raise ToolServerError("TikTokDownloader could not open this link: "
+                              + (cookies.redact(said) if isinstance(said, str) and said
+                                 else "no reason given"))
     found = _ID_IN_URL.search(full)
     if not found:
-        raise ToolServerError(
-            "No video in that link. Paste the video's own link, "
-            "not a profile or a search.")
+        raise ToolServerError(_no_video_sentence(full or url))
     return found.group(1)
+
+
+# A photo post (TikTok `/photo/<id>`) or a note (Douyin `/note/<id>`) used to
+# be told "Paste the video's own link" -- there is none to paste (hunt round
+# 12). What we know is our own side: we ask TikTokDownloader for `/video/` ids
+# only. Nothing is said about what the site or another program can do.
+_NOT_A_VIDEO = re.compile(r"/(photo|note)/\d")
+
+
+def _no_video_sentence(url: str) -> str:
+    # Two whole sentences, not one with a word slotted in: a translation
+    # needs each whole (docs/TEXTS.md).
+    kind = _NOT_A_VIDEO.search(url)
+    if kind and kind.group(1) == "photo":
+        return ("This link is a photo post, not a video. Teleloadzai downloads "
+                "only video links (…/video/<number>) with TikTokDownloader.")
+    if kind:
+        return ("This link is a note, not a video. Teleloadzai downloads "
+                "only video links (…/video/<number>) with TikTokDownloader.")
+    # Only our side: "not a profile or a search" named two causes nobody
+    # checked (a Douyin slides link is neither -- round 13).
+    return ("No video number in that link. Teleloadzai downloads only video "
+            "links (…/video/<number>) with TikTokDownloader.")
 
 
 def detail(url: str, douyin: bool, cookie: str) -> dict:
@@ -417,7 +467,8 @@ def detail(url: str, douyin: bool, cookie: str) -> dict:
         # and only for causes we have seen (decision 38). This used to add
         # "the cookies may have expired, or the site is refusing this
         # network" -- a guess, written as if it were known.
-        said = answer.get("message")
+        # Washed (decision 37): these words went to the row as they came.
+        said = cookies.redact(str(answer.get("message") or ""))
         problem = ToolServerError("TikTokDownloader: " + (said or "no answer about this video"))
         raise explain.from_tool(problem) if said else problem
     return data
@@ -443,7 +494,7 @@ def ks_detail(url: str, cookie: str = "") -> dict:
     answer = _post("/detail/", body, server=KS)
     data = answer.get("data")
     if not isinstance(data, dict):
-        said = answer.get("message")
+        said = cookies.redact(str(answer.get("message") or ""))     # washed (decision 37)
         problem = ToolServerError("KS-Downloader: " + (said or "no answer about this post"))
         raise explain.from_tool(problem) if said else problem
     return data

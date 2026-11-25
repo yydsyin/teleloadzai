@@ -36,6 +36,10 @@ class TargetInUse(Exception):
     """A "Save as" file another download in the list will write."""
 
 
+class SameVideoBusy(Exception):
+    """The same link is already downloading to the same folder, same format."""
+
+
 def target_clashes(target: str, taken: set[str]) -> bool:
     """Is `target` one of `taken`, or a numbered item of one ("name 2.mp4"
     of a post saved as "name.mp4", decision 24)?"""
@@ -84,6 +88,22 @@ _ITEM_ERROR = re.compile(r"^ERROR: \[[^\]]+\] [^:\s]+: (.+)")
 _PLAYLIST_END = "[download] Finished downloading playlist"
 _XHS_FILE = re.compile(r"^文件 (.+) 下载成功\s*$")
 _WINDOWS_PATH = re.compile(r"^(# )?[A-Za-z]:\\")
+
+
+def _disk_fields(state: str, files: list, pieces: list) -> dict:
+    """A row's files and pieces as they are NOW on the disk. Never called
+    with the queue's lock held from `Queue.all` (round 32 of the hunt)."""
+    out = {"pieces_on_disk": sum(1 for p in pieces if os.path.isfile(p)) if state == ERROR else 0}
+    if state in (DONE, CANCELLED) and files:
+        present, size = 0, 0
+        for name in files:
+            try:
+                size += os.stat(name).st_size
+                present += 1
+            except OSError:
+                pass
+        out.update(on_disk=present, disk_bytes=size)
+    return out
 
 
 def _item(title: str = "", state: str = WAITING) -> dict:
@@ -208,19 +228,24 @@ def _leftovers(destinations: list[Path], since: float,
     return found
 
 
-def _as_mp3(kept: list[Path], quality: str) -> list[Path]:
+def _as_mp3(kept: list[Path], quality: str) -> tuple[list[Path], str]:
     """A kept live recording, when the user asked for an MP3: its sound at
     the kbps chosen. Until 2026-10-18 the row said "128 kbps" beside a .ts
-    video (round 8). If FFmpeg fails, the recording stays as it is."""
+    video (round 8). If FFmpeg fails, the recording stays as it is -- and
+    the second value says so: a done row with a .ts and no word was the same
+    lie again (silent-failure hunt, 2026-11-22)."""
     from .dialogs import free_name
     final: list[Path] = []
+    problem = ""
     for path in kept:
         target = path.with_name(free_name(path.parent, path.stem, "mp3") + ".mp3")
         try:
             final.append(runners._to_mp3(path, target, quality, on_start=children.bind))
-        except Exception:
+        except Exception as exc:
             final.append(path)
-    return final
+            problem = (f"The MP3 could not be made ({cookies.redact(str(exc))[:160]}): "
+                       f"the recording was kept as it was ({path.suffix}).")
+    return final, problem
 
 
 def _keep_recording(destinations: list[Path]) -> list[Path]:
@@ -254,6 +279,7 @@ class Job:
     tool: str = "yt-dlp"        # the program that really runs, for the error buttons
     force: bool = False         # rewrite a file that is already there
     skipped: bool = False       # nothing was written, and the tool said why
+    refused_for_login: bool = False     # a Retry of this link after "needs a log-in"
     # The tool's own reason for skipping, when it gave one. yt-dlp's skip is
     # checked by the file's date and needs none; XHS-Downloader's is NOT
     # "already there" -- it skips anything in its own history (decision 38).
@@ -343,18 +369,13 @@ class Job:
         """For a row that has ended with files (a finished one, a live
         recording stopped): {"on_disk": files still there, "disk_bytes": their
         size}. A file moved or deleted since is said."""
-        if self.state not in (DONE, CANCELLED) or not self.files:
-            return {}
-        present, size = 0, 0
-        for name in self.files:
-            try:
-                size += os.stat(name).st_size
-                present += 1
-            except OSError:
-                pass
-        return {"on_disk": present, "disk_bytes": size}
+        return _disk_fields(self.state, self.files, self.pieces)
 
-    def as_dict(self) -> dict:
+    def disk_copy(self) -> tuple:
+        """What the disk questions need, copied (asked outside the lock)."""
+        return self.state, list(self.files), list(self.pieces)
+
+    def as_dict(self, disk: bool = True) -> dict:
         """What the UI sees. The process handle never leaves this module."""
         return {
             "id": self.id, "url": self.url, "mode": self.mode, "quality": self.quality,
@@ -373,12 +394,11 @@ class Job:
             "note": self.note,
             # Asked to the disk at each refresh, like the finished files: a
             # piece the user deleted is no longer said.
-            "pieces_on_disk": sum(1 for p in self.pieces if os.path.isfile(p))
-                              if self.state == ERROR else 0,
             # A finished row's files as they are NOW on the disk: how many are
             # still there, and their size -- asked to the files themselves,
-            # never remembered (the compact finished row, 2026-10-24).
-            **self._on_disk(),
+            # never remembered (the compact finished row, 2026-10-24). With
+            # `disk` False, the caller asks them itself, outside its lock.
+            **(_disk_fields(self.state, self.files, self.pieces) if disk else {"pieces_on_disk": 0}),
             # The PATH never leaves this module -- only whether cookies were
             # used, and the reason when they were not.
             # Either road counts. Saying "no cookies" after a job that used
@@ -428,6 +448,7 @@ class Queue:
         self._save_lock = threading.Lock()
         # Said once on the page when the kept list could not be read.
         self.load_problem = ""
+        self.save_problem = ""          # the last save Windows refused, said on the page
         self._store_blocked = False    # a bad list that could not be set aside
 
     # -- the list kept between two runs ---------------------------------------
@@ -446,7 +467,12 @@ class Queue:
                 job = Job(**kept)
                 if job.state in ACTIVE_STATES:
                     job.state, job.interrupted = CANCELLED, True
-                    _end_items(job)
+                # Every row, not only the active ones: a row the app's closing
+                # stopped while waiting (or whose worker took over 8 s) was
+                # saved CANCELLED with its videos still "Waiting" (round 3 of
+                # the hunt, 2026-11-22). Only an ended row's running or
+                # waiting videos change.
+                _end_items(job)
                 loaded.append(job)
         except (OSError, ValueError, KeyError, TypeError) as problem:
             # Never a silent empty list (decision 34): the file is kept aside
@@ -521,21 +547,54 @@ class Queue:
                 self._store.parent.mkdir(parents=True, exist_ok=True)
                 temp.write_text(text, encoding="utf-8")
                 os.replace(temp, self._store)
+                self.save_problem = ""
             except OSError as problem:
-                # The downloads go on; only the memory of them is not kept.
-                print(f"Could not keep the list of downloads: {problem}")
+                # The downloads go on; only the memory of them is not kept --
+                # said on the page and the Console, not only printed where no
+                # one looks (silent-failure hunt, 2026-11-22).
+                try:
+                    temp.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                said = (f"The list of your downloads could not be saved ({problem.strerror or problem}). "
+                        "Downloads go on, but after a restart the list may be older.")
+                if said != self.save_problem:
+                    console.add("app", f"Teleloadzai: {said}", "err")
+                self.save_problem = said
+                print(said)
 
-    def rescued(self, saved: list[tuple[str, Path]]) -> None:
+    def rescued(self, saved: list[tuple[str, Path]], stuck: set[str] = frozenset()) -> None:
         """Rows whose file the start-up sweep saved from a crash: done, with
         that file -- "Continue" made a second copy, "name (2)" (hunt of
         2026-10-31)."""
         with self._lock:
             for job_id, path in saved:
                 job = self._jobs.get(job_id) if job_id else None
-                if job is None or not job.interrupted or not path.is_file():
+                if job is None or not path.is_file():
+                    continue
+                if not job.interrupted:
+                    # A stopped or failed row whose file could not be put in
+                    # the folder then: it is there now. The row kept saying
+                    # "It is moved there at the next start", its list without
+                    # the file (round 17 of the hunt).
+                    if job.state in (CANCELLED, ERROR):
+                        if str(path) not in job.files:
+                            job.files.append(str(path))
+                        if job_id in stuck:
+                            continue    # another of its files is still held: its sentence stays
+                        if job.state == CANCELLED and "at the next start" in job.error:
+                            job.error = ""      # done: "Saved before it stopped" lists it
+                        elif job.state == ERROR and "at the next start" in job.error:
+                            # Failed only at the move, the download whole: it is
+                            # in the folder now. Left red with its promise and a
+                            # Retry, it invited a second download (round 18).
+                            job.state, job.error = DONE, ""
+                            job.note = "Put in the folder at this start."
                     continue
                 if str(path) not in job.files:
                     job.files.append(str(path))
+                if job_id in stuck:
+                    continue            # a file still held: not done, "Continue" stays
                 job.state, job.interrupted = DONE, False
                 job.note = "Saved from the download cut off last time."
         self.save()
@@ -603,6 +662,13 @@ class Queue:
             # pass with the same file.
             if target and target_clashes(str(target), self._taken(replace)):
                 raise TargetInUse(Path(target).name)
+            # The same link, the same format, the same folder, no "Save as"
+            # name: both runs would name the file from the title and write it
+            # at once (round 8 of the hunt, 2026-11-22).
+            if not target and any(j.state in ACTIVE_STATES and j.id != replace and not j.target
+                                  and j.url == url and j.mode == mode and j.folder == job.folder
+                                  for j in self._jobs.values()):
+                raise SameVideoBusy()
             if replace:
                 old = self._jobs.get(replace)
                 if old is None or old.state in ACTIVE_STATES:
@@ -623,6 +689,10 @@ class Queue:
                 elif not group:             # a Retry stays in its playlist
                     job.group, job.group_title, job.group_index = (
                         old.group, old.group_title, old.group_index)
+                # This very link was refused for an account before: a success
+                # now, with the log-in's cookies, proves that log-in (round 21
+                # -- a public video "proved" a log-in nobody made).
+                job.refused_for_login = bool(old.error) and cookies.needs_login(old.error)
                 self._jobs[replace] = job           # its place in _order stays
             else:
                 self._jobs[job.id] = job
@@ -657,14 +727,21 @@ class Queue:
     def all(self) -> list[dict]:
         """Newest first, which is the order the UI shows."""
         with self._lock:
-            rows = [self._jobs[i].as_dict() for i in reversed(self._order)]
+            order = [self._jobs[i] for i in reversed(self._order)]
+            rows = [job.as_dict(disk=False) for job in order]
+            copies = [job.disk_copy() for job in order]
             # A waiting download whose program is being updated says so: it
             # sat as a bare "Waiting" while the update waited (hunt round 2,
             # 2026-11-15). FFmpeg serves every download (`_pump`).
             for row in rows:
                 row["updating"] = row["state"] == WAITING and (
                     row["tool"] in self._held or "ffmpeg" in self._held)
-            return rows
+        # The disk is asked AFTER the lock: one stat per file of 500 rows, on
+        # a slow network folder, held the lock for seconds every refresh --
+        # progress, Stop and the update's wait all stalled (round 32).
+        for row, copy in zip(rows, copies):
+            row.update(_disk_fields(*copy))
+        return rows
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
@@ -675,8 +752,13 @@ class Queue:
             job = self._jobs.get(job_id)
             if job is None or job.state not in ACTIVE_STATES:
                 return False
+            waiting = job.state == WAITING
             job.state = CANCELLED
             job.stop.set()
+            if waiting:
+                # No worker will end its videos: each kept "Waiting" under a
+                # stopped row (silent-failure hunt, 2026-11-22).
+                _end_items(job)
             process = job.process
         if process and process.poll() is None:
             stop_tree(process)      # the worker sees CANCELLED and stays quiet
@@ -693,8 +775,11 @@ class Queue:
         with self._lock:
             active = [self._jobs[i] for i in self._order if self._jobs[i].state in ACTIVE_STATES]
             for job in active:
+                waiting = job.state == WAITING
                 job.state = CANCELLED
                 job.stop.set()
+                if waiting:
+                    _end_items(job)     # no worker will (as in cancel)
             processes = [job.process for job in active]
         for process in processes:
             if process and process.poll() is None:
@@ -730,6 +815,12 @@ class Queue:
     def release(self, tool_id: str) -> None:
         with self._lock:
             self._held.discard(tool_id)
+        self._pump()
+
+    def wake(self) -> None:
+        """Start what may start now: "Downloads at the same time" raised left
+        the waiting rows waiting until a running one ended -- for ever behind a
+        live recording (round 10 of the hunt, 2026-11-22)."""
         self._pump()
 
     def stop_all(self) -> int:
@@ -838,6 +929,11 @@ class Queue:
 
         def on_progress(progress: ytdlp.Progress) -> None:
             with self._lock:
+                # A download line means the last step ("Making the MP3",
+                # "Joining picture and sound") is over: in a post of several
+                # videos it stayed on the row, video 5 downloading under
+                # video 1's step and its growing seconds (round 14 of the hunt).
+                job.step = ""
                 job.percent, job.speed, job.eta = progress.percent, progress.speed, progress.eta
                 job.part = progress.part
                 job.done_bytes, job.total_bytes = progress.done, progress.total
@@ -1010,6 +1106,31 @@ class Queue:
                 # Subtitles asked: are they in the file / beside it (item 7)?
                 made = [f for f in result.files if f not in getattr(result, "skipped", [])]
                 note = ytdlp.subs_note(made, job.subs)
+            if job.mode == "mp4" and job.tool == "yt-dlp":
+                # MP4 asked, sound only came (an audio-only site): said, asked
+                # to the file -- the row said done (round 27 of the hunt).
+                made = [f for f in result.files if f not in getattr(result, "skipped", [])
+                        and Path(f).suffix.lower() not in (".srt", ".vtt", ".ass")]
+                if made and all(ytdlp.has_video(Path(f)) is False for f in made):
+                    note = " ".join(filter(None, [note, "Saved with sound only: this link gave no picture."]))
+            # A title too long for Windows' path limit is cut in the file name
+            # -- by the same rule the name was built with (yt-dlp: bytes; the
+            # other programs: Windows' units). Said, not silent (round 29;
+            # decision 34's naming rule). Not for a "Save as" name.
+            made_any = [f for f in result.files if f not in getattr(result, "skipped", [])]
+            # yt-dlp only: the other programs name the file from the post's
+            # own text or by themselves (gallery-dl, XHS-Downloader), so the
+            # row's title says nothing true about their cut (round 30).
+            if made_any and not job.target and job.title and job.tool == "yt-dlp":
+                try:
+                    from . import dialogs
+                    room = dialogs.name_room(Path(job.folder))
+                    size = len(job.title.encode("utf-8"))
+                    if size > room:
+                        note = " ".join(filter(None, [
+                            note, "The title was too long for Windows: the file name was shortened."]))
+                except Exception:
+                    pass        # a sentence not added is never a failed download
             # The run's own sentence (yutto without the log-in it was given).
             note = " ".join(filter(None, [note, getattr(result, "note", "")]))
             # The run's own answer wins when it has one (the file it really got).
@@ -1021,15 +1142,37 @@ class Queue:
                 # files are deleted below as leftovers: never shown.
                 if job.state != CANCELLED or job.tool in runners.LIVE_RECORDERS:
                     job.files = [str(p) for p in result.files]
+                    if job.state == CANCELLED and note:
+                        # A stopped live recording keeps its files AND what the
+                        # run said of them (".ts kept", round 5 of the hunt).
+                        job.note = f"{job.note} {note}".strip() if note not in job.note else job.note
                 if job.state != CANCELLED:
                     # Say the truth: the file was already there and nothing
                     # was written. "Done" would be a lie the user cannot see.
                     job.skipped = result.nothing_downloaded
                     job.skip_reason = getattr(result, "skip_reason", "")
+                    # Only when yt-dlp really said it embedded them: a site with
+                    # no subtitles in that language adds nothing (round 19).
+                    embedded = any(line.startswith("[EmbedSubtitle]")
+                                   for line in getattr(result, "log_tail", []) or [])
+                    if (job.skipped and job.tool == "yt-dlp" and job.subs == "embed"
+                            and not job.skip_reason and embedded):
+                        # yt-dlp says "already downloaded" and still puts the
+                        # subtitles into that file, keeping its date (seen
+                        # 2026-11-01, docs/BELIEFS.md): "nothing was downloaded"
+                        # alone hid a change to the user's file (round 18).
+                        job.skip_reason = ("The file was already in this folder and was not "
+                                           "downloaded again, but yt-dlp still added the "
+                                           "subtitles into it.")
                     job.note = note
                     job.state = DONE
                     job.percent = "100%"
-                    if job.old_parts:
+                    # The post's old rows go only when this run got the post
+                    # again: a Retry that found the files "already there" got
+                    # nothing, and the rows vanished with no file behind the
+                    # one left (round 5 of the hunt, 2026-11-22). Kept, the debt
+                    # stays for the next "Download again".
+                    if job.old_parts and not job.skipped and job.files:
                         for other in [i for i in self._order if i != job.id
                                       and self._jobs[i].group == job.old_parts]:
                             del self._jobs[other]
@@ -1043,10 +1186,13 @@ class Queue:
             if limit:
                 # Ended by its time limit: a finished recording, not an error.
                 kept = _keep_recording(destinations)
+                mp3_problem = ""
                 if job.mode == "mp3":
-                    kept = _as_mp3(kept, job.quality)
+                    kept, mp3_problem = _as_mp3(kept, job.quality)
                 with self._lock:
                     job.files = [str(p) for p in kept]
+                    if mp3_problem:     # added to a note already there, never over it
+                        job.note = f"{job.note} {mp3_problem}".strip()
                     job.state = DONE
                     job.percent = "100%"
                     if not kept:
@@ -1061,6 +1207,13 @@ class Queue:
                     # A stopped recording that could not be moved out: it is
                     # kept aside, and the row says so instead of nothing.
                     job.error = str(exc)
+                    # The files that did reach the folder are listed too
+                    # (a stopped board, round 16).
+                    job.files = [str(f) for f in getattr(exc, "saved", [])] or job.files
+                elif job.state == CANCELLED and getattr(exc, "saved", None):
+                    # Finished files a stopped run kept (gallery-dl's pins):
+                    # the row says "Saved before it stopped" (round 15).
+                    job.files = [str(f) for f in exc.saved]
                 elif job.state != CANCELLED:    # a cancel is not a failure
                     job.state = ERROR
                     job.error = str(exc)
@@ -1096,10 +1249,13 @@ class Queue:
             # stream), so it becomes `<name>.ts` under a free name.
             if stopped and live:
                 kept = _keep_recording(destinations)
+                mp3_problem = ""
                 if job.mode == "mp3":
-                    kept = _as_mp3(kept, job.quality)
+                    kept, mp3_problem = _as_mp3(kept, job.quality)
                 with self._lock:
                     job.files = [str(p) for p in kept]
+                    if mp3_problem:     # added to a note already there, never over it
+                        job.note = f"{job.note} {mp3_problem}".strip()
             # Here the tool has ended (download() returned), so Windows no
             # longer holds its files open and they can go. Never after a live
             # recording: a `.part` that could not be renamed is still it.
@@ -1138,9 +1294,18 @@ class Queue:
                 # yutto with the switch on but no Bilibili log-in saved ran
                 # with nothing: "none", not what the site's sign says.
                 given = bool(job.cookie_file) or (job.cookie_header and not job.no_login_given)
-                if state == DONE and not skipped and job.platform:
+                # Forgotten DURING the run: it had a copy of the cookies, and
+                # the state read now ("none") recorded "works with no log-in"
+                # from a logged-in success (round 3 of the hunt, 2026-11-22).
+                changed_meanwhile = given and not cookies.have_file()
+                if state == DONE and not skipped and job.platform and not changed_meanwhile:
                     seen = login.site_state(job.platform) if given else "none"
-                    if seen in ("none", "visited"):
+                    if given and login.tried_unproven(job.platform):
+                        # A log-in done in the window, blue until proven: this
+                        # success is no "visit is enough" -- it may be the
+                        # proof that turns the sign green (round 20).
+                        login.prove(job.platform, job.refused_for_login)
+                    elif seen in ("none", "visited"):
                         needs.record(job.platform, job.tool, "visit" if seen == "visited" else "none")
                 elif state == ERROR and job.platform and cookies.needs_login(error):
                     needs.record(job.platform, job.tool, "account")

@@ -18,6 +18,7 @@ Three kinds of tool:
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
@@ -273,11 +274,20 @@ def install_python_with_winget(timeout: float = 1800) -> dict:
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=timeout,
         )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"Windows took more than {int(timeout // 60)} minutes and was "
+                                      "stopped. Try again, or download Python yourself"}
     except Exception as exc:
-        return {"ok": False, "error": f"{type(exc).__name__}"}
+        return {"ok": False, "error": f"winget could not run ({type(exc).__name__}: {exc})"}
 
     if find_python():
         return {"ok": True, "error": ""}
+    if finished.returncode == 0:
+        # winget succeeded, but a new PATH reaches only programs started
+        # afterwards: the page said "Not installed: Successfully installed"
+        # (silent-failure hunt, 2026-11-22).
+        return {"ok": False, "installed": True,
+                "error": "Windows installed Python. Close and open Teleloadzai so it can use it."}
     tail = (finished.stdout or finished.stderr or "").strip().splitlines()
     return {
         "ok": False,
@@ -310,8 +320,11 @@ def installed_path(tool_id: str) -> Path | None:
     # A whole-folder tool and no name given: guess, but never blindly.
     # "Biggest .exe" alone chose XHS-Downloader-GUI.exe over the command-line
     # one (2026-09-21), so the graphical and helper programs are pushed last.
+    # Only with NO name given: with one, a missing file (an antivirus took
+    # streamlink.exe) made this pick ffmpeg.exe from the same folder -- the
+    # row said "installed" and ran another program (round 23 of the hunt).
     inside = BIN_DIR / tool.id
-    if inside.is_dir():
+    if inside.is_dir() and not tool.exe_name:
         exes = [p for p in inside.rglob("*.exe")
                 if not any(word in p.stem.lower()
                            for word in ("gui", "setup", "install", "uninstall", "update"))]
@@ -424,16 +437,50 @@ def _pip_version(tool: ToolSpec) -> str:
 # the 24 hour cache
 # --------------------------------------------------------------------------
 
-def _load_cache() -> dict:
+def _load_cache(strict: bool = False) -> dict | None:
     # Under the save's lock: on Windows a read and a replace of the same file
     # refuse each other -- 16 of 3,000 saves refused while another thread
     # read, 0 with one lock (2026-11-01); a refused save left
     # `tools.json.<n>.tmp`, and a refused read gave {}.
+    # The lock is this process's only: the quality check, another process,
+    # saves this file too. A read it refused gave {}, and the next change
+    # wrote {} + one entry over every record (round 16 of the hunt). Tried
+    # again -- a change for a second, a plain read for 0.15 s (a second each
+    # made the Programs list wait 8 s, round 17); a change still refused
+    # gets None and writes nothing (`_change_cache` says it).
+    tries = 20 if strict else 3
     with _cache_lock:
-        try:
-            return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
+        for attempt in range(tries):
+            try:
+                return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+            except PermissionError:
+                if attempt < tries - 1:
+                    time.sleep(0.05)
+                    continue
+                return None if strict else {}
+            except ValueError as problem:
+                return _set_aside(problem)
+            except Exception:
+                return {}
+        return {}
+
+
+def _set_aside(problem: Exception) -> dict:
+    """A damaged tools.json: moved aside and said, then read as empty."""
+    # Damaged: set aside and said, as the other data files. Read as {}
+    # it was written over by the next change, and the release records
+    # of TikTokDownloader and KS-Downloader vanished with no word
+    # (silent-failure hunt, 2026-11-22).
+    aside = CACHE_FILE.with_name(f"tools.bad-{time.strftime('%Y%m%d-%H%M%S')}.json")
+    try:
+        os.replace(CACHE_FILE, aside)
+        where = f"set aside as {aside.name}"
+    except OSError:
+        where = "left as it is"
+    from . import console
+    console.add("app", f"Teleloadzai: data/{CACHE_FILE.name} could not be read ({problem}); "
+                f"{where}. Program versions are asked again.", "err")
+    return {}
 
 
 def _save_cache(cache: dict) -> None:
@@ -451,7 +498,15 @@ def _change_cache(change: Callable[[dict], None]) -> None:
     """Read, change and write the cache as one step: "Update all" installs
     in parallel, and two of them could each write over the other's record."""
     with _cache_lock:
-        cache = _load_cache()
+        cache = _load_cache(strict=True)    # never {} written over every record
+        if cache is None:
+            # Held by another program for a second: this change is not saved,
+            # and said -- raised, it turned a finished install into "Failed:
+            # PermissionError" (round 17 of the hunt). Asked again next time.
+            from . import console
+            console.add("app", f"Teleloadzai: data/{CACHE_FILE.name} is held by another program; "
+                        "a version record was not saved this time.", "err")
+            return
         change(cache)
         _save_cache(cache)
 
@@ -461,7 +516,10 @@ def _is_fresh(entry: dict, hours: float = CACHE_HOURS) -> bool:
         checked = datetime.fromisoformat(entry["checked_at"])
     except Exception:
         return False
-    return datetime.now(timezone.utc) - checked < timedelta(hours=hours)
+    # A time in the future (the clock was ahead, then fixed) is not fresh: it
+    # stayed "fresh" for the whole gap, no update looked for (round 23).
+    age = datetime.now(timezone.utc) - checked
+    return timedelta(0) <= age < timedelta(hours=hours)
 
 
 def latest_release(tool_id: str, force: bool = False,
@@ -489,7 +547,14 @@ def latest_release(tool_id: str, force: bool = False,
     remembered = entry.get("version") and usable
     fresh = _is_fresh(entry, CACHE_HOURS if max_age_hours is None else max_age_hours)
     if not force and remembered and (fresh or _failed_lately(entry)):
-        return {k: entry.get(k, "") for k in ("version", "url", "size")} | {"error": ""}
+        kept = {k: entry.get(k, "") for k in ("version", "url", "size")} | {"error": ""}
+        # An answer GitHub failed to renew since is old, marked so, as below
+        # (round 14). Judged by the failure's time, not by this caller's
+        # age limit: a check (1 h) marked it, the Programs list (6 h) took
+        # the mark away, and "already the newest version" came back (round 15).
+        if _failed_lately(entry) and _failed_since_answer(entry):
+            kept["stale"] = "cannot reach GitHub (tried less than an hour ago)"
+        return kept
     if not force and _failed_lately(entry):
         return {"error": "cannot reach GitHub (tried less than an hour ago)"}
 
@@ -507,9 +572,12 @@ def latest_release(tool_id: str, force: bool = False,
         # (decision 18). Install and Update pass `force` and still ask.
         _change_cache(lambda cache: cache.setdefault(key, {}).__setitem__(
             "failed_at", datetime.now(timezone.utc).isoformat()))
-        # Keep an old answer rather than nothing.
+        # Keep an old answer rather than nothing -- marked as old, so "Check
+        # versions" can say GitHub did not answer (silent-failure hunt,
+        # 2026-11-22: offline, the old versions came back as if new).
         if remembered:
-            return {k: entry.get(k, "") for k in ("version", "url", "size")} | {"error": ""}
+            return ({k: entry.get(k, "") for k in ("version", "url", "size")}
+                    | {"error": "", "stale": f"cannot reach GitHub ({type(exc).__name__})"})
         return {"error": f"cannot reach GitHub ({type(exc).__name__})"}
 
     found = {"version": (data.get("tag_name") or "").lstrip("v"), "url": "", "size": 0}
@@ -529,12 +597,22 @@ def latest_release(tool_id: str, force: bool = False,
     return found | {"error": ""}
 
 
+def _failed_since_answer(entry: dict) -> bool:
+    """GitHub's last try failed after its last good answer."""
+    try:
+        return (datetime.fromisoformat(entry["failed_at"])
+                > datetime.fromisoformat(entry["checked_at"]))
+    except Exception:
+        return False
+
+
 def _failed_lately(entry: dict) -> bool:
     try:
         failed = datetime.fromisoformat(entry["failed_at"])
     except Exception:
         return False
-    return datetime.now(timezone.utc) - failed < timedelta(hours=1)
+    age = datetime.now(timezone.utc) - failed
+    return timedelta(0) <= age < timedelta(hours=1)     # never from a future time (round 23)
 
 
 def _pick_asset(tool: ToolSpec, assets: list[dict]) -> dict | None:
@@ -601,7 +679,12 @@ def _download(url: str, target: Path, on_progress: ProgressFn | None, label: str
                                 f"({attempt + 1} of {DOWNLOAD_TRIES})", 0)
                 time.sleep(2 * attempt)
 
-    raise InstallError(f"download failed after {DOWNLOAD_TRIES} tries: {last_error}")
+    # Windows' sentence for the reason, not Python's whole object ("<urlopen
+    # error [WinError 10054] ...>" reached the row, round 9 of the hunt).
+    reason = getattr(last_error, "reason", last_error)
+    why = getattr(reason, "strerror", None) or str(reason) or type(last_error).__name__
+    raise InstallError(f"the download broke off {DOWNLOAD_TRIES} times ({why}). "
+                       "Check the internet connection and try again")
 
 
 def install(tool_id: str, on_progress: ProgressFn | None = None) -> str:
@@ -660,10 +743,17 @@ def _check_program(path: Path, tool: ToolSpec) -> None:
     try:
         with path.open("rb") as program:
             head = program.read(4096)
+    except OSError as problem:
+        # Not opened (gone, or held -- by an antivirus, for one) is not "not a
+        # Windows program": Windows' reason is said instead (round 23).
+        raise InstallError(f"the downloaded {tool.name} could not be opened "
+                           f"(Windows says: {problem.strerror or problem}); "
+                           "the installed one was kept") from problem
+    try:
         start = struct.unpack_from("<I", head, 0x3C)[0]
         machine = struct.unpack_from("<H", head, start + 4)[0]
         is_program = head[:2] == b"MZ" and head[start:start + 4] == b"PE\0\0"
-    except (OSError, struct.error):
+    except struct.error:
         is_program, machine = False, 0
     if not is_program:
         raise InstallError(f"the downloaded {tool.name} is not a Windows program; "
@@ -682,8 +772,14 @@ def _install_exe(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
     except InstallError:
         temporary.unlink(missing_ok=True)
         raise
-    # A title read can hold yt-dlp.exe for a few seconds: wait for it rather
-    # than fail on a raw "PermissionError".
+    _put_in_place(temporary, target, tool)
+
+
+def _put_in_place(temporary: Path, target: Path, tool: ToolSpec) -> None:
+    """`temporary` becomes `target`. A title read can hold yt-dlp.exe, a
+    Console command ffmpeg.exe, for a few seconds: waited for rather than a
+    raw "PermissionError" (FFmpeg had none of this until the silent-failure
+    hunt of 2026-11-22)."""
     for attempt in range(10):
         try:
             temporary.replace(target)
@@ -691,6 +787,11 @@ def _install_exe(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
         except PermissionError:
             time.sleep(1)
     temporary.unlink(missing_ok=True)
+    # Our own daily check can hold it for minutes, not "a moment" (round 16).
+    from . import paths
+    if paths.quality_check_running():
+        raise InstallError(f"{tool.name} is in use by Teleloadzai's quality check, running "
+                           "right now. The installed one was kept: try again in a few minutes.")
     raise InstallError(f"{tool.name} is in use by another program. "
                        "The installed one was kept: try again in a moment.")
 
@@ -723,8 +824,19 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
                 for temporary, target in taken:
                     if target.suffix.lower() == ".exe":
                         _check_program(temporary, tool)
+                done: list[str] = []
                 for temporary, target in taken:     # only now, all of them complete
-                    temporary.replace(target)
+                    try:
+                        _put_in_place(temporary, target, tool)
+                    except InstallError as problem:
+                        if not done:
+                            raise               # nothing replaced: "the installed one was kept" is true
+                        # ffmpeg.exe new, ffprobe.exe old: "kept" would be false
+                        # (round 2 of the hunt, 2026-11-22).
+                        raise InstallError(f"{', '.join(done)} {'was' if len(done) == 1 else 'were'} updated, "
+                                           f"but {target.name} is in use by another program. "
+                                           f"Update {tool.name} again in a moment.") from problem
+                    done.append(target.name)
             else:
                 folder = BIN_DIR / tool.id
                 fresh = BIN_DIR / f"{tool.id}.new"
@@ -737,11 +849,24 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
                 if tool.exe_name:
                     program = next(fresh.rglob(tool.exe_name), None)
                     if program is None:
-                        raise InstallError(f"{tool.exe_name} is not in the downloaded "
-                                           f"archive; the installed {tool.name} was kept")
+                        # In the archive but not on the disk after unpacking
+                        # is not "not in the archive" (round 23): something
+                        # on this PC removed it; only that is known.
+                        inside = any(Path(n).name.lower() == tool.exe_name.lower()
+                                     for n in zipped.namelist())
+                        raise InstallError(
+                            f"{tool.exe_name} was in the downloaded archive but is not on the disk "
+                            f"after unpacking (something on this PC removed it); the installed "
+                            f"{tool.name} was kept" if inside else
+                            f"{tool.exe_name} is not in the downloaded "
+                            f"archive; the installed {tool.name} was kept")
                     _check_program(program, tool)
                 if folder.exists():
-                    folder.rename(old)              # fails cleanly if the tool is in use
+                    try:
+                        folder.rename(old)          # fails cleanly if the tool is in use
+                    except OSError as problem:      # said in words, not Windows' raw ones
+                        raise InstallError(f"{tool.name} is in use by another program. The "
+                                           "installed one was kept: try again in a moment.") from problem
                 try:
                     fresh.rename(folder)
                 except OSError:
@@ -749,6 +874,18 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
                         old.rename(folder)          # put the working one back
                     raise
                 shutil.rmtree(old, ignore_errors=True)
+    # Said in words, as every other install failure: these two reached the
+    # Programs row as "BadZipFile: File is not a zip file" and "[Errno 28]"
+    # (round 16 of the hunt). The working tool is untouched in both.
+    except zipfile.BadZipFile as problem:
+        raise InstallError(f"the downloaded {tool.name} file is damaged or is not a zip "
+                           "(something on the network may have answered instead of GitHub). "
+                           "The installed one was kept: try again.") from problem
+    except OSError as problem:
+        if problem.errno != errno.ENOSPC and getattr(problem, "winerror", None) not in (39, 112):
+            raise
+        raise InstallError(f"there is not enough space on the disk to unpack {tool.name}. "
+                           "The installed one was kept: free some space and try again.") from problem
     finally:
         archive.unlink(missing_ok=True)
         for leftover in BIN_DIR.glob(f"{tool.id}.new"):
@@ -807,12 +944,18 @@ def _install_pip(tool: ToolSpec, on_progress: ProgressFn | None) -> None:
     with _pylibs_lock:                  # waits only for a clean-up's file work
         _pip_running += 1
     try:
-        finished = subprocess.run(
-            [python, "-m", "pip", "install", "--upgrade", "--no-input",
-             "--target", str(libs_dir()), tool.pip_name],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=900, creationflags=_NO_WINDOW,
-        )
+        try:
+            finished = subprocess.run(
+                [python, "-m", "pip", "install", "--upgrade", "--no-input",
+                 "--target", str(libs_dir()), tool.pip_name],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=900, creationflags=_NO_WINDOW,
+            )
+        except subprocess.TimeoutExpired as problem:
+            # Python's own words, with the whole command line, reached the
+            # row (silent-failure hunt, 2026-11-22).
+            raise InstallError(f"pip took more than 15 minutes to install {tool.name} and was "
+                               "stopped. Check the internet connection and try again.") from problem
         if finished.returncode != 0:
             last = (finished.stderr or finished.stdout or "").strip().splitlines()
             raise InstallError(last[-1] if last else "pip failed")
@@ -959,8 +1102,17 @@ def unneeded_packages() -> list[str]:
     pip tool used to remove its own package only: f2's 43 stayed for weeks,
     94 MB (found 2026-11-10)."""
     packages = _pip_packages()
-    roots = [*APP_PACKAGES] + [t.pip_name for t in SPECS
-                               if t.kind == "pip" and installed_path(t.id)]
+    installed = [t.pip_name for t in SPECS if t.kind == "pip" and installed_path(t.id)]
+    # An installed program with no record (its install cut short): what it
+    # needs is unknown, so nothing is deleted -- its packages went, and it
+    # broke (round 11 of the hunt, 2026-11-22).
+    if any(_package_key(name) not in packages for name in installed):
+        from . import console
+        console.add("app", "Teleloadzai: unused packages were kept: a program's install record is "
+                    "missing, so what it needs is not known. Remove that program and install it "
+                    "again to tidy up.", "note")      # said, not silent (round 12 of the hunt)
+        return []
+    roots = [*APP_PACKAGES] + installed
     env = _marker_env()
     needed: set[str] = set()
     waiting = [_package_key(r) for r in roots]
@@ -1226,6 +1378,7 @@ def status(tool_id: str, check_online: bool = True) -> dict:
         "channel": channel(tool_id) if tool.preview_repo else "",
         "size": release.get("size", 0),
         "error": release.get("error", ""),
+        "stale": release.get("stale", ""),     # GitHub did not answer: an old answer
     }
 
 

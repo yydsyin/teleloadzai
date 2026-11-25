@@ -28,7 +28,7 @@ from urllib.parse import parse_qs, urlsplit
 from . import commands, console, cookies, dialogs, explain, login, needs, notify, runners, signs, toolservers, tools, ytdlp
 from .config import APP_NAME, APP_REPO, APP_VERSION
 from .detect import Detection, detect
-from .jobs import DONE, ERROR, Queue, TargetInUse, target_clashes
+from .jobs import DONE, ERROR, Queue, SameVideoBusy, TargetInUse, target_clashes
 from .paths import DATA_DIR, DEFAULT_DOWNLOAD_DIR, WEB_DIR, ensure_dirs
 from .platforms import PLATFORMS, tool_name
 
@@ -322,7 +322,8 @@ def _apply_settings(settings: dict, body: dict) -> None:
         settings["update_mode"] = body["update_mode"]
     if body.get("ytdlp_channel") in ("stable", "preview"):
         settings["ytdlp_channel"] = body["ytdlp_channel"]
-        tools.set_preview("yt-dlp", body["ytdlp_channel"] == "preview")
+        # tools.set_preview follows what is SAVED (the route, after the
+        # write): set here, a refused save left Preview on in memory.
     if body.get("cookies_keep") in ("keep", "once"):
         settings["cookies_keep"] = body["cookies_keep"]
     if "use_clipboard" in body:      # False is a real value, not "missing"
@@ -499,7 +500,10 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
     if not runners.reads_link(tool, url):
         return {"error": f"{tool_name(tool)} cannot read this link. Choose another program."}, 400
     if tools.installed_path(tool) is None:
-        return {"error": f"{tool} is not installed"}, 400
+        # Its name and a way out (decision 15): "gallery-dl is not installed"
+        # was a dead end on a Retry (round 5 of the hunt, 2026-11-22).
+        return {"error": f"{tool_name(tool)} is not installed. Install it on the Programs page, "
+                         "then try again."}, 400
     # Subtitles (Phase 2 item 7): only in MP4, only for a program that makes
     # them (runners.CHOICES "subs"), only a code shaped like one. Anything
     # else is dropped, never passed on as if it would happen.
@@ -534,6 +538,9 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
     except TargetInUse as taken:
         return {"error": f"Another download in the list is already saving to “{taken}”. "
                          "Choose another name."}, 409
+    except SameVideoBusy:
+        return {"error": "This video is already downloading to this folder. Wait for it to end, "
+                         "or choose another folder."}, 409
     if job is None:
         return {"error": "that download is still running, or no longer exists"}, 409
     return job.as_dict(), 200
@@ -631,8 +638,11 @@ def start_install(tool_id: str) -> dict:
             console.add(line_id, stage[:1].upper() + stage[1:] + "…")
 
     def work() -> None:
+        # An update or a first install: the failure says which (round 9 of the hunt).
+        updating = False
         try:
-            console.add(line_id, f"{'Updating' if tools.status(tool_id, check_online=False)['installed'] else 'Installing'} {name}", "head")
+            updating = tools.status(tool_id, check_online=False)["installed"]
+            console.add(line_id, f"{'Updating' if updating else 'Installing'} {name}", "head")
             # Never while this tool downloads (decision 19): it waits, and
             # says so. Its new downloads do not start meanwhile.
             # Held FIRST, then the wait: a Console command checks `held`, so
@@ -669,10 +679,14 @@ def start_install(tool_id: str) -> dict:
                         else f"The update did not change {name}: {new} is kept.", "end")
         except tools.InstallError as exc:
             # "python_missing" is not a failure, it is a question for the user.
-            _set_install(tool_id, state="error", error=str(exc))
-            console.add(line_id, f"Failed: {exc}", "err")
+            _set_install(tool_id, state="error", error=str(exc), updating=updating)
+            # The page reads the code word; the Console gets the sentence
+            # (round 5 of the hunt, 2026-11-22: "Failed: python_missing").
+            said = (f"{name} needs Python, which is not on this PC. See the Programs page."
+                    if str(exc) == "python_missing" else f"Failed: {exc}")
+            console.add(line_id, said, "err")
         except Exception as exc:
-            _set_install(tool_id, state="error", error=f"{type(exc).__name__}: {exc}")
+            _set_install(tool_id, state="error", error=f"{type(exc).__name__}: {exc}", updating=updating)
             console.add(line_id, f"Failed: {type(exc).__name__}: {exc}", "err")
 
     threading.Thread(target=work, daemon=True).start()
@@ -878,6 +892,22 @@ class Handler(BaseHTTPRequestHandler):
     # -- routes ------------------------------------------------------------
 
     def do_GET(self) -> None:
+        """Every request gets an answer, as do_POST: an error in a GET route
+        (the Programs list, the downloads) closed the connection with none,
+        and the page stayed stale with no word (silent-failure hunt, 2026-11-22)."""
+        self._answered = False
+        try:
+            self._do_get()
+        except (BrokenPipeError, ConnectionError):
+            pass                # the page went away: nobody to tell
+        except Exception as problem:
+            traceback.print_exc()
+            if not self._answered:
+                words = cookies.redact(str(problem))[:300]
+                self._json({"error": f"Teleloadzai hit an unexpected problem "
+                                     f"({type(problem).__name__}: {words})."}, 500)
+
+    def _do_get(self) -> None:
         path = urlsplit(self.path).path
 
         if path == "/":
@@ -958,7 +988,8 @@ class Handler(BaseHTTPRequestHandler):
                     # Said with its real name: rows read "Update
                     # tiktokdownloader" (review of 2026-09-28).
                     job["tool_name"] = tool_name(job["tool"])
-                self._json({"jobs": jobs, "load_problem": QUEUE.load_problem})
+                self._json({"jobs": jobs, "load_problem": QUEUE.load_problem,
+                            "save_problem": QUEUE.save_problem})
                 return
 
             if path == "/api/tools":
@@ -976,7 +1007,8 @@ class Handler(BaseHTTPRequestHandler):
                 # What changed in the sign list since the user's last OK (model
                 # A, 2026-11-20); asking also fetches it when due (signs.py).
                 signs.refresh_soon()
-                self._json(signs.changes())
+                # Why the last fetch failed, for the Sites page (round 17).
+                self._json({**signs.changes(), "problem": signs._state.get("problem", "")})
                 return
 
             if path == "/api/tools/progress":
@@ -1093,6 +1125,18 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/tools/remove":
             tool_id = (body.get("id") or "").strip()
+            # Never under a running download, as Install and Update wait for
+            # one: gallery-dl's files went from under it (round 5 of the hunt,
+            # 2026-11-22). The page says "Close any download that uses it".
+            # ...nor under a Console command, nor during its own install or
+            # update -- the checks Install itself makes (round 6 of the hunt).
+            with _installs_lock:     # an install just started holds its tool a moment later (round 7)
+                installing = _installs.get(tool_id, {}).get("state") == "running"
+            busy = ("downloading" if QUEUE.busy(tool_id) else "console" if commands.busy(tool_id)
+                    else "updating" if QUEUE.held(tool_id) or installing else "")
+            if busy:
+                self._json({"removed": False, "busy": busy, "tool": tools.status(tool_id)})
+                return
             removed = tools.remove(tool_id)
             with _installs_lock:
                 _installs.pop(tool_id, None)
@@ -1106,8 +1150,15 @@ class Handler(BaseHTTPRequestHandler):
             if tools.spec(tool_id) is None:
                 self._json({"error": "unknown tool"}, 400)
                 return
-            tools.latest_release(tool_id, max_age_hours=1)
-            self._json({"tool": tools.status(tool_id)})
+            checked = tools.latest_release(tool_id, max_age_hours=1)
+            status = tools.status(tool_id)
+            # The check's own problem is passed on: thrown away, the row went
+            # on saying "already the newest version" from an answer hours old
+            # that this check failed to renew (round 14 of the hunt).
+            problem = checked.get("stale") or checked.get("error") or ""
+            if problem:
+                status = {**status, "stale": problem}
+            self._json({"tool": status})
             return
 
         if path == "/api/signs/tags-seen":
@@ -1118,14 +1169,27 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/signs/seen":
-            why = signs.mark_seen()
+            shown = body.get("date")
+            why = signs.mark_seen(shown if isinstance(shown, str) else None)
+            if why == "changed":        # a newer list arrived while the box was up (round 17)
+                self._json({"ok": False, "changed": True,
+                            "error": "The sign list changed while you looked: here is the new one."})
+                return
             self._json({"ok": not why, "error": f"Not saved: {why}." if why else ""})
             return
 
         if path == "/api/tools/refresh":
+            # What GitHub refused is said: status_all() below reads the cache,
+            # and offline the old versions came back as if new (silent-
+            # failure hunt, 2026-11-22).
+            refused = ""
             for tool in tools.SPECS:
-                tools.latest_release(tool.id, force=True)
-            self._json({"tools": tools.status_all(), "python": tools.python_state()})
+                answer = tools.latest_release(tool.id, force=True)
+                error = answer.get("error", "")
+                refused = refused or answer.get("stale", "") or (
+                    error if error.startswith("cannot reach GitHub") else "")
+            self._json({"tools": tools.status_all(), "python": tools.python_state(),
+                        "github_problem": refused})
             return
 
         if path == "/api/python/install":
@@ -1383,21 +1447,47 @@ class Handler(BaseHTTPRequestHandler):
                         "imported": summary["total"],
                         "ignored": summary["ignored"],
                         "ignored_sites": summary["ignored_sites"],
+                        "damaged": summary.get("damaged", 0),
                         "cookies": cookies.state(not switch_problem)})
             return
 
         if path == "/api/cookies/clear":
-            removed = cookies.clear()
-            login.forget_history()
+            try:
+                removed = cookies.clear()
+            except OSError as problem:
+                # Windows refused (the file held by another program): nothing
+                # was forgotten, and the page said "Cookies forgotten." with
+                # the log-ins still used (silent-failure hunt, 2026-11-22).
+                self._json({"error": f"Your log-ins could not be forgotten ({problem.strerror or problem}). "
+                                     "Close any download that uses them, then try again.",
+                            "cookies": cookies.state(bool(load_settings().get("cookies_enabled")))})
+                return
+            try:
+                login.forget_history()
+            except OSError as problem:
+                # The cookies ARE gone: the rest still runs, and this is said
+                # (round 2 of the hunt, 2026-11-22: a raise here skipped the
+                # switch and showed a bare "unexpected problem").
+                console.add("app", f"Teleloadzai: the list of past log-ins could not be cleared "
+                            f"({problem.strerror or problem}); it is cleared at the next Forget.", "err")
             # The log-in window's folder is tidied too. It holds no log-in --
             # the window runs in private mode (found 2026-09-26) -- so this is
             # housekeeping, and the page no longer claims otherwise.
-            wiped = login.forget_browser()       # "", "now" or "later"
+            wiped = login.forget_browser()       # "", "now", "later" or "kept"
+            refused = None
             with _settings_change:
                 settings = load_settings()
                 settings["cookies_enabled"] = False
-                save_settings(settings)
+                try:
+                    written = save_settings(settings)
+                except OSError as problem:
+                    written, refused = False, problem
+            if not written:
+                # The cookies ARE gone; only the switch could not be saved.
+                self._json({**_not_saved(refused), "cookies": cookies.state(False)}, 409)
+                return
             self._json({"removed": removed, "browser_wiped": wiped,
+                        "copies_left": cookies.copies_left,     # held by a running tool (round 17)
                         "cookies": cookies.state(False)})
             return
 
@@ -1456,6 +1546,23 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/settings":
+            typed = (body.get("download_folder") or "").strip()
+            if typed:
+                # A typed folder must be a whole path: "Videos" or
+                # "%USERPROFILE%\Videos" was saved as it was, and files went
+                # to a folder of that name beside the app (round 4 of the
+                # hunt, 2026-11-22). %VARIABLES% and ~ are expanded first.
+                whole = os.path.expandvars(os.path.expanduser(typed))
+                # A real % in a folder's name is allowed (round 5): an unknown
+                # %VARIABLE% stays relative and is refused by isabs alone.
+                if not os.path.isabs(whole):
+                    self._json({"error": "Type the whole path of the folder, for example "
+                                         "C:\\Users\\you\\Videos, or press Browse….", "not_saved": True}, 409)
+                    return
+                # Windows' own spelling: "D:/Videos" stayed as typed while the
+                # rows held "D:\Videos", and the page judged them different
+                # folders (round 17 of the hunt).
+                body["download_folder"] = os.path.normpath(whole)
             refused = None
             with _settings_change:
                 settings = load_settings()
@@ -1464,7 +1571,23 @@ class Handler(BaseHTTPRequestHandler):
                     written = save_settings(settings)
                 except OSError as problem:      # Windows refused the write
                     written, refused = False, problem
-            self._json(load_settings() if written else _not_saved(refused), 200 if written else 409)
+            # The yt-dlp channel in use = the one saved (silent-failure hunt,
+            # 2026-11-22: a refused save showed Stable and fetched Preview).
+            held = load_settings()
+            tools.set_preview("yt-dlp", held["ytdlp_channel"] == "preview")
+            if written and "max_parallel" in body:
+                QUEUE.wake()            # more at once: the waiting rows start now (round 10)
+            if written and typed:
+                # Not a setting: whether the typed folder is there yet. A typo
+                # ("D:\Vdeos") was saved as "Folder saved." and made in silence
+                # at the first download (round 15 of the hunt).
+                # A file of that name, or a drive not connected, is not "made
+                # at the first download" (round 16): each said as it is.
+                chosen = Path(held["download_folder"])
+                state = ("there" if chosen.is_dir() else "file" if chosen.exists()
+                         else "no_drive" if not Path(chosen.anchor or ".").exists() else "missing")
+                held = {**held, "folder_state": state}
+            self._json(held if written else _not_saved(refused), 200 if written else 409)
             return
 
         self._json({"error": "not found"}, 404)

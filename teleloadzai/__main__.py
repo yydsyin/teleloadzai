@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import console, cookies, login, notify, runners, toolservers
+from . import commands, console, cookies, login, notify, runners, toolservers
 from .config import APP_NAME, APP_VERSION
 from .server import QUEUE, claim, forget_if_once, holder_is_us, serve, start_background
 
@@ -49,11 +49,17 @@ def opening_place() -> tuple[int, int, int | None, int | None]:
 def say_port_taken(port: int, show_box: bool) -> None:
     """The second copy says why it opens nothing -- never a silent exit
     (decision 34). In a Windows box, because the app has no other screen."""
+    # A frozen copy answers nothing and looked like "another program"; the
+    # advice "--port and another number" then started a second copy on the
+    # SAME data folder, whose start-up sweep takes the first one's running
+    # downloads (round 18 of the hunt). Both cases now point at Task Manager.
     if holder_is_us(port):
-        text = f"{APP_NAME} is already open. Look for its window in the taskbar."
+        text = (f"{APP_NAME} is already open. Look for its window in the taskbar. "
+                f"If that window does not answer, end {APP_NAME} in Task Manager, then start it again.")
     else:
-        text = (f"{APP_NAME} cannot start: another program is using port {port}. "
-                f"Close it, or start {APP_NAME} with --port and another number.")
+        text = (f"{APP_NAME} cannot start: port {port} is in use. It may be {APP_NAME} itself, "
+                f"open but not answering, or another program. End it in Task Manager, then start "
+                f"{APP_NAME} again.")
     print(text)
     if show_box and sys.platform == "win32":
         import ctypes
@@ -144,6 +150,13 @@ def open_window(port: int, httpd=None) -> int:
         stopped = QUEUE.stop_all()
         if stopped:
             print(f"{stopped} download(s) stopped.")
+        # The Console's command too: only Windows' job object ended it, and
+        # one Windows refused to bind went on after the app (round 17).
+        try:
+            if commands.stop():
+                print("The Console's command was stopped.")
+        except Exception as problem:            # never block the shutdown
+            print(f"Could not stop the Console's command: {problem}")
         notify.close()          # no icon may stay in the notification area
         for server in toolservers.ALL:
             if server.stop_now():
@@ -191,9 +204,20 @@ def main() -> int:
     try:
         forget_if_once()
     except Exception as problem:
-        print(f"Could not forget the log-ins from the last run: {problem}")
+        # Said on the Console page too: a print reaches no one in the app's
+        # window (silent-failure hunt, 2026-11-22).
+        text = (f"Your log-ins from the last run could not be forgotten ({problem}). "
+                "They are still saved: forget them on the Sites page.")
+        print(text)
+        console.add("app", f"Teleloadzai: {text}", "err")
     # The per-run cookie copies a crash left behind (cookies.for_one_run).
-    cookies.clear_run_copies()
+    # One that cannot be deleted is a copy of a log-in left on the disk:
+    # said, not passed over (round 17 of the hunt).
+    held = cookies.clear_run_copies()
+    if held:
+        console.add("app", f"Teleloadzai: {held} cop{'ies' if held > 1 else 'y'} of your log-ins "
+                    f"in data/cookie-runs could not be deleted (held by another program); "
+                    "tried again at the next start.", "err")
     # And the hidden work folders of downloads a crash cut off: what they
     # finished goes to the user's folder, the rest is deleted.
     try:
@@ -213,18 +237,33 @@ def main() -> int:
             console.add("app", f"Teleloadzai: {text}", "err")
     except Exception as problem:
         rescued = []
-        print(f"Could not clean up the unfinished downloads of last time: {problem}")
+        text = (f"The unfinished downloads of last time could not be cleaned up ({problem}). "
+                "Teleloadzai tries again at the next start.")
+        print(text)
+        console.add("app", f"Teleloadzai: {text}", "err")   # round 2 of the hunt, 2026-11-22
     # A site refused since (Netflix) must not keep the cookies it had.
     try:
         dropped = cookies.drop_unsupported()
         if dropped:
             print(f"{dropped} cookies of sites no longer supported were removed.")
     except Exception as problem:
-        print(f"Could not clean up the cookie file: {problem}")
+        text = (f"The cookies of sites no longer supported could not be removed ({problem}). "
+                "Teleloadzai tries again at the next start.")
+        print(text)
+        console.add("app", f"Teleloadzai: {text}", "err")
     # The list of the last run, after the sweep above has moved what cut-off
     # downloads finished: only now is the port ours (decision 21).
     QUEUE.load()
-    QUEUE.rescued([(owner, path) for owner, path in rescued if owner])
+    # The rows whose work folder still holds a file that could not be moved:
+    # never called done (round 19 -- a post went green with a file stuck).
+    stuck = set()
+    for owner, path in rescued:
+        if not owner:
+            try:
+                stuck.add((path / runners._JOB_MARK).read_text(encoding="utf-8").strip())
+            except OSError:
+                pass
+    QUEUE.rescued([(owner, path) for owner, path in rescued if owner], stuck)
 
     if args.no_browser:
         serve(port=args.port, open_browser=False, httpd=httpd)

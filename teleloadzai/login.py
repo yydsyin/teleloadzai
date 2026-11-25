@@ -196,9 +196,15 @@ def need(platform_id: str, tool_id: str, cookies_on: bool) -> dict | None:
     # Any cookie of the site at all: for a "visit" need, the visit is done
     # -- the TikTok tip showed on every link with TikTok cookies saved
     # (review of 2026-09-28).
-    visited = bool(platform and any(d in dates for d in platform.domains))
+    # Not from cookies all past their date: the reminder went and the sign
+    # said "Visited" for a visit long expired (round 17 of the hunt).
+    now = time.time()
+    visited = bool(platform and any(_alive(dates[d], now) for d in platform.domains if d in dates))
+    # A log-in done in the window, not proven yet (blue until proven, round
+    # 20): the card says so instead of asking for a log-in again.
     return {"kind": kind, "logged_in": logged_in, "cookies_on": cookies_on,
-            "visited": visited, "met": logged_in and cookies_on}
+            "visited": visited, "met": logged_in and cookies_on,
+            "tried": tried_unproven(platform_id)}
 
 
 def logged_in(platform_id: str, cookies_on: bool) -> bool:
@@ -235,6 +241,34 @@ def login_url(platform_id: str) -> str | None:
     return None
 
 
+def tried_unproven(platform_id: str) -> bool:
+    """A log-in was done in the window for a site with no known log-in
+    cookie, and no download has proven it yet. After a download, such a
+    success says nothing about what the site needs (never "a visit is
+    enough") -- it may be the proof instead (`prove`)."""
+    # "closed" too: a window closed by hand with cookies kept may hold a
+    # log-in, and was taken for a plain visit -- "a visit is enough" was
+    # learned from it (round 21 of the hunt).
+    # And a cookie of it still alive: all past their date, the log-in is gone
+    # and "Log in" must lead again, not Retry (round 22 of the hunt).
+    return (platform_id not in _BADGES
+            and _history().get(platform_id, {}).get("how") in ("auto", "button", "closed")
+            and site_state(platform_id) == "visited")
+
+
+def prove(platform_id: str, refused_for_login: bool) -> bool:
+    """A download with the cookies of a tried log-in worked. It proves the
+    log-in only when this very link was refused for an account before (a
+    Retry of a row that failed "needs a log-in"): a public video downloads
+    without one, and the sign list's "asks for an account" was seen on other
+    links (round 21 -- it "proved" a log-in made of a visit's cookies).
+    Then the sign turns green. True when proven."""
+    if not refused_for_login:
+        return False
+    _remember(platform_id, "proven")
+    return True
+
+
 def site_state(platform_id: str) -> str:
     """One site's state now, by the same rule as its sign: "logged_in",
     "expired", "visited" or "none" (`needs.py` reads it after a download)."""
@@ -250,8 +284,9 @@ def choices() -> list[dict]:
     Each carries a `state` for its button's sign -- green, red or nothing,
     never a grey "maybe" (the user, 2026-09-25):
       "logged_in" -- the site's badge (`_BADGES`) is in our file. For a site
-                     with no known badge: the last log-in window finished by
-                     itself, or the user pressed "I have logged in"
+                     with no known badge: a download that this link's
+                     refusal needed worked with the cookies ("proven",
+                     2026-11-23 -- the window's end alone stays "visited")
       "expired"   -- the badge is there but past its end date (for a site
                      with no badge: every dated cookie is)
       "visited"   -- the site's cookies are here but no log-in: a visit
@@ -279,8 +314,18 @@ def choices() -> list[dict]:
         state, latest = _sign(platform, dates, seen, now)
         offered.append({"id": platform.id, "name": platform.name, "url": url,
                         "state": state, "since": seen.get("at", 0),
-                        "ends": latest, "badge": platform.id in _BADGES})
+                        "ends": latest, "badge": platform.id in _BADGES,
+                        # a log-in tried in the window, not proven (round 21)
+                        "tried": platform.id not in _BADGES and state == "visited"
+                                 and seen.get("how") in ("auto", "button", "closed")})
     return offered
+
+
+def _alive(entry: dict, now: float) -> bool:
+    """A site's cookies still count: some end later, or only session cookies
+    (0: their end nobody can tell)."""
+    latest = entry.get("latest", 0.0)
+    return not latest or latest > now
 
 
 def _sign(platform, dates: dict, seen: dict, now: float) -> tuple[str, float]:
@@ -293,19 +338,27 @@ def _sign(platform, dates: dict, seen: dict, now: float) -> tuple[str, float]:
     # but no log-in -- a visit, which is all TikTok and Douyin need (§4).
     # A fact said in words, not a "maybe": the cookies are in our file.
     mine = [dates[d] for d in platform.domains if d in dates]
+    # A visit whose cookies are all past their date is no visit (round 17).
+    visit = any(_alive(m, now) for m in mine)
     if platform.id in _BADGES:
         ends = cookies.badge_dates(platform.domains, _BADGES[platform.id])
         latest = max(ends or [0.0])
         if ends is None:
-            return ("visited" if mine else "none"), latest
+            return ("visited" if visit else "none"), latest
         if all(0 < when < now for when in ends):
             return "expired", latest
         return "logged_in", latest
     latest = max((m["latest"] for m in mine), default=0.0)
     if not mine:
         return "none", latest
-    if seen.get("how") not in ("auto", "button"):
-        return "visited", latest
+    # A site with no known log-in cookie is green only once a download that
+    # needed an account worked with its cookies ("proven"). The window
+    # closing when the page left the log-in address proved nothing: the
+    # Vimeo logo, "Forgot password" or "Join" closed it and the app said
+    # "Logged in" (round 20 of the hunt; the user's choice, 2026-11-23:
+    # blue until proven). "auto" / "button" stay blue "Visited".
+    if seen.get("how") != "proven":
+        return ("visited" if visit else "none"), latest
     if latest and latest < now:
         return "expired", latest
     return "logged_in", latest
@@ -638,9 +691,16 @@ def _report(platform_id: str, kept: int, how: str, error: str = "") -> None:
     # Published last, in one step, with everything in it: published first,
     # the page read it before the sentence above was added and never showed
     # it (hunt of 2026-11-08, round 5).
+    # The sign the site has now: the page says "Logged in" only when it is
+    # green, never from the window's closing alone (round 20 of the hunt).
+    try:
+        signed = site_state(platform_id)
+    except Exception:
+        signed = "none"
     _result_number += 1
     _result = dict(number=_result_number, platform=platform_id, kept=kept,
-                   how=how, error=error, switch_problem=problem)   # one step: never half a result
+                   how=how, error=error, switch_problem=problem,
+                   signed=signed)   # one step: never half a result
 
 
 def state() -> dict:
@@ -815,10 +875,13 @@ def finish() -> int:
         try:
             jar = window.get_cookies()
         except Exception as problem:
+            # The window closes below in every case: the old advice ("leave
+            # the window open… press the button again") could not be
+            # followed (silent-failure hunt, 2026-11-22).
             raise LoginError(
                 "The site took too long to answer, so the cookies could not be "
-                "read. Leave the window open on the site itself, wait for the "
-                "page to finish, and press the button again."
+                "read, and the log-in window was closed. Open the log-in again "
+                "on the Sites page: you may need to log in once more."
             ) from problem
 
         fresh = _only_site(_netscape_lines(jar), platform_id)
@@ -876,9 +939,11 @@ def forget_browser() -> str:
     WebView2 profile behind, so the next log-in window would open **already
     logged in** -- the app would say it had forgotten and plainly have not.
 
-    Returns "" when there was nothing, "now" when it is gone, or "later" when
-    Windows refused and it will go at the next start. Never claims a deletion
-    that did not happen.
+    Returns "" when there was nothing, "now" when it is gone, "later" when
+    Windows refused and it will go at the next start, or "kept" when even the
+    note for the next start could not be written. Never claims a deletion
+    that did not happen, and never raises: an unwritable note stopped
+    "Forget them" half-way, the switch left on (silent-failure hunt, 2026-11-22).
     """
     close()                       # nothing of OURS may hold the files open
     if not BROWSER_PROFILE.exists():
@@ -887,9 +952,12 @@ def forget_browser() -> str:
     try:
         shutil.rmtree(BROWSER_PROFILE)
     except OSError:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        FORGET_MARKER.write_text("delete the login profile at the next start\n",
-                                 encoding="utf-8")
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            FORGET_MARKER.write_text("delete the login profile at the next start\n",
+                                     encoding="utf-8")
+        except OSError:
+            return "kept"         # it holds no log-in (private window): housekeeping
         return "later"
     FORGET_MARKER.unlink(missing_ok=True)
     return "now"

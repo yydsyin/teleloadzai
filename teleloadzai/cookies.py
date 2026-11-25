@@ -146,7 +146,7 @@ def for_one_run(path: Path | None) -> Iterator[Path | None]:
         with _lock:
             try:
                 if (_generation == started and COOKIE_FILE.is_file()
-                        and copy.is_file() and copy.stat().st_size > 0):
+                        and copy.is_file() and _whole_jar(copy)):
                     copy.replace(COOKIE_FILE)
                     _changed()          # a second run's older jar must not win
             except OSError:
@@ -155,9 +155,33 @@ def for_one_run(path: Path | None) -> Iterator[Path | None]:
                 copy.unlink(missing_ok=True)
 
 
-def clear_run_copies() -> None:
+def _whole_jar(path: Path) -> bool:
+    """True when a run's copy is a whole cookie file, fit to replace ours.
+
+    A tool killed by Stop while writing its jar back left a cut file: more
+    than 0 bytes was the only test, and the cut copy replaced every log-in
+    (silent-failure hunt, 2026-11-22). Whole = ends with a line ending, every
+    line a comment or a 7-field cookie line, and at least one cookie."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    if not text.endswith("\n"):
+        return False
+    lines = text.splitlines()
+    cookie_lines = [l for l in lines if l.strip() and (not l.startswith("#") or l.startswith("#HttpOnly_"))]
+    return bool(cookie_lines) and len(_rows(cookie_lines)) == len(cookie_lines)
+
+
+copies_left = 0     # set by clear(): run copies it could not delete
+
+
+def clear_run_copies() -> int:
     """Delete every run copy -- at start (a crash leaves them) and when the
-    user forgets the cookies."""
+    user forgets the cookies. Returns how many could NOT be deleted (a tool
+    still holding one): a copy of a log-in left on the disk is said by the
+    caller, never only "deleted at the next start" in silence (round 17)."""
+    left = 0
     with _lock:
         if RUN_DIR.is_dir():
             # Every file: gallery-dl saves its jar as `<copy>.txt.tmp` first,
@@ -166,7 +190,8 @@ def clear_run_copies() -> None:
                 try:
                     leftover.unlink()
                 except OSError:
-                    pass                # deleted at the next start
+                    left += 1           # tried again at the next start
+    return left
 
 # The three tools that accept a cookie FILE. Probed one by one, 2026-09-22:
 #   yt-dlp      --cookies FILE
@@ -262,7 +287,15 @@ def yutto_auth(enabled: bool) -> Iterator[Path | None]:
     try:
         yield path
     finally:
-        path.unlink(missing_ok=True)
+        # yutto still holding it (a Stop): a raised PermissionError here took
+        # the place of the run's own outcome (round 17). Left for the next
+        # start's sweep, and said in the Console.
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            from . import console
+            console.add("app", "Teleloadzai: the copy of your Bilibili log-in given to yutto "
+                        "could not be deleted yet; it is deleted at the next start.", "err")
 
 _MAX_BYTES = 8 * 1024 * 1024        # a real export is a few kB; 8 MB is absurd
 
@@ -479,6 +512,11 @@ def inspect(path: Path) -> dict:
         # What never entered the app. Counted, so the card can prove it.
         "ignored": sum(dropped_domains.values()),
         "ignored_sites": len(dropped_domains),
+        # Lines that are neither a comment nor a cookie (spaces for tabs,
+        # fields missing): dropped, and now counted -- "60 cookies kept" said
+        # nothing of 40 damaged lines (round 2 of the hunt, 2026-11-22).
+        "damaged": sum(1 for line in lines if line.strip()
+                       and (not line.startswith("#") or line.startswith("#HttpOnly_"))) - len(rows),
         "lines": kept,
     }
 
@@ -657,8 +695,10 @@ def merge_lines(fresh: list[str]) -> int:
 
 @_writes
 def clear() -> bool:
-    """Forget the cookies. Returns True when a file was really removed."""
-    clear_run_copies()          # the copies a running tool holds go too
+    """Forget the cookies. Returns True when a file was really removed.
+    `copies_left`: run copies a running tool still holds (said by the page)."""
+    global copies_left
+    copies_left = clear_run_copies()    # the copies a running tool holds go too
     if not COOKIE_FILE.exists():
         return False
     COOKIE_FILE.unlink()
@@ -736,14 +776,9 @@ def drop_unsupported() -> int:
     dropped = len(_rows(lines)) - len(keep)
     if not dropped:
         return 0
-    temporary = COOKIE_FILE.with_name(COOKIE_FILE.name + ".tmp")
-    temporary.write_text(
-        "# Netscape HTTP Cookie File\n"
-        "# Written by Teleloadzai. Only the sites it can download from.\n"
-        + "\n".join(keep) + ("\n" if keep else ""),
-        encoding="utf-8",
-    )
-    temporary.replace(COOKIE_FILE)
+    # _write_store removes its temporary file (cookies too) if anything
+    # fails; the copy written here did not (silent-failure hunt, 2026-11-22).
+    _write_store(keep)
     return dropped
 
 

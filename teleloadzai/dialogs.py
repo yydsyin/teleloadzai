@@ -29,7 +29,8 @@ _ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 # this PC, the way the app runs it: it opens in 0.7-1.1 s, holds Windows'
 # DirectUIHWND (the old one only a SysTreeView32), 731x480; "Select Folder"
 # answered the start folder, closing it answered nothing (docs/BELIEFS.md).
-# __START__ is filled by pick_folder(): the C# braces stay as they are.
+# The start folder arrives as $env:TLZ_START (see _run_dialog): never .format()
+# this one -- its C# braces stay as they are.
 _PICK_FOLDER = """
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
@@ -89,7 +90,7 @@ public static class ModernFolder {
 '@
 $parent = New-Object System.Windows.Forms.Form
 $parent.TopMost = $true
-$chosen = [ModernFolder]::Pick($parent.Handle, 'Choose the download folder', '__START__')
+$chosen = [ModernFolder]::Pick($parent.Handle, 'Choose the download folder', $env:TLZ_START)
 if ($chosen) { Write-Output $chosen }
 $parent.Dispose()
 """
@@ -98,9 +99,9 @@ $parent.Dispose()
 _SAVE_FILE = """
 Add-Type -AssemblyName System.Windows.Forms
 $dialog = New-Object System.Windows.Forms.SaveFileDialog
-$dialog.InitialDirectory = '{start}'
-$dialog.FileName = '{name}'
-$dialog.Filter = '{filter}'
+$dialog.InitialDirectory = $env:TLZ_START
+$dialog.FileName = $env:TLZ_NAME
+$dialog.Filter = $env:TLZ_FILTER
 $dialog.OverwritePrompt = $true
 $dialog.AddExtension = $true
 $parent = New-Object System.Windows.Forms.Form
@@ -114,11 +115,11 @@ $parent.Dispose()
 _OPEN_FILE = """
 Add-Type -AssemblyName System.Windows.Forms
 $dialog = New-Object System.Windows.Forms.OpenFileDialog
-$dialog.InitialDirectory = '{start}'
-$dialog.Filter = '{filter}'
+$dialog.InitialDirectory = $env:TLZ_START
+$dialog.Filter = $env:TLZ_FILTER
 $dialog.CheckFileExists = $true
 $dialog.Multiselect = $false
-$dialog.Title = '{title}'
+$dialog.Title = $env:TLZ_TITLE
 $parent = New-Object System.Windows.Forms.Form
 $parent.TopMost = $true
 if ($dialog.ShowDialog($parent) -eq 'OK') {{ Write-Output $dialog.FileName }}
@@ -246,16 +247,24 @@ class DialogError(RuntimeError):
     """
 
 
-def _run_dialog(script: str) -> str | None:
+def _run_dialog(script: str, values: dict[str, str]) -> str | None:
     """The chosen path, or None when the user cancelled.
+
+    `values` reach the script as environment variables ($env:TLZ_<KEY>),
+    never inside its text: a title is a website's words, and PowerShell also
+    ends a quoted string at ’ ‘ ‚ ‛ -- a title with them broke the window, or
+    ran as a command (silent-failure hunt, 2026-11-22; seen with PowerShell's
+    own parser). An environment variable is data, never code.
 
     Raises ``DialogError`` when the window itself failed.
     """
     if sys.platform != "win32":
         raise DialogError("This window only exists on Windows.")
+    environment = {**os.environ, **{f"TLZ_{key}": str(value) for key, value in values.items()}}
     try:
         finished = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-STA", "-Command", _FORCE_UTF8 + script],
+            env=environment,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -292,14 +301,9 @@ def _run_dialog(script: str) -> str | None:
     return None                      # the user pressed Cancel
 
 
-def _quote(text: str) -> str:
-    """Escape for a PowerShell single-quoted string."""
-    return str(text).replace("'", "''")
-
-
 def pick_folder(start: Path) -> Path | None:
     """Open the Windows folder dialog. Returns None if the user cancels."""
-    chosen = _run_dialog(_PICK_FOLDER.replace("__START__", _quote(start)))
+    chosen = _run_dialog(_PICK_FOLDER, {"START": start})
     return Path(chosen) if chosen else None
 
 
@@ -316,13 +320,27 @@ def save_file(suggested_name: str, mode: str, start: Path,
     base = safe_filename(without_media_ending(suggested_name), fallback="")
     name = (free_name(start, base, extension, taken, disk=False) if base
             else free_name(start, UNKNOWN, extension, taken)) + f".{extension}"
-    script = _SAVE_FILE.format(
-        start=_quote(start),
-        name=_quote(name),
-        filter=_quote(_FILTERS.get(mode, _FILTERS["mp4"])),
-    )
-    chosen = _run_dialog(script)
-    return Path(chosen) if chosen else None
+    chosen = _run_dialog(_SAVE_FILE.format(), {
+        "START": start, "NAME": name, "FILTER": _FILTERS.get(mode, _FILTERS["mp4"])})
+    return _with_ending(Path(chosen), extension, taken) if chosen else None
+
+
+def _with_ending(chosen: Path, extension: str, taken: set[str] = frozenset()) -> Path:
+    """The chosen name with the format's own ending. "Take 2.5" came back as
+    typed, ".5" was taken for an ending and cut, and "Take 2.mp4" was written
+    -- over a file Windows had not asked about, with --force-overwrites
+    (round 22 of the hunt, decision 24). Now "Take 2.5.mp4"; and since
+    Windows asked about "Take 2.5", not this name, a file already there under
+    it is never replaced: the next free name ("Take 2.5 (2).mp4")."""
+    if chosen.suffix.lower() == f".{extension}":
+        return chosen
+    fixed = chosen.with_name(f"{chosen.name}.{extension}")
+    # `taken` holds Windows' normalised spelling (lower case), as free_name
+    # compares: the raw path never matched it (round 23 of the hunt).
+    if fixed.exists() or os.path.normcase(os.path.abspath(fixed)) in taken:
+        fixed = chosen.with_name(free_name(chosen.parent, chosen.name, extension, taken)
+                                 + f".{extension}")
+    return fixed
 
 
 def open_file(title: str, start: Path, kind: str = "cookies") -> Path | None:
@@ -330,10 +348,6 @@ def open_file(title: str, start: Path, kind: str = "cookies") -> Path | None:
 
     Raises ``DialogError`` if the window itself could not open.
     """
-    script = _OPEN_FILE.format(
-        start=_quote(start),
-        filter=_quote(_FILTERS.get(kind, _FILTERS["cookies"])),
-        title=_quote(title),
-    )
-    chosen = _run_dialog(script)
+    chosen = _run_dialog(_OPEN_FILE.format(), {
+        "START": start, "FILTER": _FILTERS.get(kind, _FILTERS["cookies"]), "TITLE": title})
     return Path(chosen) if chosen else None

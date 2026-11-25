@@ -44,6 +44,29 @@ class Known:
 
 
 KNOWN: tuple[Known, ...] = (
+    # A Python program whose own files are damaged: "up to date… try again
+    # in a few days" was false advice -- only installing it again helps
+    # (round 7 of the hunt, 2026-11-22).
+    Known(
+        words=("modulenotfounderror: no module named",),
+        tools=("gallery-dl", "yutto"),
+        title="Some of this program's files are missing.",
+        next_step="On the Programs page, remove it, then install it again.",
+        retry=False,
+        seen=("2026-11-22, a COPY of bin/pylibs with its `requests` folder deleted, gallery-dl "
+              "run from it: 'ModuleNotFoundError: No module named 'requests''. The real "
+              "folder was not touched."),
+    ),
+    Known(
+        words=("error while finding module specification", "importerror"),
+        tools=("gallery-dl", "yutto"),
+        title="Some of this program's files are missing.",
+        next_step="On the Programs page, remove it, then install it again.",
+        retry=False,
+        seen=("2026-11-22, the same copy with gallery_dl/util.py deleted: 'Error while finding "
+              "module specification for 'gallery_dl.__main__' (ImportError: cannot import name "
+              "'util' from partially initialized module 'gallery_dl' …)'."),
+    ),
     Known(
         words=("your ip address is blocked from accessing this post",),
         tools=("yt-dlp",),
@@ -69,7 +92,10 @@ KNOWN: tuple[Known, ...] = (
               "they were. Never tried with a Vimeo log-in (§4)."),
     ),
     Known(
-        words=("this video is unavailable",),
+        # The site is part of the words (silent-failure hunt, 2026-11-22):
+        # alone the sentence named YouTube for any site saying it. Seen
+        # 2026-11-22: "ERROR: [youtube] aaaaaaaaaaa: This video is unavailable".
+        words=("[youtube]", "this video is unavailable"),
         tools=("yt-dlp",),
         title="YouTube says this video is unavailable.",
         next_step=("It may be deleted or private. If it is private, logging "
@@ -97,7 +123,10 @@ KNOWN: tuple[Known, ...] = (
               "copy, no cookies, jNQXAC9IVRw."),
     ),
     Known(
-        words=("account authentication is required",),
+        # The site is part of the words (silent-failure hunt, 2026-11-22);
+        # the quality check's reports hold "[Reddit] 1cl9h0u: Account
+        # authentication is required".
+        words=("[reddit]", "account authentication is required"),
         tools=("yt-dlp",),
         title="Reddit shows this video only to a logged-in account.",
         action="login",

@@ -534,7 +534,9 @@ def run_program(tool: str, url: str, cookie_file: Path | None, header: bool) -> 
             # download, or another program: the check is broken, not the program.
             return {"ok": False, "error": text, "port_taken": text.startswith("Port ")}
         if result.nothing_downloaded:
-            return {"ok": False, "error": result.skip_reason or "the program wrote no file"}
+            # Washed: it can be the program's own words (silent-failure hunt, 2026-11-22).
+            return {"ok": False, "error": cookies.redact(result.skip_reason)[:240] if result.skip_reason
+                    else "the program wrote no file"}
         videos, pictures, total, top = 0, 0, 0, 0
         for path in result.files:
             try:
@@ -949,6 +951,12 @@ def tell(title: str, text: str, report_file: Path | None) -> None:
         if report_file is not None:
             notify.on_click = lambda: os.startfile(report_file)
         notify._start()
+        if not notify._hwnd:
+            # Windows refused the hidden window: notify says so only on the
+            # app's Console, which this script has not -- the message was
+            # lost with no line here (silent-failure hunt, 2026-11-22).
+            log_run(f"MESSAGE NOT SHOWN ({title}): Windows refused the message window · {text[:120]}")
+            return
         notify._shows.put((title, text))
         notify._wake()
         time.sleep(12)          # the icon lives only with its box: closing ends it
@@ -971,14 +979,22 @@ def _take_lock() -> bool:
     import errno
     import msvcrt
     handle = open(LOCK_FILE, "a+")
-    try:
-        handle.seek(0)
-        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-    except OSError as problem:
-        handle.close()
-        if problem.errno not in (errno.EACCES, errno.EDEADLK):
-            raise           # not "another run": the crash path says it
-        return False
+    # Twice, a second apart: the app takes this lock for an instant to ask
+    # whether a check runs (`paths.quality_check_running`), and a check
+    # starting in that instant skipped its whole day (round 17 of the hunt).
+    for attempt in (1, 2):
+        try:
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            break
+        except OSError as problem:
+            if problem.errno not in (errno.EACCES, errno.EDEADLK):
+                handle.close()
+                raise       # not "another run": the crash path says it
+            if attempt == 2:
+                handle.close()
+                return False
+            time.sleep(1)
     _lock_handle = handle
     try:                    # when this run began: a stuck run is said by the next one
         LOCK_SINCE.write_text(str(time.time()), encoding="utf-8")
@@ -1013,7 +1029,10 @@ def _ran_today() -> bool:
     except OSError:
         return False
     today = time.strftime("%Y-%m-%d")
-    return any(line.startswith(today) and "CRASHED" not in line and "PROBLEM:" not in line
+    # Only a run's own line counts (" read ("): not a hand run on some sites
+    # (PARTIAL), nor the lines written beside a run (an automatic review).
+    return any(line.startswith(today) and " read (" in line and "PARTIAL" not in line
+               and "CRASHED" not in line and "PROBLEM:" not in line
                and "MESSAGE NOT SHOWN" not in line and "SKIPPED" not in line for line in lines)
 
 
@@ -1363,7 +1382,9 @@ def _observe(new: dict, new_programs: dict, listed: dict | None = None) -> dict[
         plain, mine = now.get("no_cookies") or {}, now.get("your_cookies") or {}
         if plain.get("ok"):
             seen[f"needs|{key}"] = ("none", "read with no cookies")
-        elif plain.get("needs_login") and not mine.get("check_broken"):
+        # A skipped cookie read (log-ins off, no cookie file) tested nothing:
+        # it was counted as "asked" (silent-failure hunt, 2026-11-22).
+        elif plain.get("needs_login") and not mine.get("check_broken") and not mine.get("skipped"):
             # What the cookies were is the site's sign: "login" only from a real
             # log-in, "visit" when a visit's cookies were enough -- an expired
             # log-in is not one (hunt 2026-11-18).
@@ -1595,6 +1616,16 @@ Rules: never guess a cause; write "unknown" when the files do not show it. Short
     if process.returncode != 0 or not answer:
         said = cookies.redact(((err or "").strip() or answer or "no words").splitlines()[-1])
         return None, f"Claude Code failed (exit {process.returncode}): {said[:120]}"
+    # A refusal, a usage limit or "I cannot read X" also ends with exit 0:
+    # it was saved as "Claude's review" (silent-failure hunt, 2026-11-22).
+    # One verdict per sign waiting, or it is not a review.
+    # Any few marks between: "Verdict: ACCEPT", "**Verdict:** ACCEPT",
+    # "Verdict: **ACCEPT**", "Verdict — ACCEPT" (round 2 of the hunt).
+    verdicts = len(re.findall(r"Verdict\W{0,8}(ACCEPT|DECLINE|ASK THE DEVELOPER)", answer))
+    if verdicts < len(waiting):
+        first = answer.strip().splitlines()[0][:100]
+        return None, (f"Claude gave {verdicts} verdict{'s' if verdicts != 1 else ''} for "
+                      f"{len(waiting)} sign{'s' if len(waiting) != 1 else ''}; it said: {first}")
     review_file = OUT_DIR / f"review-{time.strftime('%Y-%m-%d-%H%M%S')}.md"
     try:
         _write(review_file, "\n".join([
@@ -1682,6 +1713,10 @@ def main() -> int:
     if args.due and _ran_today():
         print("Already ran today.")
         return 0
+    # A run by hand on some sites, or with no download test, is not the day's
+    # check: it stopped the log-on run with no line (silent-failure hunt,
+    # 2026-11-22). Taken before ffprobe's absence turns the tests off below.
+    partial = bool(args.site or args.no_download)
     rows, rows_problem = failed_rows()
     if rows_problem:
         problems.append(rows_problem)
@@ -1812,10 +1847,12 @@ def main() -> int:
                                    "programs": programs_kept,
                                    "failed_jobs_seen": seen_after(table, rows, tested_now, testable)},
                                   ensure_ascii=False, indent=1))
-    log_run(f"{len(sites)} read ({', '.join(sites)}) · {len(pairs)} program tests"
+    log_run(("PARTIAL (by hand) · " if partial else "")
+            + f"{len(sites)} read ({', '.join(sites)}) · {len(pairs)} program tests"
             + (f" ({', '.join(f'{s}|{t}' for s, t in pairs)})" if pairs else "")
             + f" · {changed} changed · {broken} broken"
             + f" · {fails} not downloading"
+            + (f" · {len(fresh)} new sign{'s' if len(fresh) != 1 else ''} to review" if fresh else "")
             + "".join(f" · PROBLEM: {p}" for p in problems) + f" · {report_file.name}")
     print(f"\nReport: {report_file}")
     # A NEW sign to review: Claude reads the evidence by itself (2026-11-22).

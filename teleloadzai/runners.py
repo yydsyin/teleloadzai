@@ -22,9 +22,12 @@ Two things every tool gets, and both were learned the hard way:
 from __future__ import annotations
 
 import dataclasses
+import errno
+import http.client
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import threading
@@ -344,6 +347,7 @@ def _repackage_to_mp4(files: list[Path]) -> list[Path]:
         # Written as `.tmp` and renamed once whole: a crash half-way left an
         # unplayable `name.mp4` that the next start took for a download.
         partial = target.with_name(target.name + ".tmp")
+        done = None
         try:
             # Tied to the app: started loose, it outlived a closed app.
             done = subprocess.Popen(
@@ -355,7 +359,14 @@ def _repackage_to_mp4(files: list[Path]) -> list[Path]:
             children.bind(done)
             done.wait(timeout=1800)
         except Exception:
-            partial.unlink(missing_ok=True)
+            if done is not None and done.poll() is None:
+                # Its 30 minutes are over: it ran on, writing the .tmp, until
+                # the app closed (round 4 of the hunt, 2026-11-22).
+                children.stop_tree(done)
+            try:
+                partial.unlink(missing_ok=True)
+            except OSError:
+                pass        # still held a moment by the stopped FFmpeg: the .ts matters, not this
             final.append(path)
             continue
 
@@ -517,6 +528,7 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
     make_folder(request.out_dir)
 
     # One site's cookies only, and only when this job may use cookies at all.
+    _log_ins_still_there(request)
     cookie = cookies.header_for(site, True) if request.cookie_header else ""
 
     # Said on the row: starting its server can take seconds, and reading
@@ -541,8 +553,10 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
     address = data.get("downloads") or ""
     if not isinstance(address, str) or not address.startswith("http"):
         raise RunnerError(
-            "TikTokDownloader found no file to download. "
-            "It may be a photo post, or an ended live stream.")
+            # "It may be a photo post, or an ended live stream" was a guess
+            # (decision 38): photo links are now said before this, by
+            # toolservers.video_id, and nothing else was seen.
+            "TikTokDownloader's answer had no video file for this post.")
 
     name = _file_name(request, _clean_name(data))
     name = _reserve(request, name)
@@ -564,8 +578,11 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
                                   data.get("static_cover"), site)
     else:
         target = request.out_dir / (name + ".mp4")
-        _fetch(address, target, site, on_progress, cookie, on_bytes, request.stop)
-    return RunResult([target], [f"TikTokDownloader: {data.get('desc', '')[:80]}"])
+        _fetch(address, target, site, on_progress, cookie, on_bytes, request.stop,
+               keep_theirs=not (request.force or request.out_name))
+    # `or ""`: a key present with null gave None, and [:80] failed AFTER the
+    # video was saved (silent-failure hunt, 2026-11-22).
+    return RunResult([target], [f"TikTokDownloader: {(data.get('desc') or '')[:80]}"])
 
 
 def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
@@ -582,6 +599,7 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
     make_folder(request.out_dir)
 
     # Kuaishou's cookies only, and only when this job may use cookies at all.
+    _log_ins_still_there(request)
     cookie = cookies.header_for("kuaishou.com", True) if request.cookie_header else ""
 
     _say(on_step, "starting KS-Downloader")
@@ -604,7 +622,7 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
             "video file to download.")
 
     name = _file_name(request, _clean_name(
-        {"nickname": data.get("name", ""), "desc": data.get("caption", "")}))
+        {"nickname": data.get("name") or "", "desc": data.get("caption") or ""}))
     name = _reserve(request, name)
     reason = _already_there(request.out_dir / (name + "." + request.mode), request)
     if reason:
@@ -623,8 +641,8 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
     else:
         target = request.out_dir / (name + ".mp4")
         _fetch(address, target, "kuaishou.com", on_progress, on_bytes=on_bytes,
-               stop=request.stop)
-    return RunResult([target], [f"KS-Downloader: {str(data.get('caption', ''))[:80]}"])
+               stop=request.stop, keep_theirs=not (request.force or request.out_name))
+    return RunResult([target], [f"KS-Downloader: {str(data.get('caption') or '')[:80]}"])
 
 
 def _to_mp3_or_clean(video: Path, target: Path, request: Request,
@@ -689,6 +707,27 @@ def _release(request: Request) -> None:
     with _writing_lock:
         for held in [k for k, owner in _writing.items() if owner == id(request)]:
             del _writing[held]
+
+
+def _not_installed(tool_id: str) -> str:
+    """Removed while its download waited: its name and the way out (decision
+    15) -- "gallery-dl is not installed" led to a Retry refused the same way
+    (round 5 of the hunt, 2026-11-22)."""
+    spec = tools.spec(tool_id)
+    return (f"{spec.name if spec else tool_id} is not installed. Install it on the Programs page, "
+            "then press Retry.")
+
+
+def _log_ins_still_there(request: Request) -> None:
+    """A job allowed the log-ins at Add must not run on without them in
+    silence: "Forget" pressed while it waited sent TikTokDownloader and
+    KS-Downloader no cookie and no word, where yt-dlp's road refuses
+    (`cookies.for_one_run`) -- the same sentence here (round 3 of the hunt,
+    2026-11-22)."""
+    if request.cookie_header and not cookies.have_file():
+        raise cookies.CookieFileError(
+            "Your log-ins were forgotten after this download was added. "
+            "Press Retry to download without them.")
 
 
 def _already_there(target: Path, request: Request) -> str:
@@ -795,10 +834,21 @@ def _to_mp3(video: Path, target: Path, quality: str = "best", remove: bool = Tru
         raise RunnerError(
             f"The video was downloaded ({video.name}), but turning it into an "
             "MP3 failed. The video is kept.")
-    partial.replace(target)
+    try:
+        partial.replace(target)
+    except PermissionError as problem:
+        # The old MP3 open in a player: Windows' bare "[WinError 5]" reached
+        # the row, and the .tmp and the step video stayed (round 6 of the hunt).
+        partial.unlink(missing_ok=True)
+        if remove:
+            video.unlink(missing_ok=True)
+        raise RunnerError(_held_sentence(target)) from problem
     if remove:
         video.unlink(missing_ok=True)
     return target
+
+
+_held_sentence = ytdlp.held_sentence     # one sentence for every program (round 7)
 
 
 # What a tool can hand back that holds sound. Pictures are left alone.
@@ -876,6 +926,13 @@ LIVE_RECORDERS = ("streamlink", "n-m3u8dl-re")
 # moved `<title>_video.m4s` and `<title>_audio.m4s` into the user's folder as
 # "saved before it failed" (a Bilibili timeout, 2026-11-09, real run).
 _PIECES = ("*.part", "*.tmp", "*.ytdl", "*.mark", "*.m4s")
+# Tools whose finished files are kept when Stop is pressed: each file is
+# written as "<name>.part" and moved into place whole, so a file without
+# ".part" is finished (read in gallery-dl 1.32.20's own code: `downloader.part`
+# on by default, `PathFormat.part_enable` / `finalize`; not turned off by our
+# recipe). Not yutto (its MP4 is written by FFmpeg in place, a Stop can cut
+# it) nor XHS-Downloader (its way of writing is not known).
+_KEPT_ON_STOP = ("gallery-dl",)
 _LIVE_MARK = "teleloadzai-live.mark"
 
 # The work folders that exist right now, one path per line. A crash or a
@@ -1100,7 +1157,7 @@ def _clean_name(data: dict) -> str:
 
     A caption ending in ".mp4" would give "….mp4.mp4" (dialogs.MEDIA_ENDING).
     """
-    raw = without_media_ending(f"{data.get('nickname', '')} {data.get('desc', '')}".strip())
+    raw = without_media_ending(f"{data.get('nickname') or ''} {data.get('desc') or ''}".strip())
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", raw)[:120].strip().rstrip(".")
 
 
@@ -1131,8 +1188,12 @@ def _file_name(request: Request, found: str = "") -> str:
 def _fetch(address: str, target: Path, site: str,
            on_progress: Callable[[int], None] | None, cookie: str = "",
            on_bytes: Callable[[int, int], None] | None = None,
-           stop: threading.Event | None = None) -> None:
+           stop: threading.Event | None = None, keep_theirs: bool = False) -> None:
     """Download a direct link, reporting a real percentage.
+
+    `keep_theirs`: a file that appeared under `target`'s name DURING the
+    fetch is the user's, never written over -- the name was checked only
+    before a fetch of a minute (round 3 of the hunt, 2026-11-22; decision 24).
 
     What the file servers demand, measured 2026-09-23 on a real TikTok video
     (a 1 KB range request each time):
@@ -1187,10 +1248,42 @@ def _fetch(address: str, target: Path, site: str,
             raise RunnerError(
                 f"The download was cut off at {done / 1048576:.1f} MB of "
                 f"{total / 1048576:.1f} MB. Nothing was kept: try again.")
-        partial.replace(target)
+        if keep_theirs and target.exists():
+            raise RunnerError(f"\"{target.name}\" appeared in this folder during the download. "
+                              "It was kept, and nothing was saved over it. To replace it, press "
+                              "Retry, then Download again.")
+        try:
+            partial.replace(target)
+        except PermissionError as problem:
+            if target.exists():     # the user's file, held: not the folder's fault (round 6)
+                raise RunnerError(_held_sentence(target)) from problem
+            raise
     except urllib.error.URLError as problem:
         partial.unlink(missing_ok=True)     # never leave half a file behind
         raise RunnerError(f"The video could not be downloaded: {problem.reason}") from problem
+    except (TimeoutError, ConnectionError, http.client.HTTPException, ssl.SSLError) as problem:
+        # Cut DURING the fetch (Wi-Fi lost, the site closed the line): Python's
+        # bare words reached the row, with no step (silent-failure hunt, 2026-11-22).
+        partial.unlink(missing_ok=True)
+        raise RunnerError(f"The connection was lost during the download ({str(problem) or type(problem).__name__}). "
+                          "Nothing was kept: try again.") from problem
+    except OSError as problem:
+        # The folder refused the file (read-only, a full disk): Windows' bare
+        # "[Errno 13]" reached the row after a minute's wait (round 4 of the hunt).
+        try:
+            partial.unlink(missing_ok=True)
+        except OSError:
+            pass
+        # The disk's refusals only; another OSError (a network code such as
+        # WinError 10051) is the connection, not the folder (round 5 of the hunt).
+        on_disk = (problem.errno in (errno.EACCES, errno.EPERM, errno.ENOSPC, errno.EROFS, errno.ENOENT,
+                                     errno.EISDIR)
+                   or getattr(problem, "winerror", None) in (3, 5, 32, 39, 112))
+        if not on_disk:
+            raise RunnerError(f"The connection was lost during the download "
+                              f"({str(problem) or type(problem).__name__}). Nothing was kept: try again.") from problem
+        raise RunnerError(f"The video could not be saved in the folder ({problem.strerror or problem}). "
+                          "Check that the folder can be written to and the disk has room.") from problem
     except Exception:
         partial.unlink(missing_ok=True)
         raise
@@ -1354,11 +1447,11 @@ def run(
         exe = Path(sys.executable)
         head = [str(exe), "-m", recipe.module]
         if tools.installed_path(tool_id) is None:
-            raise RunnerError(f"{tool_id} is not installed")
+            raise RunnerError(_not_installed(tool_id))
     else:
         found = tools.installed_path(tool_id)
         if found is None:
-            raise RunnerError(f"{tool_id} is not installed")
+            raise RunnerError(_not_installed(tool_id))
         exe, head = found, []
 
     # gallery-dl and XHS-Downloader name their files themselves, inside the
@@ -1484,7 +1577,13 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         # was dropped before anyone read it (2026-09-23).
         if not line.strip().startswith(("at ", "--- End of")):
             tail.append(line)
-            del tail[:-40]
+            if len(tail) > 40:
+                # The oldest line that does not look like an error goes: a
+                # board of 100 pins printed a path each, the one "[error]"
+                # line fell out, and the row's reason was a good pin's path
+                # (round 10 of the hunt, 2026-11-22).
+                drop = next((i for i, kept in enumerate(tail) if not _ERRORISH.search(kept)), 0)
+                del tail[drop]
         # yutto's own words when it has no log-in ("未提供登录认证信息" -- "no
         # log-in information was provided"; with the file it says
         # "以非大会员身份登录", seen 2026-11-10). Said only when we GAVE it one:
@@ -1510,6 +1609,22 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         # (round 2, 2026-10-18). What was recorded is kept, as before; FFmpeg
         # is not handed to Stop here, or the stopped job would end it at once.
         recorded = _finished(work, recipe, top_only=True)
+        if not live and tool_id in _KEPT_ON_STOP and recorded:
+            # A board stopped at 120 pins of 300 lost all 120 with the work
+            # folder, the row saying only "Stopped" (round 15 of the hunt).
+            # Decision 34: Stop removes only its own UNFINISHED pieces.
+            try:
+                kept, _ = _move_out([(p, p.name) for p in recorded], request, own_names)
+            except RunnerError as failure:
+                # A pin that could not be put in the folder: the work folder
+                # is kept for the next start, and the move's own sentence is
+                # said -- dropped here, the folder went with the unmoved pins
+                # (round 16 of the hunt).
+                failure.saved = getattr(failure, "saved", [])
+                raise failure
+            stopped = RunnerError("Stopped.")
+            stopped.saved = kept            # "Saved before it stopped" on the row
+            raise stopped
         if not live or not recorded:
             raise RunnerError("Stopped.")   # the pieces go with the work folder
         if request.mode == "mp3":
@@ -1518,9 +1633,15 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
             except RunnerError:
                 pairs = [(p, p.name) for p in _finished(work, recipe, top_only=True)]
         else:
+            if recipe.after is _repackage_to_mp4:
+                _say(on_step, "making the MP4")     # as below (round 13)
             pairs = [(p, p.name) for p in (recipe.after(recorded) if recipe.after else recorded)]
         moved, _ = _move_out(pairs, request, own_names)
-        return RunResult(moved, tail)
+        # The stopped recording too (round 5 of the hunt): as the note below.
+        stayed_ts = (recipe.after is _repackage_to_mp4 and request.mode != "mp3"
+                     and any(p.suffix.lower() == ".ts" for p in moved))
+        return RunResult(moved, tail, note=("The recording could not be turned into an MP4, so it "
+                                            "was kept as .ts. It plays in VLC.") if stayed_ts else "")
 
     if code != 0:
         # A tool that failed is a failure, even when some files arrived (3
@@ -1581,6 +1702,10 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
             raise
     else:
         if recipe.after:
+            # Up to 30 minutes for a long recording: the row said nothing and
+            # kept its last speed (round 13 of the hunt; decision 33).
+            if recipe.after is _repackage_to_mp4:
+                _say(on_step, "making the MP4")
             written = recipe.after(written)
         # A recording's name is the one we built ("Save as" or the title).
         pairs = [(p, p.name) for p in written]
@@ -1594,6 +1719,17 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
             f"\"{already[0]}\" is already in this folder."))
     note = (f"yutto said it had no Bilibili log-in, so this video is {TOP_WITHOUT_LOGIN['yutto']}p "
             "at most." if no_login else "")
+    if already:
+        # Some of the post was already there: said, not dropped -- the row
+        # showed 5 files of 8 as a plain success (silent-failure hunt, 2026-11-22).
+        kept = (f"{len(already)} file{'s were' if len(already) != 1 else ' was'} already in this "
+                f"folder and not downloaded again (\"{already[0]}\"{', …' if len(already) > 1 else ''}).")
+        note = f"{note} {kept}".strip()
+    if recipe.after is _repackage_to_mp4 and any(p.suffix.lower() == ".ts" for p in moved):
+        # The MP4 could not be made (FFmpeg missing or failed): the .ts was
+        # kept with no word (round 4 of the hunt, 2026-11-22).
+        note = (f"{note} The recording could not be turned into an MP4, so it was kept as "
+                ".ts. It plays in VLC.").strip()
     return RunResult(moved, tail, note=note)
 
 
@@ -1601,6 +1737,11 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
 # the name alone). Seen 2026-11-16: "yaml.parser.ParserError: while parsing
 # a flow mapping" (XHS-Downloader 2.8, a PyInstaller program).
 _PY_EXCEPTION = re.compile(r"^[A-Za-z_][\w.]*(Error|Exception|Exit|Interrupt)(:|$)")
+
+
+# The words `_short_error` takes a line's reason from: such lines are kept in a
+# long run's tail before any other (round 10 of the hunt).
+_ERRORISH = re.compile(r"error|exception|traceback|失败|错误", re.IGNORECASE)
 
 
 def _short_error(tail: list[str]) -> str:

@@ -210,12 +210,17 @@ def run(tool_id: str, text: str, folder: Path) -> None:
 
 def _read(process: subprocess.Popen, shown: str) -> None:
     global _process
+    lost = ""
     try:
         for line in process.stdout:
             console.add(LINE, line, "out")
-    except (OSError, ValueError):
-        pass                            # the pipe closed: stopped
+    except (OSError, ValueError) as problem:
+        lost = str(problem) or type(problem).__name__   # the pipe closed
     code = process.wait()
+    # Not after a Stop: then the closed pipe is expected. Otherwise the rest
+    # of its words were lost, and "done." alone hid it (round 29).
+    if lost and not getattr(process, "_stopped_by_user", False):
+        console.add(LINE, f"Teleloadzai: the rest of {shown}'s words could not be read ({lost}).", "err")
     if code >= 2 ** 31:
         code -= 2 ** 32             # Windows gives FFmpeg's -2 as 4294967294
     with _lock:

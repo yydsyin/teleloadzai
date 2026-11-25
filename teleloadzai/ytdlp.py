@@ -285,6 +285,28 @@ def require_ytdlp() -> Path:
     return tool
 
 
+def has_video(path: Path) -> bool | None:
+    """Does this file hold a real video track -- not only sound, nor a cover
+    picture (ffprobe's `attached_pic`)? An MP4 asked on an audio-only site
+    (Bandcamp, Mixcloud) came as sound only and the row said done (round 27
+    of the hunt). None when ffprobe cannot answer: then nothing is said."""
+    ffmpeg = find_tool("ffmpeg")
+    probe = ffmpeg.with_name("ffprobe.exe") if ffmpeg else None
+    if probe is None or not probe.is_file() or not path.is_file():
+        return None
+    try:
+        found = subprocess.run(
+            [str(probe), "-v", "error", "-select_streams", "v",
+             "-show_entries", "stream_disposition=attached_pic", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, stdin=subprocess.DEVNULL,
+            timeout=60, creationflags=_NO_WINDOW)
+    except Exception:
+        return None
+    if found.returncode != 0:
+        return None
+    return any(line.strip().split(",")[-1] == "0" for line in found.stdout.splitlines() if line.strip())
+
+
 def has_cover(path: Path, kind: str = "v") -> bool | None:
     """Does this MP3 hold a cover picture? Asked to the file itself, with
     ffprobe: yt-dlp runs with --no-warnings, so its log cannot be trusted to
@@ -835,6 +857,17 @@ def download(
     # The card's reading instead of a second one (_take_read): never for a
     # playlist, whose reading listed its videos without reading them.
     saved = _take_read(url, reuse_key) if reuse_key is not None and not playlist else None
+    # One tag per download, kept by its Retry / Continue (`job_id`, the same
+    # row): a new random tag each run never found the old `.part`, so an MP3
+    # cut off by closing started from zero and left that piece behind (hunt
+    # of 2026-10-31).
+    seed = hashlib.sha1(job_id.encode()).hexdigest() if job_id else uuid.uuid4().hex
+    tag = f".tlz{seed[:6]}" if mode == "mp3" else ""
+    # The arguments that can fail (FFmpeg missing, a name too long) come
+    # BEFORE the reading is written: after, that file -- cookies maybe --
+    # stayed behind (silent-failure hunt, 2026-11-22).
+    ffmpeg_arguments = _ffmpeg_arguments()
+    output_arguments = _output_arguments(mode, out_dir, quality, out_path, tag, prefer_codec)
     info_file = None
     if saved:
         info_file = cookies.RUN_DIR / f"{uuid.uuid4().hex}.json"
@@ -846,12 +879,6 @@ def download(
                 on_line(f"Teleloadzai: the card's reading could not be used "
                         f"({problem.strerror or problem}); reading the link again.")
             info_file = None
-    # One tag per download, kept by its Retry / Continue (`job_id`, the same
-    # row): a new random tag each run never found the old `.part`, so an MP3
-    # cut off by closing started from zero and left that piece behind (hunt
-    # of 2026-10-31).
-    seed = hashlib.sha1(job_id.encode()).hexdigest() if job_id else uuid.uuid4().hex
-    tag = f".tlz{seed[:6]}" if mode == "mp3" else ""
 
     command = [
         str(tool),
@@ -878,8 +905,8 @@ def download(
         *(["--yes-playlist"] if playlist else ["--no-playlist"]),
         *(["--force-overwrites"] if (force or _only_chosen_name(out_path)) else []),
         *_cookie_arguments(cookie_file),
-        *_ffmpeg_arguments(),
-        *_output_arguments(mode, out_dir, quality, out_path, tag, prefer_codec),
+        *ffmpeg_arguments,
+        *output_arguments,
         *_subtitle_arguments(mode, subs, sub_lang),
         # 4 pieces at once on a site that sends its video in pieces (HLS,
         # DASH): Dailymotion 1.5-2.0 -> 3.9 MB/s, TED 2.1-3.5 -> 4.1 MB/s,
@@ -1005,8 +1032,14 @@ def _run_download(command, asked, info_file, mode, tag, out_path, force, subs, s
             try:
                 done = _untag(files, tail, out_path, force, tag)
                 problem.saved = [f for f in done.files if f not in done.skipped]
-            except DownloadFailed:
-                pass
+            except DownloadFailed as naming:
+                # Said, not dropped (round 8 of the hunt, 2026-11-22): the
+                # finished MP3s keep their tagged names. Our words, so in the
+                # Console -- the row's error stays yt-dlp's own. The files
+                # really there are listed on the row (round 9).
+                problem.saved = getattr(naming, "kept", [])
+                if on_line:
+                    on_line(f"Teleloadzai: {naming}")
         elif files:
             # An MP4 playlist whose 1st video failed still downloaded the 2nd
             # (seen 2026-10-31: 5,672,839 bytes on the disk), and the row said
@@ -1020,7 +1053,8 @@ def _run_download(command, asked, info_file, mode, tag, out_path, force, subs, s
     if not files:
         last = next((l.strip() for l in reversed(tail) if l.strip()), "")
         raise DownloadFailed("yt-dlp finished without downloading anything."
-                             + (f" Its last line: {cookies.redact(last[:200])}" if last else ""))
+                             # washed, then cut (round 20, as _short_error)
+                             + (f" Its last line: {cookies.redact(last)[:200]}" if last else ""))
 
     if tag:
         return _untag(files, tail, out_path, force, tag)
@@ -1067,11 +1101,36 @@ def _untag(files: list[Path], tail: list[str], out_path: Path | None,
                 pass            # held a moment (an antivirus): his file is what counts
             already.append(target)
         except OSError as problem:
-            raise DownloadFailed(
-                f"\"{target.name}\" was made, but could not be given its name: "
-                f"{problem.strerror or problem}. It is in the folder as \"{path.name}\".")
+            if isinstance(problem, PermissionError) and target.exists():
+                # The old MP3 held or read-only (round 7 of the hunt).
+                failure = DownloadFailed(f"{held_sentence(target)} The new one is in the folder as "
+                                         f"\"{path.name}\".")
+            else:
+                failure = DownloadFailed(
+                    f"\"{target.name}\" was made, but could not be given its name: "
+                    f"{problem.strerror or problem}. It is in the folder as \"{path.name}\".")
+            # What is really in the folder now: those already renamed, this
+            # one under its tagged name, those not reached -- the row listed
+            # none of them (round 9 of the hunt, 2026-11-22).
+            later = files[files.index(path) + 1:]
+            failure.kept = final + [path] + [p for p in later if p.is_file()]
+            failure.saved = failure.kept        # what the worker lists on a failed row
+            raise failure from problem
         final.append(target)
     return DownloadResult(final, tail, already)
+
+
+def held_sentence(target: Path) -> str:
+    """A file of the user's that Windows will not let us replace: open in a
+    player most often, or read-only -- the same refusal (rounds 6-7 of the
+    hunt, 2026-11-22). Shared with runners.py."""
+    return (f"\"{target.name}\" is open in another program (a video or music player?) or is "
+            "read-only, so it could not be replaced. Close it, or allow changes to it, then try again.")
+
+
+# yt-dlp's own step lines after a download (its post-processors' tags).
+_STEP_LINE = re.compile(r"^\[(?:Merger|ExtractAudio|EmbedSubtitle|EmbedThumbnail|Metadata|"
+                        r"ThumbnailsConvertor|VideoConvertor|VideoRemuxer|Fixup\w*)\] ")
 
 
 def _tool_said(text: str) -> DownloadFailed:
@@ -1081,6 +1140,19 @@ def _tool_said(text: str) -> DownloadFailed:
     marked: the page must not present our placeholder as yt-dlp's words.
     """
     said = _short_error(text)
+    # No error line, only a progress or "Destination" line last: yt-dlp
+    # ended without saying why (killed, crashed). That line was shown as its
+    # error, marked as its words (round 29) -- now our sentence, not marked.
+    if not any(l.strip().startswith("ERROR:") for l in (text or "").splitlines()):
+        last = next((l.strip() for l in reversed((text or "").splitlines()) if l.strip()), "")
+        # Only a file started and never finished ("Destination:" last --
+        # progress lines never reach the tail). "Finished downloading
+        # playlist" after an early error pushed out of the tail is not a
+        # stop (round 30): it keeps the old path, its own last line.
+        # Also a step after the download, cut off: joining, the MP3, the
+        # subtitles, the cover (round 31) -- its line was shown as the error.
+        if last.startswith(_DESTINATION) or _STEP_LINE.match(last):
+            return DownloadFailed("yt-dlp stopped without saying why.")
     problem = DownloadFailed(said)
     return explain.from_tool(problem) if (text or "").strip() else problem
 
@@ -1103,7 +1175,11 @@ def _short_error(text: str) -> str:
             if clean == "ERROR:":
                 after = [l.strip() for l in lines[at + 1:]
                          if l.strip() and not l.startswith(_DESTINATION)][:3]
-                clean = " ".join(["ERROR:", *after])[:400]
+                # Washed BEFORE it is cut: cut first, a token across the 400th
+                # character kept up to 23 of its characters, too few for
+                # redact to see (round 19; runners._short_error already did
+                # it this way, hunt of 2026-11-18).
+                return cookies.redact(" ".join(["ERROR:", *after]))[:400]
             return cookies.redact(clean)
     body = (text or "").strip()
     return cookies.redact(body.splitlines()[-1]) if body else "unknown error"

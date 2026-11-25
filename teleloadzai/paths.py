@@ -32,6 +32,37 @@ def ensure_dirs() -> None:
         folder.mkdir(parents=True, exist_ok=True)
 
 
+def quality_check_running() -> bool:
+    """Teleloadzai's own daily check (`dev/quality_check.py`) is running now.
+
+    It holds a lock on `data/quality-check/running.lock` while it lives
+    (Windows frees it when the process ends, even after a crash). While it
+    runs it uses the same programs and TikTokDownloader's / KS-Downloader's
+    ports, and the app named only "TikTokDownloader.exe" as the holder
+    (round 16 of the hunt). Asked only when something is already refused:
+    the lock is taken for an instant and given back at once.
+    """
+    lock = DATA_DIR / "quality-check" / "running.lock"
+    if not lock.is_file():
+        return False
+    import msvcrt
+    try:
+        handle = open(lock, "a+")
+    except OSError:
+        return False
+    try:
+        handle.seek(0)
+        try:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            return True                     # held: the check is running
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        return False
+    finally:
+        handle.close()
+
+
 class FolderError(RuntimeError):
     """A folder we need could not be created, said in plain words."""
 
@@ -48,7 +79,11 @@ def make_folder(folder: Path) -> None:
     try:
         folder.mkdir(parents=True, exist_ok=True)
     except OSError as problem:
+        # "Choose another folder in Settings" was wrong for a folder picked
+        # in "Save as" or on the card, and a removed drive got the same words
+        # (round 13 of the hunt). Advice, not a cause: Windows' reason follows.
         raise FolderError(
             f"Teleloadzai could not create the download folder {folder}. "
-            "Choose another folder in Settings. "
+            "If it was on a drive that was removed, plug it back in; "
+            "otherwise choose another folder. "
             f"(Windows says: {problem.strerror or problem})") from problem

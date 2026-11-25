@@ -2131,6 +2131,12 @@ function needText(tool) {
   // The title says the refusal; the box gives the one thing to try --
   // advice, not a cause (decision 38).
   if (n.met) return stillRefused(tool) ? `If you can watch it on ${site}, log in again here.` : "";
+  // Logged in in the window, not proven yet (blue until proven, round 20):
+  // never "log in" again as if nothing was done.
+  if (n.tried && n.cookies_on && !stillRefused(tool)) {
+    // Neutral: a window closed by hand may hold a visit only (round 21).
+    return `${site}'s cookies from the log-in window are saved, but Teleloadzai cannot check a log-in yet. Download uses them.`;
+  }
   // A visit is done once the site has cookies: the tip showed on every
   // TikTok link, cookies saved or not (review of 2026-09-28).
   if (n.kind === "visit" && n.visited && n.cookies_on) return "";
@@ -2288,7 +2294,9 @@ function showChosenTool() {
   // "this will fail" on links that work (critique of 2026-09-26).
   const still = Boolean(!dead && !stepped && n && n.met && stillRefused(chosen));
   // A dead end's box is advice, not a refusal: the red title already says it.
-  const refused = still || Boolean(!dead && !stepped && n && !n.met && (n.kind === "login" || n.kind === "asked"));
+  // A tried log-in (not proven yet) is not a refusal: grey, not pink (round 20).
+  const refused = still || Boolean(!dead && !stepped && n && !n.met && !(n.tried && n.cookies_on)
+    && (n.kind === "login" || n.kind === "asked"));
   $("tool-need").classList.toggle("warn", refused);
   // Logged in already: "Log in again" is a second chance (the log-in may
   // have been incomplete), grey, not the answer.
@@ -2564,17 +2572,29 @@ function videoKey(url) {
 }
 
 /** Every link in a text, in order, each once. */
-function linksIn(text) {
-  const found = text.match(/https?:\/\/[^\s"'<>，。！？、]+/gi) || [];
-  return [...new Set(found)];
+function allLinks(text) {         // every link, repeats included
+  return text.match(/https?:\/\/[^\s"'<>，。！？、]+/gi) || [];
 }
+function linksIn(text) {
+  return [...new Set(allLinks(text))];
+}
+// The same address given twice, folded into one before the card: said on
+// the card ("Not added"), it went in silence (round 25 of the hunt).
+let foldedRepeats = 0;
+let foldedFor = "";               // the box text the count belongs to (round 26)
+let batchRepeats = 0;
 
 async function read() {
   const typed = $("url").value.trim();
   if (!typed) return;
   // Several links typed or kept in the box (Read pressed again): one card.
   const several = linksIn(typed);
+  // Repeats typed in the box, or folded by the paste that wrote this very
+  // text -- a count from an older paste leaked into another card (round 26).
+  foldedRepeats = Math.max(typed === foldedFor ? foldedRepeats : 0, allLinks(typed).length - several.length);
+  foldedFor = typed;
   if (several.length > 1) { readMany(several); return; }
+  foldedRepeats = 0;
   const url = linkIn(typed);
   $("url").removeAttribute("aria-invalid");
   $("url-error").classList.add("hidden");
@@ -2801,9 +2821,16 @@ async function readLink(url, mine) {
     // command-line options on the card (Vimeo's "--cookies, --username…",
     // critique of 2026-09-26).
     probeNoAnswer = Boolean(info.noAnswer);
+    // The saved log-in of this site has passed its date (the red sign): a
+    // fact, said with the failure as advice, never as its cause (decision
+    // 38) -- only the Sites page said it (round 21 of the hunt).
+    const lp = loginPlatforms.find((x) => x.id === currentPlatformId);
+    const expired = !ex.known && !probeNoAnswer && lp && lp.state === "expired"
+      && $("cookies-switch").checked
+      ? ` Your saved ${lp.name || currentPlatform} log-in has passed its date: logging in again may help.` : "";
     probeReason = ex.known ? ex.title
       : probeNoAnswer ? "Teleloadzai got no answer while reading the title."
-      : `${readBy.name} could not read this link.`;
+      : `${readBy.name} could not read this link.${expired}`;
     probeKnown = Boolean(ex.known);
     probeExplain = ex;
     $("probe-words-text").textContent = ex.known || probeNoAnswer ? "" : info.error;
@@ -2863,8 +2890,10 @@ let loginIsBlocked = "";
 function upToDate(id) {
   const tool = (toolsData.tools || []).find((t) => t.id === id);
   // A tool that prints no version is judged by the release we installed.
+  // Not from an old answer GitHub could not renew (`stale`): "already the
+  // newest version" was said from it (round 14 of the hunt).
   return Boolean(tool && tool.installed && (tool.version || tool.release_installed)
-    && tool.latest && !tool.update_available);
+    && tool.latest && !tool.update_available && !tool.stale);
 }
 
 /** A newer version really exists: only then is an update offered (decision
@@ -2899,8 +2928,13 @@ function errorExplanation(job) {
   const ex = job.explain || {};
   const name = job.tool_name || job.tool;       // "TikTokDownloader", not its id
   const newest = upToDate(job.tool) ? ` ${name} is already the newest version.` : "";
+  // GitHub did not answer the check for a fix: said on the row, in every
+  // update mode -- "Ask me first" said nothing at all (round 15 of the hunt).
+  const known = (toolsData.tools || []).find((t) => t.id === job.tool);
+  const unchecked = known && known.stale && !known.update_available
+    ? ` Teleloadzai could not check for a newer ${name}.` : "";
   // "Update it, then try again" only while there is an update to take.
-  if (ex.known && ex.action === "update" && !updateReady(job.tool)) return `<b>${ex.title}</b>${newest}`;
+  if (ex.known && ex.action === "update" && !updateReady(job.tool)) return `<b>${ex.title}</b>${newest}${unchecked}`;
   if (ex.known) return `<b>${ex.title}</b> ${ex.next_step}`;
   if (job.needs_login) {
     return `<b>${name} says this needs a log-in.</b> Log in, then press Retry.`;
@@ -2921,9 +2955,11 @@ function errorExplanation(job) {
   // One line on the compact failed row (2026-10-25).
   return `<b>Teleloadzai does not know this error.</b>`
     // One sentence, not "newest. Updating will not help." (loop round 2).
-    + (other || (previewOffer(job, false) ? ` ${name} is up to date. Its test version may help.`
+    // With another program offered too, the failed check is still said: an
+    // update is what could help an unknown error (round 16 of the hunt).
+    + (other ? other + unchecked : (previewOffer(job, false) ? ` ${name} is up to date. Its test version may help.`
       : newest ? ` ${name} is up to date. Try again in a few days.`
-      : updateReady(job.tool) ? ` Try updating ${name} first.` : ""))
+      : updateReady(job.tool) ? ` Try updating ${name} first.` : unchecked))
     + (loginOffer(job) && !loggedIn(job.platform) ? ` If this link needs an account, logging in may help.` : "");
 }
 
@@ -2948,7 +2984,17 @@ function failChoice(job) {
   // Not when the tool itself asked for a log-in: an update does not log in
   // (a gallery-dl row showed 4 buttons, review of 2026-10-05).
   const canUpdate = !hopeless && updateReady(job.tool) && !(job.needs_login || ex.action === "login");
-  const primary = (job.needs_login || ex.action === "login") && loginOffer(job) ? "login"
+  // Logged in since a run that had no log-in: Retry leads, as the status line
+  // says ("press Retry on it") -- "Log in again" opened the window a second
+  // time (round 10 of the hunt, 2026-11-22). A run that HAD the log-in
+  // keeps "Log in again" first.
+  // Never for a row whose Retry is hidden (`hopeless`): no button would lead.
+  // A log-in tried since in the window (blue until proven) counts too: the
+  // row's Retry is what proves it, and "Log in" led again (round 21).
+  const tried = (loginPlatforms.find((x) => x.id === job.platform) || {}).tried && $("cookies-switch").checked;
+  const loggedInSince = !hopeless && !job.with_cookies && (loggedIn(job.platform) || tried);
+  const primary = loggedInSince && (job.needs_login || ex.action === "login") ? "retry"
+    : (job.needs_login || ex.action === "login") && loginOffer(job) ? "login"
     : ex.action === "update" && canUpdate ? "update" : job.other_tool ? "switch"
     // Its words say a Retry gets the same answer (a deleted or private
     // video): "Read the link again" leads, Retry waits in "⋯" (2026-11-08).
@@ -3106,13 +3152,16 @@ function jobProgress(job) {
   // A live recording has a real measure: the time against its limit
   // (decision 33's own example, "14 of 60 minutes" -- never shown until
   // loop round 2, 2026-10-23). The bar follows it.
-  else if (job.live && job.state === "running" && job.limit_minutes === 0) {
+  // A recording sets no step while it records: a step comes after, when its
+  // MP4 or MP3 is made (up to 30 min), and then wins -- the row said
+  // "Recording live" over a stream already ended (round 13 of the hunt).
+  else if (job.live && job.state === "running" && job.limit_minutes === 0 && !job.step) {
     // "No limit": the time so far, and no bar -- "of 60 min" and a bar
     // filling to an end that does not exist (hunt of 2026-11-08).
     right = formatElapsed(job.elapsed || 0);
     line = ["Recording live, no time limit", sizeText(job)].filter(Boolean).join(" · ");
   }
-  else if (job.live && job.state === "running") {
+  else if (job.live && job.state === "running" && !job.step) {
     const limit = (job.limit_minutes || 60) * 60;
     right = `${formatElapsed(job.elapsed || 0)} of ${job.limit_minutes || 60} min`;
     line = ["Recording live", sizeText(job)].filter(Boolean).join(" · ");
@@ -3376,8 +3425,8 @@ function jobRow(job) {
     ${job.cookie_note && job.state !== "done" ? `<div class="hint warn-text" style="margin-top:6px">
         ⚠️ Running without your log-in: ${job.cookie_note}.
       </div>` : ""}
-    ${job.state === "done" && job.note && !job.skipped ? '<div class="hint job-note" style="margin-top:6px"></div>' : ""}
-    ${already && !skipInFolder(job) ? '<div class="hint skip-why" style="margin-top:4px"></div>' : ""}
+    ${(job.state === "done" || (stopped && recorded)) && job.note && !job.skipped ? '<div class="hint job-note" style="margin-top:6px"></div>' : ""}
+    ${already && (!skipInFolder(job) || / but /.test(job.skip_reason || "")) ? '<div class="hint skip-why" style="margin-top:4px"></div>' : ""}
     ${stopped && !recorded && job.on_disk ? `<div class="hint" style="margin-top:6px">
         <span class="saved-before"></span>
       </div>` : ""}
@@ -3724,7 +3773,20 @@ function moreMenu(items) {
 
 async function refresh() {
   const data = await api("/api/jobs");
-  const jobs = data.jobs || [];
+  // An error answer (a refused token, said by api(); a server failure) is
+  // not "no downloads": every row vanished, running ones too (silent-
+  // failure hunt, 2026-11-22). The rows stay; the next look tries again.
+  if (!Array.isArray(data.jobs)) {
+    // Said once (a 403 is said by api()), and the looks go on: a call from
+    // outside the looks (Download, Retry) never started them, and a new row
+    // stayed missing (round 2 of the hunt, 2026-11-22).
+    if (data.error && !tokenRefused && data.error !== jobsErrorSaid) setStatus(data.error);
+    jobsErrorSaid = data.error || "";
+    if (!polling) { polling = true; setTimeout(tick, 2000); }
+    return true;
+  }
+  jobsErrorSaid = "";
+  const jobs = data.jobs;
   const list = $("jobs");
 
   const present = new Set(jobs.map((j) => j.id));
@@ -3828,6 +3890,9 @@ async function refresh() {
     !jobs.some((j) => ["done", "error", "cancelled"].includes(j.state) && !j.interrupted));
   // The kept list could not be read: said once, never a silent empty list.
   if (data.load_problem && !loadProblemSaid) { loadProblemSaid = true; setStatus(data.load_problem); }
+  // A save Windows refused: said once per new reason (hunt, 2026-11-22).
+  if (data.save_problem && data.save_problem !== saveProblemSaid) { setStatus(data.save_problem); }
+  saveProblemSaid = data.save_problem || "";
   paintListTools(jobs);
 
   const busy = running + waiting > 0;
@@ -3855,7 +3920,11 @@ for (const [key, name] of LIST_FILTERS) {
 // Not the rows whose words say a retry will not help (an unknown error from
 // a program already the newest: "try again in a few days") -- "Retry all"
 // sat filled beside that sentence (review of 2026-10-25).
-const retryable = (jobs) => jobs.filter((j) => j.state === "error" && failChoice(j).primary !== "");
+// Not a row whose way out is a log-in the user has not done: retried as is,
+// it failed again with the same words and was counted as "started again"
+// (round 20 of the hunt). Logged in since, its first button is Retry again.
+const retryable = (jobs) => jobs.filter((j) => j.state === "error"
+  && !["", "login"].includes(failChoice(j).primary));
 
 function paintListTools(jobs) {
   lastJobs = jobs;
@@ -3924,6 +3993,8 @@ function paintListTools(jobs) {
 }
 
 let loadProblemSaid = false;
+let saveProblemSaid = "";        // the save problem already said (one per reason)
+let jobsErrorSaid = "";          // the list's error answer already said
 
 /** Unfinished pieces a removed row leaves behind, said in words. */
 function piecesLeft(count, folder) {
@@ -3984,13 +4055,19 @@ retryFailedButton.addEventListener("click", async () => {
   const again = rows.length - refused.length;
   button.disabled = false;
   await refresh();
-  if (!refused.length && !refused.moved) notify(`${again} downloads started again.`);
-  else if (!refused.length) setStatus(`${again} downloads started again. ${refused.moved}`);
+  const word = again === 1 ? "download" : "downloads";     // "1 downloads" (round 20)
+  if (!refused.length && !refused.moved) notify(`${again} ${word} started again.`);
+  else if (!refused.length) setStatus(`${again} ${word} started again. ${refused.moved}`);
   else setStatus(`${again} of ${rows.length} downloads started again. Not started: ${refused.join(" · ")} ${refused.moved}`.trim());
 });
 
 async function tick() {
-  const busy = await refresh();
+  // One failed look (no answer, a bad answer) left `polling` on for good:
+  // every row froze, and nothing could start the looks again (silent-
+  // failure hunt, 2026-11-22). A failure is tried again, a little later.
+  let busy;
+  try { busy = await refresh(); }
+  catch { setTimeout(tick, 2000); return; }
   if (busy) setTimeout(tick, 700);
   else polling = false;
 }
@@ -4095,7 +4172,14 @@ function renderTools() {
         const answer = await api("/api/tools/remove", { id: button.dataset.remove });
         // A removal Windows refused (a file still open) left the row saying
         // "installed" with no word why (decision 34).
-        if (!answer.removed) {
+        if (answer.busy) {
+          // Refused before anything was touched (rounds 5-6 of the hunt, 2026-11-22).
+          setStatus(answer.busy === "console"
+            ? `${name} is running in the Console, so it was not removed. Remove it when the command ends.`
+            : answer.busy === "updating"
+            ? `${name} is being installed or updated, so it was not removed. Remove it when that ends.`
+            : `${name} is downloading now, so it was not removed. Remove it when its downloads end.`);
+        } else if (!answer.removed) {
           setStatus(`${name} could not be removed completely. Close any download `
             + "that uses it, then try again.");
         }
@@ -4136,8 +4220,10 @@ function renderAbout() {
     const empty = document.createElement("span");
     empty.className = "soft";
     empty.style.gridColumn = "1 / -1";
+    // "Loading…" forever when the list never came (round 24 of the hunt).
     empty.textContent = toolsData.tools.length
-      ? "No program is installed yet. Programs lists them all." : "Loading…";
+      ? "No program is installed yet. Programs lists them all."
+      : toolsLoadFailed ? "The programs list could not be loaded. Open this page again to try." : "Loading…";
     list.appendChild(empty);
     return;
   }
@@ -4171,12 +4257,40 @@ function versionsText() {
 $("about-github").addEventListener("click", () => window.open(APP_PAGE, "_blank", "noopener,noreferrer"));
 $("about-report").addEventListener("click", () => window.open(`${APP_PAGE}/issues/new`, "_blank", "noopener,noreferrer"));
 $("about-copy").addEventListener("click", async () => {
-  if (await copyText(versionsText())) notify("Version copied.");
-  else setStatus("Could not copy the version.");
+  // The programs' versions are part of it once their list is in: before,
+  // "Version copied." gave the app's line alone (round 10 of the hunt).
+  const listed = toolsData.tools.length > 0;
+  if (await copyText(versionsText())) {
+    notify(listed ? "Version copied." : "Version copied, without the programs' versions: their list is still loading.");
+  } else setStatus("Could not copy the version.");
 });
 
+let toolsLoadFailed = false;
 async function loadTools(refresh) {
-  const data = refresh ? await api("/api/tools/refresh", {}) : await api("/api/tools");
+  // A list that never came was "Loading…" for good on Programs and About,
+  // with no word (round 24 of the hunt): said, and asked again next time.
+  let data;
+  try {
+    data = refresh ? await api("/api/tools/refresh", {}) : await api("/api/tools");
+    if (!data || !Array.isArray(data.tools)) throw new Error((data && data.error) || "no list in the answer");
+  } catch (problem) {
+    toolsLoadFailed = true;
+    if (!(toolsData.tools || []).length) {
+      $("tools-list").textContent = "The programs list could not be loaded. Open this page again to try.";
+    } else {
+      // A list shown before stays, redrawn ("Asking GitHub…" stayed for
+      // good), and the failure is said (round 25 of the hunt).
+      renderTools();
+      // Added to what the line says, never over it: it erased "yt-dlp
+      // updated: 1.0 → 2.0" said a moment before (round 26).
+      const failed = "The programs list could not be refreshed: the last one is shown.";
+      const now = $("status-text").textContent;
+      if (!problem.said && !now.includes(failed)) setStatus(`${now} ${failed}`.trim());
+    }
+    renderAbout();
+    return false;             // callers stop: their next step would use old data
+  }
+  toolsLoadFailed = false;
   toolsData = { ...toolsData, ...data };
   if (!data.progress) toolsData.progress = (await api("/api/tools/progress")).progress;
   renderTools();
@@ -4185,11 +4299,23 @@ async function loadTools(refresh) {
   updateGoLabel();          // the card's Update follows the versions (upToDate)
   const busy = Object.values(toolsData.progress || {}).some((p) => p.state === "running");
   if (busy && !toolsPolling) { toolsPolling = true; setTimeout(pollTools, 800); }
+  return true;
 }
 
 async function pollTools() {
   const before = toolsData.progress || {};
-  toolsData.progress = (await api("/api/tools/progress")).progress;
+  // A failed look left `toolsPolling` on for good, the install row frozen
+  // (silent-failure hunt, 2026-11-22): tried again, a little later.
+  let answer;
+  try { answer = await api("/api/tools/progress"); }
+  catch { setTimeout(pollTools, 2000); return; }
+  // An error answer is not "nothing is installing": the row vanished with
+  // no result (round 2 of the hunt, 2026-11-22). Tried again.
+  if (!answer || typeof answer.progress !== "object" || answer.progress === null) {
+    setTimeout(pollTools, 2000);
+    return;
+  }
+  toolsData.progress = answer.progress;
   reportFinished(before, toolsData.progress);
   renderUpdateBar();
   const busy = Object.values(toolsData.progress).some((p) => p.state === "running");
@@ -4199,7 +4325,11 @@ async function pollTools() {
 
 async function installTool(id) {
   await api("/api/tools/install", { id });
-  loadTools();
+  // A failed list look: the install is followed by its own progress look (round 25).
+  if (!(await loadTools())) {
+    toolsData.progress = { ...(toolsData.progress || {}), [id]: { state: "running" } };   // its end is said (round 26)
+    if (!toolsPolling) { toolsPolling = true; setTimeout(pollTools, 800); }
+  }
 }
 
 /** Wait until an install finishes. Returns its last progress, or null. */
@@ -4294,20 +4424,43 @@ function renderUpdateBar() {
 /** What an update really did: "updated" only when the version changed. */
 function installSentence(id, p) {
   const name = toolName(id);
-  if (p.state === "error") return `The update of ${name} did not finish: ${p.error || "unknown error"}.`;
+  // The code word in words, as on the Programs row (round 6 of the hunt).
+  if (p.state === "error" && p.error === "python_missing") {
+    return `${name} needs Python, which is not on this PC. See the Programs page.`;
+  }
+  // A first install is not an update (round 9 of the hunt, 2026-11-22).
+  if (p.state === "error") return `The ${p.updating ? "update" : "install"} of ${name} did not finish: `
+    + `${p.error || "unknown error"}.`;
   if (!p.changed) return `The update did not change ${name}: ${shortVersion(p.after || "")} is kept.`;
   if (!p.before) return `${name} installed${p.after ? ": " + shortVersion(p.after) : ""}.`;
   if (p.switched || p.before === p.after) return `${name} now uses its ${p.channel === "preview" ? "Preview" : "Stable"} version (${shortVersion(p.after)}).`;
   return `${name} updated: ${shortVersion(p.before)} → ${shortVersion(p.after)}.`;
 }
 
-function reportFinished(before, now) {
+// The update sentences on the status line when one of them is a failure.
+let updateFailureSaid = "";
+
+/** One sentence per look, every result in it. A failure stays until read;
+ * a success of the same "Update all", in this look or a later one, is added
+ * to it, never put in its place -- it used to replace the failure, then fade
+ * after 4 s, the failure never read (hunt round 12, 2026-11-22). */
+function reportFinished(before, now, refused = []) {
+  const bad = refused.length ? [`Not updated: ${refused.join(" · ")}`] : [];
+  const good = [];
   for (const [id, p] of Object.entries(now || {})) {
     if ((before[id] || {}).state !== "running" || p.state === "running" || rowUpdates.has(id)) continue;
-    const sentence = installSentence(id, p);
-    if (p.state === "error" || !p.changed) setStatus(sentence);   // stays: read it
-    else notify(sentence);
+    (p.state === "error" || !p.changed ? bad : good).push(installSentence(id, p));
   }
+  if (!bad.length && !good.length) return;
+  const still = updateFailureSaid && $("status-text").textContent === updateFailureSaid
+    ? updateFailureSaid : "";
+  if (bad.length || still) {
+    // A sentence already on the line is not said again: a second "Update
+    // all" failing the same way doubled it (round 13).
+    const more = [...bad, ...good].filter((s) => !still.includes(s));
+    updateFailureSaid = [still, ...more].filter(Boolean).join(" ");
+    setStatus(updateFailureSaid);                  // stays: read it
+  } else notify(good.join(" "));
 }
 
 async function updateAll() {
@@ -4319,12 +4472,32 @@ async function updateAll() {
     if (answer.error) refused.push(`${tool.name || toolName(tool.id)}: ${answer.error}`);
     else started[tool.id] = { state: "running" };
   }
-  await loadTools();
+  // The list look failed: the updates still run -- followed by their own
+  // progress look, not left unwatched with no word (round 25).
+  if (!(await loadTools())) {
+    // Marked running, so the progress look says each end ("updated: x → y");
+    // compared with an old answer, it said nothing (round 26).
+    toolsData.progress = { ...(toolsData.progress || {}), ...started };
+    if (Object.keys(started).length && !toolsPolling) { toolsPolling = true; setTimeout(pollTools, 800); }
+    if (refused.length) {
+      // Kept as a failure on the line: the updates' ends are added to it,
+      // never put in its place (round 27 -- it was wiped a moment later).
+      // With what the line already says (the list's own failure): set
+      // alone, it erased that sentence (round 28).
+      // Only the list's own sentence, never an older unrelated line (round
+      // 29); one period, a server error may already end with one.
+      const listFailed = "The programs list could not be refreshed: the last one is shown.";
+      updateFailureSaid = [`Not updated: ${refused.join(" · ").replace(/\.\s*$/, "")}.`,
+        $("status-text").textContent.includes(listFailed) ? listFailed : ""].filter(Boolean).join(" ");
+      setStatus(updateFailureSaid);
+    }
+    return;
+  }
   // An update that ended before the first look (offline: at once) was never
   // seen running, so the poll never said it -- only the Programs row did
   // (hunt of 2026-10-31). Said here, like the others.
-  reportFinished(started, toolsData.progress);
-  if (refused.length) setStatus(`Not updated: ${refused.join(" · ")}`);
+  // A refusal goes in the same sentence: said after it, it took its place.
+  reportFinished(started, toolsData.progress, refused);
 }
 
 /** A failed row's tool: update it, then retry the row -- once. */
@@ -4332,10 +4505,21 @@ async function updateAndRetry(job, button) {
   const name = job.tool_name || toolName(job.tool);
   if (button) { button.disabled = true; button.textContent = "updating…"; }
   rowUpdates.add(job.tool);
-  await api("/api/tools/install", { id: job.tool });
-  loadTools();
-  const result = await waitForInstall(job.tool);
-  rowUpdates.delete(job.tool);
+  let result;
+  try {
+    await api("/api/tools/install", { id: job.tool });
+    loadTools();
+    result = await waitForInstall(job.tool);
+  } catch (problem) {
+    // A failed call left the program in `rowUpdates` for good: its later
+    // updates were never said, and the button stayed on "updating…"
+    // (round 2 of the hunt, 2026-11-22).
+    if (button) { button.disabled = false; button.textContent = "Update failed. Try again"; }
+    if (!problem.said) setStatus(`The update of ${name} could not be followed. Look at Programs.`);
+    return;
+  } finally {
+    rowUpdates.delete(job.tool);
+  }
   // Said only when it happened (decision 24), and no retry when nothing
   // changed: it would get the same answer.
   if (!result || result.state === "error" || !result.changed) {
@@ -4371,6 +4555,8 @@ async function checkForFix(job) {
     autoRetried.add(job.id);
     updateAndRetry(job, null);
   }
+  // A failed check is said on the row itself, in every mode (errorExplanation,
+  // round 15); the status line repeated it in Automatic mode only.
 }
 
 function previewOffer(job, hopeless) {
@@ -4395,7 +4581,10 @@ async function tryPreview(job, button) {
   $("ytdlp-channel").value = "preview";
   await api("/api/tools/check", { id: "yt-dlp" });
   await loadTools();
-  notify("yt-dlp now uses its Preview version. To go back, open Programs.");
+  // Said as what is happening: "now uses its Preview version" came before the
+  // file was fetched, which may wait or fail (round 7 of the hunt, 2026-11-22).
+  // updateAndRetry says the result.
+  setStatus("Switching yt-dlp to its Preview version… To go back later, open Programs.");
   updateAndRetry(job, button);
 }
 
@@ -4440,9 +4629,15 @@ $("welcome-tools-open").addEventListener("click", async () => {
   showView("programs");
 });
 
-$("tools-refresh").addEventListener("click", () => {
+$("tools-refresh").addEventListener("click", async () => {
   document.getElementById("tools-list").textContent = "Asking GitHub…";
-  loadTools(true);
+  if (!(await loadTools(true))) return;     // said, the last list shown again (round 25)
+  // Offline, the old versions came back as if new, with no word (silent-
+  // failure hunt, 2026-11-22).
+  if (toolsData.github_problem) {
+    setStatus(`New versions could not be checked: ${toolsData.github_problem}. `
+      + "The versions shown are from the last check. Try again later.");
+  }
 });
 
 $("python-manual").addEventListener("click", () => {
@@ -4450,16 +4645,26 @@ $("python-manual").addEventListener("click", () => {
 });
 $("python-recheck").addEventListener("click", async () => {
   $("python-help-status").textContent = "Checking…";
-  await loadTools();
-  $("python-help-status").textContent =
-    (toolsData.python || {}).found ? "Python found." : "Still not found.";
+  // Not checked is not "Still not found." (round 25 of the hunt).
+  if (!(await loadTools())) {
+    $("python-help-status").textContent = `${APP_NAME} did not answer: Python was not checked. Try again.`;
+    return;
+  }
+  // After Windows installed it, only a restart lets the app see it: "Still not
+  // found." hid that advice (round 5 of the hunt, 2026-11-22).
+  $("python-help-status").textContent = (toolsData.python || {}).found ? "Python found."
+    : pythonNeedsRestart ? `Windows installed Python: close and open ${APP_NAME} so it can use it.`
+    : "Still not found.";
 });
+let pythonNeedsRestart = false;     // winget said it installed Python
 $("python-install").addEventListener("click", async () => {
   $("python-help-status").textContent =
     "Windows is installing Python. Answer its window if it asks. This can take minutes…";
   const result = await api("/api/python/install", {});
+  if (result.installed) pythonNeedsRestart = true;
   $("python-help-status").textContent = result.ok
     ? "Python installed."
+    : result.installed ? result.error      // installed; the app restarts to see it
     : "Not installed: " + (result.error || "unknown") + `. You may need to restart ${APP_NAME}.`;
   loadTools();
 });
@@ -4489,6 +4694,7 @@ function showView(name) {
     loadTools();      // the table names each site's programs
     loadCookies();
     loadToolChoices();
+    sayOldSignList();
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
   // The keyboard moves with the page -- a screen reader stayed on the old
@@ -4528,13 +4734,25 @@ function consoleLine(line) {
   return row;
 }
 
+// One look at a time, and none from before a Clear: a Run or Stop look over
+// the timer's showed lines twice, and a look sent before Clear put the
+// cleared lines back (round 11 of the hunt, 2026-11-22).
+let consoleLooking = false;
+let consoleEpoch = 0;             // raised by Clear
 async function pollConsole() {
+  if (consoleLooking) return;
+  consoleLooking = true;
+  try { await pollConsoleOnce(); } finally { consoleLooking = false; }
+}
+async function pollConsoleOnce() {
   let data;
+  const epoch = consoleEpoch;
   try { data = await api("/api/console?since=" + consoleNext); } catch { return; }
+  if (epoch !== consoleEpoch) return;     // cleared meanwhile: these lines are gone
   if (data.error) return;     // refused: api() has said it; the lines shown stay
   const box = $("con-box");
   // A line number the server no longer has (Teleloadzai restarted): start again.
-  if (data.next < consoleNext) { box.textContent = ""; consoleNext = 0; return pollConsole(); }
+  if (data.next < consoleNext) { box.textContent = ""; consoleNext = 0; return pollConsoleOnce(); }
   for (const line of data.lines) box.appendChild(consoleLine(line));
   consoleNext = data.next;
   while (box.childElementCount > 2000) box.firstElementChild.remove();
@@ -4631,6 +4849,10 @@ $("con-bar").addEventListener("submit", async (event) => {
   // No answer at all (Teleloadzai stopped): said, never a button that does
   // nothing -- above all Stop (hunt round 5, 2026-11-15).
   const silent = `${APP_NAME} did not answer. Restart ${APP_NAME}.`;
+  // A look already on its way was answered before this press: thrown away,
+  // or it put the old Run / Stop state back for a second (round 12 of the
+  // hunt). Its lines are asked again from the same line number.
+  consoleEpoch++;
   if (commandRunning) {
     try { await api("/api/console/stop", {}); }
     catch { setStatus(silent); return; }
@@ -4655,7 +4877,12 @@ $("con-guide-toggle").addEventListener("click", () => {
 // Two clicks, like every other button that destroys (review of 2026-10-25):
 // the lines cannot come back.
 $("con-clear").addEventListener("click", () => twoClicks($("con-clear"), "Clear all? Click again", async () => {
-  await api("/api/console/clear", {});
+  consoleEpoch++;             // a look already on its way brings back nothing (round 11)
+  const answer = await api("/api/console/clear", {});
+  if (answer.error) return;   // not cleared on the server: the lines stay shown, api() said why
+  // Raised again: a look sent between the first raise and the server's
+  // clear carried the new number and could bring old lines back (round 13).
+  consoleEpoch++;
   $("con-box").textContent = "";
 }));
 $("con-copy").addEventListener("click", async () => {
@@ -4695,8 +4922,17 @@ document.addEventListener("keydown", (event) => {
   if (document.querySelector(".wrap").dataset.showing !== "main") { showView("main"); return; }
   // The link typed stays in the box: Esc closed the card AND erased it
   // (review of 2026-10-25). The × and Download still empty it.
-  if (!$("result").classList.contains("hidden") || !$("batch").classList.contains("hidden")) closeCard(true);
+  if (!$("result").classList.contains("hidden") || !$("batch").classList.contains("hidden")) {
+    closeCard(true);
+    userClosedAt = readNumber;
+  }
 });
+
+// The read number at the user's own close (Esc, ×): a Download press waiting
+// for a title says nothing when the user cancelled -- and still says "a new
+// link was pasted" when a new read came after (rounds 8-9 of the hunt; the
+// hidden cards told nothing: a new read hides them too).
+let userClosedAt = -1;
 
 /** The card's ×, and Esc: the card goes, as after Download, and a read still
  *  running is dropped -- its answer must not bring the card back. */
@@ -4731,8 +4967,8 @@ document.addEventListener("keydown", (event) => {
   event.preventDefault();
   go.click();
 });
-$("result-close").addEventListener("click", () => closeCard());
-$("batch-close").addEventListener("click", () => closeCard());
+$("result-close").addEventListener("click", () => { closeCard(); userClosedAt = readNumber; });
+$("batch-close").addEventListener("click", () => { closeCard(); userClosedAt = readNumber; });
 
 // "Update yt-dlp" on a card whose title the tool could not read: update,
 // then read the link again -- said on the button while it works.
@@ -4884,7 +5120,11 @@ $("url").addEventListener("paste", (event) => {
   const kept = linksIn(box.selectionStart === box.selectionEnd ? box.value
     : box.value.slice(0, box.selectionStart) + " " + box.value.slice(box.selectionEnd));
   const links = [...new Set([...kept, ...several])];
+  foldedRepeats = allLinks(box.selectionStart === box.selectionEnd ? box.value
+    : box.value.slice(0, box.selectionStart) + " " + box.value.slice(box.selectionEnd)).length
+    + allLinks(pasted).length - links.length;
   if (several.length > 1 || (several.length && kept.length)) {
+    foldedFor = links.join(" ");      // used only while the box still holds this
     event.preventDefault();
     // The open card was for the link alone: it would stay above two.
     if (!$("result").classList.contains("hidden") || !$("batch").classList.contains("hidden")) closeCard(true);
@@ -4928,7 +5168,21 @@ function twoClicks(button, question, action) {
   }, 5000);
 }
 
+// One press at a time: a second Ctrl+Enter before the first was answered
+// opened a second "Save as" and put "Cancelled." over "Added to Downloads."
+// for a download that was added (round 24 of the hunt).
+// A press for a NEW link passes: held during a slow read of the old one, it
+// was dropped with no word (round 25); the old press then ends quietly.
+let goPressing = false, goPressingRead = -1, goPressId = 0;
 $("go").addEventListener("click", async () => {
+  if (goPressing && goPressingRead === readNumber) return;
+  const mine = ++goPressId;
+  goPressing = true;
+  goPressingRead = readNumber;
+  try { await goPressed(mine); } finally { if (goPressId === mine) goPressing = false; }
+});
+
+async function goPressed(mine) {
   if (waitTimer) {            // the title is still being read: wait for it
     // What the button was when pressed, and for which link: only a CHANGE
     // made by the read stops the press. A press on an already grey button
@@ -4939,8 +5193,13 @@ $("go").addEventListener("click", async () => {
     $("go").disabled = true;
     $("go").textContent = "Waiting for the title…";
     await titleReady;
+    if (mine !== goPressId) return;           // a newer press took over: it speaks (round 25)
     showChosenTool();         // the button's own words and state, as they are now
     if (readNumber !== pressedOn) {           // another link now: nothing asked
+      // The card closed by the user (Esc, ×), with nothing read after, is
+      // their own cancel: "a new link was pasted" was said of nothing
+      // (rounds 8-9 of the hunt, 2026-11-22).
+      if (userClosedAt === readNumber) return;
       // Said, not silent (decision 34; loop round 5).
       setStatus("Download not started: a new link was pasted. Press Download again for it.");
       return;
@@ -5005,7 +5264,7 @@ $("go").addEventListener("click", async () => {
   $("url").focus();
   setReadLabel();
   refresh();
-});
+}
 
 // ---- Several links at once (Phase 2 item 1, 2026-10-24) -------------------
 // One paste of several links gives ONE card: each link, its site's program,
@@ -5015,6 +5274,7 @@ $("go").addEventListener("click", async () => {
 const BATCH_MAX = 50;
 let batch = [];             // [{url, found, tool}] in the order pasted
 let batchExtra = 0;         // links past BATCH_MAX, said on the card
+let batchLeftOut = [];      // those links themselves (a paste of links, never a playlist)
 // Lines of a paste of several links that hold no link ("hello"): said under
 // "Not added", never dropped without a word (critique of 2026-10-31). Kept
 // with the box text they came with: Read may come later (the paste waits).
@@ -5026,6 +5286,13 @@ let batchDupes = [];
 // null until pressed, then the one-link card's remembered choice is used.
 let eachSubs = null;
 const eachSubsNow = () => (eachSubs === null ? subsMode : eachSubs);
+
+/** What a row not read yet will get, said on the card ("" if nothing to say). */
+function unreadSentence() {
+  const parts = [batchMode === "mp3" ? "" : "at their best size",
+    severalMode === "each" && eachSubsNow() ? "without subtitles" : ""].filter(Boolean);
+  return parts.length ? ` · Videos not read yet come ${parts.join(", ")}.` : "";
+}
 let batchMode = "mp4";
 // "same": one Format / Quality / folder for all. "each": a row of choices per
 // video -- the user's own pick, kept in Settings (asked 2026-10-24).
@@ -5152,7 +5419,9 @@ function eachRow(item) {
   li.className = "each";
   const name = document.createElement("span");
   name.className = "each-title" + (item.info === undefined && !item.title ? " reading" : "");
-  name.textContent = rowName(item);
+  // A failed read is said, as in the "Same for all" list: the bare short
+  // link said nothing (round 14 of the hunt).
+  name.textContent = rowName(item) + (item.titleFailed && !item.title ? " · title not read" : "");
   name.title = item.url;
   const box = document.createElement("span");
   box.className = "each-choices";
@@ -5250,7 +5519,12 @@ function eachRow(item) {
     const none = document.createElement("span");
     none.className = "each-none";
     // Said only while subtitles are asked for: otherwise not a word.
-    if (how && item.fmt === "mp4" && item.info !== undefined) none.textContent = "no subtitles";
+    // "no subtitles" only from a real read: a read that failed (null) said
+    // it too, as if the site had none, and the video came without them
+    // (round 14 of the hunt). Not read = nothing chosen, said as such.
+    if (how && item.fmt === "mp4" && item.info !== undefined) {
+      none.textContent = item.info ? "no subtitles" : "not read: no subtitles chosen";
+    }
     box.appendChild(none);
   }
 
@@ -5327,6 +5601,7 @@ function openPlaylist(found, info, url) {
   batchPlaylist = { url, title: info.title || "", count: info.items.length, found,
                     entries: info.items.map((it) => ({ url: it.url, title: it.title || "" })) };
   batchExtra = Math.max(0, info.items.length - BATCH_MAX);
+  batchLeftOut = [];          // a playlist's videos past 50 are downloaded, never left out
   batch = info.items.slice(0, BATCH_MAX).map((it) => ({
     url: it.url, found, tool: null, title: it.title || "", duration: it.duration,
     placeholder: it.title ? "" : partName(it.url) }));
@@ -5368,13 +5643,19 @@ function batchTool(found, wanted) {
   const first = all[0];
   const n = first && first.need;
   let tool = usable[0];
-  if (n && n.kind === "login" && !n.met) tool = usable.find((t) => t.id !== first.id && !t.need) || tool;
+  // Both moves are said on the card, as the one-link card says them
+  // (decision 13): here they were silent (round 14 of the hunt).
+  let away = null;                  // the usual program, its log-in missing
+  if (n && n.kind === "login" && !n.met) {
+    const free = usable.find((t) => t.id !== first.id && !t.need);
+    if (free) { away = first; tool = free; }
+  }
   if (wanted === "mp3" && !("mp3" in (tool.choices || {}))) {
     const maker = usable.find((t) => "mp3" in (t.choices || {}));
     if (!maker) return { why: "no program here makes an MP3 of it." };
-    tool = maker;
+    return { tool: maker, from: tool, away: away && away.id !== maker.id ? away : null };
   }
-  return { tool };
+  return { tool, away };
 }
 
 /** A long folder as its drive and its end: the end is what tells it apart. */
@@ -5393,6 +5674,10 @@ async function readMany(links) {
   $("url").removeAttribute("aria-invalid");
   setStatus("");
   batchExtra = Math.max(0, links.length - BATCH_MAX);
+  // Only for the text it was counted on (a Paste button's links: not counted).
+  batchRepeats = $("url").value.trim() === foldedFor.trim() ? foldedRepeats : 0;
+  foldedRepeats = 0;
+  foldedFor = "";
   batchPlaylist = null;
   batchRestPicked = true;
   eachRead++;                 // an older card's reads must not come back
@@ -5406,6 +5691,7 @@ async function readMany(links) {
     return false;
   });
   batchExtra = Math.max(0, links.length - BATCH_MAX);
+  batchLeftOut = links.slice(BATCH_MAX);        // back in the box after Download
   batch = links.slice(0, BATCH_MAX).map((url) => ({ url, found: null, tool: null }));
   batchStray = $("url").value === strayFor ? strayLines : [];
   eachSubs = null;
@@ -5441,21 +5727,33 @@ function renderBatch() {
   const read = batch.filter((i) => i.found).length;
   const reading = read < batch.length;
   const skipped = [];
+  const movedFrom = new Set();      // programs passed over for the MP3
+  const loginAway = new Map();      // usual program -> the one used, its log-in missing
   let noFfmpeg = false;
   for (const item of batch) {
     item.tool = null;
     const f = item.found;
     if (!f) continue;
     if (f.error) { skipped.push(`${shortLink(item.url)}: ${f.error}`); continue; }
-    if (!f.supported) { skipped.push(`${f.platform}: Teleloadzai does not download ${f.platform}.`); continue; }
+    // The server's own reason (DRM, a program it cannot drive) and the link,
+    // as the one-link card says it: three equal lines, no reason (round 25).
+    if (!f.supported) {
+      skipped.push(`${shortLink(item.url)}: ${f.note || `Teleloadzai does not download ${f.platform}.`}`);
+      continue;
+    }
     const pick = batchTool(f, batchMode);
     if (!pick.tool) { skipped.push(`${f.platform}: ${pick.why}`); continue; }
     item.tool = pick.tool;
+    if (pick.from) movedFrom.add(pick.from.name);
+    if (pick.away) loginAway.set(pick.away.name, pick.tool.name);
     if (f.ffmpeg_missing) noFfmpeg = true;
   }
   const each = severalMode === "each";
   const list0 = batchPlaylist;
   if (batchExtra && !list0) skipped.push(`${batchExtra} links left out: ${BATCH_MAX} at most at once. Paste the rest after.`);
+  if (batchRepeats && !list0) {
+    skipped.push(`${batchRepeats} link${batchRepeats > 1 ? "s were" : " was"} given twice: added once.`);
+  }
   // A playlist's videos past 50 still come down with "Same for all" (one row
   // per video, all of them); one by one, 50 is the most the card can hold.
   if (batchExtra && list0 && each) {
@@ -5490,7 +5788,14 @@ function renderBatch() {
   $("batch-sites").textContent = (sites.size === 1 ? [...sites.keys()][0]
       : [...sites].map(([name, n]) => `${name} ${n}`).join(" · "))
     + (titlesPending ? ` · reading the ${list0 && list0.untitled ? "part names" : "titles"}… ${ready.length - titlesPending} of ${ready.length}` : "")
-    + (pendingRows ? " · Videos not read yet come at their best size." : "");
+    // Only what is true (rounds 4-5 of the hunt, 2026-11-22): best size but
+    // not in MP3 (the card's bitrate), and "without subtitles" only when
+    // subtitles were asked -- a row's tracks are known once it is read.
+    + (pendingRows ? unreadSentence() : "")
+    // "Same for all" only: in "Choose for each" every row has its own format
+    // and program, shown on the row (round 15 of the hunt).
+    + (each ? "" : [...loginAway].map(([usual, used]) => ` · Using ${used}: ${usual} needs a log-in`).join(""))
+    + (movedFrom.size && !each ?` · Chosen for the MP3: ${[...movedFrom].join(", ")} make${movedFrom.size > 1 ? "" : "s"} none` : "");
   // The program on each line only when they differ: "yt-dlp" on every line
   // told a beginner nothing.
   const oneProgram = new Set(ready.map((i) => i.tool.id)).size <= 1;
@@ -5520,6 +5825,9 @@ function renderBatch() {
     prog.textContent = !item.tool ? "…"
       : [item.title ? "" : item.titleFailed ? "title not read"
           : item.info === undefined && item.found.read_by && (!list0 || list0.untitled) ? "reading…" : "",
+         // As the one-link card says it (round 2 of the hunt, 2026-11-22):
+         // a dead short link here became an "unknown site" row with no word.
+         item.found.was_shortened && item.found.redirect_error ? "short link could not be opened" : "",
          length ? formatTime(length) : "",
          oneProgram ? "" : item.tool.name].filter(Boolean).join(" · ");
     li.append(item.tool ? pickWrap(item, link, li) : link, prog);
@@ -5645,8 +5953,17 @@ $("batch-folder-change").addEventListener("click", async () => {
 
 $("batch-go").addEventListener("click", async () => {
   const ready = batch.filter((i) => i.tool && isPicked(i));
-  if (!ready.length) return;
+  const leftOut = batchLeftOut;          // this card's, whatever is pasted meanwhile
+  const startRead = readNumber;          // a read after this one is a newer card
+  const startBatch = batch;              // ...and replaces this list (a non-link typed does not)
+  // The count Download shows, past the 50 rows too: with the rows all
+  // unticked and "All" still ruling the rest, "Download 30" did nothing,
+  // with no word (silent-failure hunt, 2026-11-22).
+  if (!pickedCount()) return;
   if (severalMode === "each") { downloadEach(ready); return; }
+  // A playlist's program: any row's (all its videos share it), not the
+  // first TICKED row's -- there may be none.
+  const listTool = (batch.find((i) => i.tool) || {}).tool;
   // The folder the card shows: no window at Download (the user, 2026-11-05;
   // one window for all of them until then). "" is the Settings folder. Each
   // file keeps the name its program gives it.
@@ -5663,7 +5980,7 @@ $("batch-go").addEventListener("click", async () => {
   // Only the ticked videos; past the rows, what "All" says. A part's name
   // read on the card names its file.
   const jobs = batchPlaylist
-    ? batchPlaylist.entries.map((it, k) => ({ url: it.url, found: batchPlaylist.found, tool: ready[0].tool,
+    ? batchPlaylist.entries.map((it, k) => ({ url: it.url, found: batchPlaylist.found, tool: listTool,
         title: it.title || (batch[k] && batch[k].title) || "", group: { ...pl, group_index: k + 1 }, k }))
       .filter((job) => (job.k < batch.length ? isPicked(batch[job.k]) : batchRestPicked))
     : ready;
@@ -5682,21 +5999,51 @@ $("batch-go").addEventListener("click", async () => {
   }
   const whole = batchPlaylist ? batchPlaylist.count : 0;
   const what = batchPlaylist && batchPlaylist.untitled ? "parts of the video" : "videos of the playlist";
-  closeCard();
+  // A link pasted and read during the adding is a newer card: it stays, and
+  // so does its box -- closing "the card" threw that paste away (round 9 of
+  // the hunt, 2026-11-22). The left-out links are then only counted.
+  // A non-link typed meanwhile bumps the read number but leaves this card
+  // up: it is still this card, closed as before (round 10 of the hunt: the
+  // card stayed with "Adding 3 of 3…").
+  const newer = readNumber !== startRead && batch !== startBatch;
+  if (!newer) closeCard();
+  const back = !newer ? restoreLeftOut(leftOut)
+    : leftOut.length ? ` ${leftOut.length} link${leftOut.length === 1 ? " was" : "s were"} left out: paste ${leftOut.length === 1 ? "it" : "them"} again.` : "";
   refresh();
-  if (lost) { setStatus(lostSentence(added, jobs.length)); return; }
+  if (lost) { setStatus(lostSentence(added, jobs.length) + back); return; }
   // Every link accounted for: a refused one is said, never dropped (decision 34).
-  const done = whole && added ? `${added} ${what} added, one row each.`
-    : added === 1 ? "1 download added." : `${added} downloads added.`;
-  if (refused.length) setStatus(`${done} Not added: ${refused.join(" · ")}`);
+  const done = (whole && added ? `${added} ${what} added, one row each.`
+    : added === 1 ? "1 download added." : `${added} downloads added.`) + back;
+  if (refused.length || back) setStatus(`${done}${refused.length ? ` Not added: ${refused.join(" · ")}` : ""}`);
   else notify(done);
 });
+
+/** The links past BATCH_MAX in a paste: back in the link box once the card
+ *  closes, and said -- they were lost with it, "Paste the rest after" left
+ *  with nothing to paste (round 7 of the hunt, 2026-11-22). */
+function restoreLeftOut(back) {
+  // `back`: the left-out links of the card that Download ran from, taken
+  // when it was pressed -- a paste read during the adding replaced the list
+  // (round 8 of the hunt, 2026-11-22).
+  if (batchLeftOut === back) batchLeftOut = [];
+  if (!back.length) return "";
+  // A space, not a line break: the box is one line and drops line breaks,
+  // which glued the links into one (seen in the test, round 8). linksIn
+  // splits on any space.
+  $("url").value = back.join(" ");
+  setReadLabel();
+  return back.length === 1 ? " 1 link left out is back in the box: press Read to add it."
+    : ` ${back.length} links left out are back in the box: press Read to add them.`;
+}
 
 /** "Choose for each": each row with its own Format, Quality and program --
  *  and, with "Ask where to save" on, its own "Save as" window, one after
  *  another (decision 22's one folder window is for "Same for all"). A window
  *  closed with Cancel skips that video only, and is said. */
 async function downloadEach(ready) {
+  const leftOut = batchLeftOut;          // this card's, whatever is pasted meanwhile
+  const startRead = readNumber;          // a read after this one is a newer card
+  const startBatch = batch;              // ...and replaces this list (a non-link typed does not)
   const go = $("batch-go");
   go.disabled = true;
   const refused = [];
@@ -5738,14 +6085,23 @@ async function downloadEach(ready) {
     if (answer.error) refused.push(`${label}: ${answer.error}`);
     else added++;
   }
-  closeCard();
+  // A link pasted and read during the adding is a newer card: it stays, and
+  // so does its box -- closing "the card" threw that paste away (round 9 of
+  // the hunt, 2026-11-22). The left-out links are then only counted.
+  // A non-link typed meanwhile bumps the read number but leaves this card
+  // up: it is still this card, closed as before (round 10 of the hunt: the
+  // card stayed with "Adding 3 of 3…").
+  const newer = readNumber !== startRead && batch !== startBatch;
+  if (!newer) closeCard();
+  const back = !newer ? restoreLeftOut(leftOut)
+    : leftOut.length ? ` ${leftOut.length} link${leftOut.length === 1 ? " was" : "s were"} left out: paste ${leftOut.length === 1 ? "it" : "them"} again.` : "";
   refresh();
-  if (lost) { setStatus(lostSentence(added, ready.length)); return; }
+  if (lost) { setStatus(lostSentence(added, ready.length) + back); return; }
   const done = added === 1 ? "1 download added." : `${added} downloads added.`;
   const said = [done,
     cancelled.length ? `Not added (Cancel pressed): ${cancelled.join(" · ")}` : "",
-    refused.length ? `Not added: ${refused.join(" · ")}` : ""].filter(Boolean).join(" ");
-  if (cancelled.length || refused.length) setStatus(said);
+    refused.length ? `Not added: ${refused.join(" · ")}` : ""].filter(Boolean).join(" ") + back;
+  if (cancelled.length || refused.length || back) setStatus(said);
   else notify(done);
 }
 
@@ -5777,12 +6133,33 @@ $("clear-all").addEventListener("click", (event) => {
   });
 });
 
+/** "Folder saved.", and what it does not change: a row's folder is fixed
+ * when it is added, so the downloads already in the list kept the old one
+ * with no word (round 15 of the hunt). `missing`: a typed folder not there
+ * yet -- a typo was made in silence at the first download. */
+function folderSaved(state, folder) {
+  // Only rows going to ANOTHER folder: choosing the same one again said
+  // they "keep the old folder" (round 16). A "Save as" row goes where it was saved.
+  const same = (a) => String(a || "").replace(/[\\/]+$/, "").toLowerCase()
+    === String(folder || "").replace(/[\\/]+$/, "").toLowerCase();
+  const busy = (lastJobs || []).filter((j) => (j.state === "waiting" || j.state === "running")
+    && !same(j.target ? j.target.replace(/[\\/][^\\/]*$/, "") : j.folder)).length;
+  const parts = ["Folder saved."];
+  if (state === "missing") parts.push("It does not exist yet: it will be made at the first download.");
+  // Not "made at the first download": it cannot be (round 16).
+  if (state === "file") parts.push("But a file has that name: downloads will fail until you choose another folder.");
+  if (state === "no_drive") parts.push("But its drive is not connected: downloads will fail until it is.");
+  if (busy) parts.push(`The ${busy} download${busy > 1 ? "s" : ""} already in the list keep${busy > 1 ? "" : "s"} the old folder.`);
+  if (parts.length > 1) setStatus(parts.join(" "));   // stays: read it
+  else notify(parts[0]);
+}
+
 $("browse").addEventListener("click", async () => {
   setStatus("Choose a folder…");
   const result = await api("/api/browse", {});
   // A window that failed to open is not the same as the user cancelling.
   if (result.error) { setStatus("Error: " + result.error); return; }
-  if (result.cancelled) setStatus(""); else notify("Folder saved.");
+  if (result.cancelled) setStatus(""); else folderSaved("there", result.download_folder);
   if (result.download_folder) $("folder").value = result.download_folder;
   if (batch.length) renderBatch();       // an open card shows this folder
 });
@@ -5791,9 +6168,23 @@ $("browse").addEventListener("click", async () => {
 // setting: it was the only one with a Save button, and a folder typed then
 // left with Back was lost without a word (loop round 2, 2026-10-23).
 $("folder").addEventListener("change", async () => {
-  const settings = await api("/api/settings", { download_folder: $("folder").value.trim() });
+  const typed = $("folder").value.trim();
+  // A network folder that is off can take a while to answer: said, not a
+  // field sitting still (round 17 of the hunt).
+  if (typed) setStatus("Saving the folder…");
+  let settings;
+  try { settings = await api("/api/settings", { download_folder: typed }); }
+  catch (problem) {
+    // Not left on "Saving the folder…" when the server did not answer
+    // (round 18); a refused save was already said by api().
+    if (!problem.said) setStatus(`${APP_NAME} did not answer: the folder may not be saved. Restart ${APP_NAME}.`);
+    return;
+  }
   $("folder").value = settings.download_folder || "";
-  notify("Folder saved.");
+  // An empty field is ignored by the server: the old folder came back with
+  // "Folder saved." (silent-failure hunt, 2026-11-22).
+  if (!typed) setStatus("A download folder is needed: the folder before was kept.");
+  else if (!settings.error) folderSaved(settings.folder_state || "there", settings.download_folder);
   if (batch.length) renderBatch();       // an open card shows this folder
 });
 
@@ -5833,6 +6224,9 @@ $("use-clipboard").addEventListener("change", async () => {
 $("ask-where").addEventListener("change", async () => {
   askWhere = $("ask-where").checked;
   updateGoLabel();
+  // An open card of several links says how it saves: it said "Each video
+  // asks where" after the switch went off (round 10 of the hunt, 2026-11-22).
+  if (batch.length) renderBatch();
   await api("/api/settings", { ask_where: askWhere });
   notify(askWhere ? "Saved: Windows will ask where to save each file."
                   : "Saved: files go to your Download folder without asking.");
@@ -5937,13 +6331,32 @@ function renderLogin(platforms, blocked) {
 // page and a "new" tag on the site's row, until OK. Every sentence goes in by
 // textContent: it comes from a file fetched from the internet.
 let signNews = [];
+let signNewsDate = "";                      // the date of the list the box shows
+let signProblem = "";                       // why the last fetch from GitHub failed
+let signProblemSaid = "";
+
+/** The Sites page showed an old sign list with no word: only the Console
+ * said the fetch failed (round 17 of the hunt). Said once per reason, on
+ * the status line, while Sites is open. */
+function sayOldSignList() {
+  // A good fetch since: the same reason coming back later is said again
+  // (round 18 -- it stayed "already said" until a reload).
+  if (!signProblem) { signProblemSaid = ""; return; }
+  if (signProblemSaid === signProblem) return;
+  signProblemSaid = signProblem;
+  setStatus(`The sign list could not be renewed (${signProblem}). `
+    + `The last one is used${signNewsDate ? `, from ${signNewsDate}` : ""}.`);
+}
 let tagsThisVisit = new Set();              // tags shown during this look at Sites
 
 async function loadSignNews() {
   const data = await api("/api/signs");
   if (!data || data.error) return;          // api() already said what went wrong
   signNews = data.changes || [];
+  signNewsDate = data.date || "";
+  signProblem = data.problem || "";
   renderSignNews(data.date || "");
+  if (document.querySelector(".wrap").dataset.showing === "sites") sayOldSignList();
   // A change arriving while Sites is open is seen now, like the others.
   if (document.querySelector(".wrap").dataset.showing === "sites") lookAtTags();
   renderSites();
@@ -5992,7 +6405,14 @@ function renderSignNews(date) {
 }
 
 $("sign-news-ok").addEventListener("click", async () => {
-  const result = await api("/api/signs/seen", {});
+  // Which list was shown: a newer one taken meanwhile is not marked seen
+  // unseen -- it is shown instead (round 17 of the hunt).
+  const result = await api("/api/signs/seen", { date: signNewsDate });
+  if (result && result.changed) {
+    notify(result.error);
+    await loadSignNews();
+    return;
+  }
   if (!result || !result.ok) {              // nothing hidden on a failed save
     notify((result && result.error) || "Not saved: the server did not answer.");
     return;
@@ -6255,8 +6675,22 @@ function loginMessage(result, name) {
   if (result.error) return "Teleloadzai could not take the cookies: " + result.error;
   if (result.kept) {
     const saved = result.kept === 1 ? "1 cookie" : result.kept + " cookies";
+    // "Logged in" only when the site's sign is green: for a site with no
+    // known log-in cookie, the window closing when the page left the log-in
+    // address proved nothing -- the logo or "Forgot password" closed it too
+    // (round 20 of the hunt; the user's choice: blue until proven).
+    if (result.how === "auto" && result.signed !== "logged_in") {
+      return "The log-in window closed when " + name + " left its log-in page: " + saved
+        + " saved. Teleloadzai cannot check the log-in yet: if a download failed for a log-in, press Retry on it.";
+    }
     return (result.how === "auto" ? "Logged in to " + name + ": " : "Window closed: ")
       + saved + " saved. If a download failed, press Retry on it.";
+  }
+  // The window closed BY ITSELF (the site left its log-in page) and found
+  // nothing: the user did not close it (round 2 of the hunt, 2026-11-22).
+  if (result.how === "auto") {
+    return "The log-in window closed by itself when the site left its log-in page, but no "
+      + name + " cookies were found. Nothing was saved. Try again.";
   }
   // Closed before a single copy was taken: another site's page (Google for
   // YouTube), or the site's own page still loading. Which one is not known
@@ -6289,10 +6723,17 @@ async function refreshNeeds() {
   const found = await api("/api/detect", { url: currentUrl });
   for (const tool of currentTools) {
     const fresh = (found.tools || []).find((t) => t.id === tool.id);
-    if (fresh) tool.need = fresh.need;
+    // The locked sizes and the padlock follow the log-in too: they stayed
+    // grey after a log-in until the link was pasted again (round 26).
+    if (fresh) Object.assign(tool, { need: fresh.need, top: fresh.top, lock_note: fresh.lock_note });
   }
   pickWorkingTool();        // logged in now: back to the usual tool
   showChosenTool();
+  // The user's quality stays when still offered: fillQualities ends on
+  // "Best", and a picked 480p or 128 kbps went back to it (round 27).
+  const kept = $("quality").value;
+  fillQualities();
+  if ([...$("quality").options].some((o) => o.value === kept && !o.disabled)) $("quality").value = kept;
 }
 
 $("tool-need-login").addEventListener("click", () =>
@@ -6351,7 +6792,10 @@ $("cookies-import").addEventListener("click", async () => {
     // the rest of the browser export never entered the app.
     setStatus((result.ignored
       ? `${result.imported} cookies kept, ${result.ignored} from other sites left out.`
-      : `${result.imported} cookies kept.`) + (result.switch_problem ? " " + result.switch_problem : ""));
+      : `${result.imported} cookies kept.`)
+      + (result.damaged ? ` ${result.damaged} damaged ${result.damaged === 1 ? "line was" : "lines were"} `
+        + "skipped: export the file again if a log-in is missing." : "")
+      + (result.switch_problem ? " " + result.switch_problem : ""));
   } finally {
     $("cookies-import").disabled = false;
   }
@@ -6363,6 +6807,13 @@ $("cookies-forget").addEventListener("click", () => twoClicks(
 async function forgetCookies() {
   cookieError("");
   const result = await api("/api/cookies/clear", {});
+  // Windows refused the delete: nothing was forgotten, and the page said
+  // "Cookies forgotten." over the reason (silent-failure hunt, 2026-11-22).
+  if (result.error) {
+    if (result.cookies) renderCookies(result.cookies);
+    cookieError(result.error);
+    return;
+  }
   renderCookies(result.cookies);
   // The log-in window runs in private mode: its folder never holds a log-in
   // (its cookie database was found empty, 2026-09-26). The cookie file IS
@@ -6371,7 +6822,11 @@ async function forgetCookies() {
   // promise about something that does not exist.
   // The window's own leftover files hold no log-in: not worth a sentence
   // (the user, 2026-11-15: keep only what is needed).
-  setStatus("Cookies forgotten.");
+  // A copy a running download still holds is said: it was left in silence
+  // until the next start (round 17 of the hunt).
+  setStatus("Cookies forgotten." + (result.copies_left
+    ? " A download still running holds a copy: it is deleted when that download ends, or at the next start."
+    : ""));
 }
 
 /** Every setting's control, from what the server holds: at start, and

@@ -56,7 +56,8 @@ _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")
 
 _lock = threading.Lock()                    # the cache file's reads and its replace
-_state = {"signs": None, "said": set(), "tried": 0.0, "running": False, "generation": 0}
+_state = {"signs": None, "said": set(), "tried": 0.0, "running": False, "generation": 0,
+          "problem": ""}         # why the last fetch from GitHub failed, "" when it worked
 _NOT_UPDATED = "the sign list was not updated"
 
 
@@ -239,18 +240,30 @@ SEEN = DATA_DIR / "signs-seen.json"
 _seen_lock = threading.Lock()               # signs-seen.json's reads and its replace
 
 
-def _visible(signs: dict) -> dict[str, dict[str, str]]:
-    return {"warning": {k: v.get("next", "") for k, v in signs.get("download_fails", {}).items() if v.get("fails")},
+def _visible(signs: dict, shown_only: bool = False) -> dict[str, dict[str, str]]:
+    """`shown_only` (the "seen" snapshot): only the warnings this user's
+    buttons really showed (`needs.applies`, the button's own rule). All of
+    them were stored, so removing one tied to another version said "Works
+    again" for a warning never shown here (round 31 of the hunt)."""
+    fails = {k: v for k, v in signs.get("download_fails", {}).items() if v.get("fails")}
+    if shown_only:
+        from .needs import applies
+        fails = {k: v for k, v in fails.items() if applies(v, k.partition("|")[2]) is not None}
+    return {"warning": {k: v.get("next", "") for k, v in fails.items()},
             "need": {k: v["need"] for k, v in signs.get("before_download", {}).items()}}
 
 
 def _save_seen(signs: dict) -> str:
     """"" when the snapshot of what the user saw was written, else why not."""
     temp = SEEN.with_suffix(".tmp")
+    # Computed BEFORE the lock: `needs.applies` may run a program to read its
+    # version (up to 15 s), and the Sites page's own reads waited behind it
+    # (round 32; pass 2: never a lock around a program).
+    shown = _visible(signs, shown_only=True)
     try:
         with _seen_lock:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
-            temp.write_text(json.dumps({"updated": signs.get("updated", ""), **_visible(signs)},
+            temp.write_text(json.dumps({"updated": signs.get("updated", ""), **shown},
                                        ensure_ascii=False), encoding="utf-8")
             os.replace(temp, SEEN)
         return ""
@@ -307,6 +320,13 @@ def changes() -> dict:
             # The button's own first sentence, then its next step: "Its
             # authors fixed it…" alone did not say what failed (seen 2026-11-20).
             entry = signs["download_fails"][key]
+            # Announced only when the button shows it: a warning tied to a
+            # version ("XHS-Downloader V2.8 Stable") said "Now warned" to a
+            # user with another version, or none, and no sign on the button
+            # (silent-failure hunt, 2026-11-22). The button's own rule.
+            from .needs import applies
+            if applies(entry, key.partition("|")[2]) is None:
+                continue
             out.append((key, "warning", True, " ".join(filter(None, [
                 f"Now warned: it failed in our last check ({_day(entry['seen'])}).", entry.get("next", "")]))))
         elif key in seen["warning"] and key not in now["warning"]:
@@ -353,11 +373,16 @@ def mark_tags_seen(ids: list) -> str:
         return getattr(problem, "strerror", None) or str(problem)
 
 
-def mark_seen() -> str:
-    """OK pressed: the list in use is now what the user saw. "" or why not."""
+def mark_seen(shown: str | None = None) -> str:
+    """OK pressed: the list in use is now what the user saw. "" or why not.
+    `shown`: the date of the list the box showed. A newer list taken since
+    is not marked seen -- "Got it" hid a warning nobody had seen (round 17);
+    "changed" then, and the page shows the new list."""
     signs = current()
     if not signs:       # an empty snapshot would show every sign as "new" later
         return "the sign list is not loaded"
+    if shown is not None and shown != signs.get("updated", ""):
+        return "changed"
     return _save_seen(signs)
 
 
@@ -367,7 +392,9 @@ def _due() -> bool:
     if time.time() - _state["tried"] < RETRY_AFTER:
         return False
     try:
-        return time.time() - CACHE.stat().st_mtime > CACHE_HOURS * 3600
+        age = time.time() - CACHE.stat().st_mtime
+        # A file dated in the future (the clock was ahead) is due, not fresh (round 23).
+        return age > CACHE_HOURS * 3600 or age < 0
     except OSError:
         return True
 
@@ -435,6 +462,9 @@ def refresh_soon() -> None:
             why = f"an error in Teleloadzai ({type(problem).__name__})"
         finally:
             _state["running"] = False
+        # Kept for the Sites page too: only the Console said it, and the page
+        # showed a week-old list with no word (round 17 of the hunt).
+        _state["problem"] = why
         if why:
             _say(f"{_NOT_UPDATED}: {why}. The last one stays.")
 
