@@ -3145,6 +3145,12 @@ function jobProgress(job) {
   // until 2026-11-01. Red for a failure (its style).
   else if (job.state === "error") right = "Failed";
   else if (recordedRow(job)) right = "Recorded";
+  // Stopped, its MP4 or MP3 still being made (up to 30 min): the step and
+  // its seconds -- "Stopped" alone looked over (round 33 of the hunt).
+  else if (job.making) {
+    line = "Stopped. " + job.step[0].toUpperCase() + job.step.slice(1) + "…";
+    right = formatElapsed(job.step_elapsed || 0);
+  }
   else if (job.state === "cancelled") right = job.interrupted ? "Interrupted" : "Stopped";
   // True in both stages of an update: while it runs, and while it still
   // waits for a recording or a Console command (hunt round 3, 2026-11-15).
@@ -3336,7 +3342,7 @@ function jobShape(job) {
     Boolean(job.on_disk),
     job.cookie_note, job.other_tool && job.other_tool.id, loginOffer(job),
     loggedIn(job.platform), job.pieces_on_disk,
-    job.tool, job.target, job.title, job.mode, job.quality]);
+    job.tool, job.target, job.title, job.mode, job.quality, Boolean(job.making)]);
 }
 
 function jobRow(job) {
@@ -3370,7 +3376,7 @@ function jobRow(job) {
   // started 18 px left of the finished ones under it.
   const mark = failed ? '<span class="mark bad" aria-hidden="true">✕</span>'
     : (compact && job.on_disk) || recorded ? '<span class="mark ok" aria-hidden="true">✓</span>'
-    : job.state === "running" ? '<span class="mark run" aria-hidden="true"></span>'
+    : job.state === "running" || job.making ? '<span class="mark run" aria-hidden="true"></span>'
     : job.state === "waiting" ? '<span class="mark wait" aria-hidden="true"></span>'
     : '<span class="mark gone" aria-hidden="true">–</span>';
   const menu = failed ? moreMenu([
@@ -3393,7 +3399,8 @@ function jobRow(job) {
     // Every other ended row: its file's buttons here too. They stood on a
     // line of their own, three buttons where a row has one (review of
     // 2026-11-05). Only while the file is there (decision 40).
-    : already || stopped ? moreMenu([
+    // Not while its file is still being made: the row is its only pointer.
+    : already || (stopped && !job.making) ? moreMenu([
       !recorded && job.on_disk && `<button type="button" role="menuitem" data-open="${job.id}">Open</button>`,
       job.on_disk && `<button type="button" role="menuitem" data-reveal="${job.id}">Show in folder</button>`,
       recorded && `<button type="button" role="menuitem" data-retry="${job.id}">Record again</button>`,
@@ -3412,13 +3419,13 @@ function jobRow(job) {
         ${(compact && job.on_disk) || recorded ? `<button class="ghost tiny" data-open="${job.id}">Open</button>` : ""}
         ${compact && !job.on_disk && !job.post_part ? `<button class="ghost tiny" data-force="${job.id}">${againWords(job)}</button>` : ""}
         ${already && !job.post_part ? `<button class="ghost tiny" data-force="${job.id}">${againWords(job)}</button>` : ""}
-        ${stopped && !recorded ? `<button class="ghost tiny" data-retry="${job.id}">${job.interrupted ? "Continue" : "Download again"}</button>` : ""}
+        ${stopped && !recorded && !job.making ? `<button class="ghost tiny" data-retry="${job.id}">${job.interrupted ? "Continue" : "Download again"}</button>` : ""}
         ${canCancel ? '<button class="ghost tiny cancel">Stop</button>' : ""}
         </span>
         ${menu}
       </span>
     </div>
-    ${job.state === "running" ? `<div class="jprog" aria-hidden="true">
+    ${job.state === "running" || job.making ? `<div class="jprog" aria-hidden="true">
         <div class="pbar"><i></i></div><div class="prog-line"></div>
       </div>` : ""}
     ${job.error && job.state !== "error" ? '<div class="err"></div>' : ""}
@@ -3882,7 +3889,7 @@ async function refresh() {
   // Only when it has something to clear (decision 40): failed and
   // interrupted rows stay.
   $("clear").classList.toggle("hidden",
-    !jobs.some((j) => j.state === "done" || (j.state === "cancelled" && !j.interrupted)));
+    !jobs.some((j) => j.state === "done" || (j.state === "cancelled" && !j.interrupted && !j.making)));
   // Its ⋯ with any ended row: shown only with a failed row, it moved
   // "Clear finished" at the first failure. Without one, "Remove all" does
   // what "Clear finished" does -- tucked in a menu, it costs nothing.
@@ -3895,7 +3902,9 @@ async function refresh() {
   saveProblemSaid = data.save_problem || "";
   paintListTools(jobs);
 
-  const busy = running + waiting > 0;
+  // A stopped recording still being made is watched too: the list stopped
+  // asking at the Stop, and its row stood still (round 34 of the hunt).
+  const busy = running + waiting > 0 || jobs.some((j) => j.making);
   if (busy && !polling) { polling = true; setTimeout(tick, 700); }
   return busy;
 }
@@ -6122,9 +6131,9 @@ $("clear-all").addEventListener("click", (event) => {
   // In the list's ⋯ since 2026-11-01: its first click keeps the menu open
   // to show the question (as a row's "Download again" does).
   if ($("clear-all").dataset.armed !== "yes") event.stopPropagation();
-  const ended = lastJobs.filter((j) => ["done", "cancelled", "error"].includes(j.state) && !j.interrupted).length;
+  const ended = lastJobs.filter((j) => ["done", "cancelled", "error"].includes(j.state) && !j.interrupted && !j.making).length;
   twoClicks($("clear-all"), `Remove ${ended}? Click again`, async () => {
-    const left = lastJobs.filter((j) => ["done", "cancelled", "error"].includes(j.state) && !j.interrupted)
+    const left = lastJobs.filter((j) => ["done", "cancelled", "error"].includes(j.state) && !j.interrupted && !j.making)
       .reduce((sum, j) => sum + (j.pieces_on_disk || 0), 0);
     const answer = await api("/api/jobs/clear-all", {});
     if (answer.error) setStatus("Error: " + answer.error);
@@ -6795,6 +6804,10 @@ $("cookies-import").addEventListener("click", async () => {
       : `${result.imported} cookies kept.`)
       + (result.damaged ? ` ${result.damaged} damaged ${result.damaged === 1 ? "line was" : "lines were"} `
         + "skipped: export the file again if a log-in is missing." : "")
+      // An expired cookie of the file never replaces a saved one still alive
+      // (round 33 of the hunt): said, or the old export looked fully taken.
+      + (result.newer_kept ? ` ${result.newer_kept} ${result.newer_kept === 1 ? "cookie" : "cookies"} `
+        + "in the file had expired: your saved ones, still valid, were kept." : "")
       + (result.switch_problem ? " " + result.switch_problem : ""));
   } finally {
     $("cookies-import").disabled = false;

@@ -75,10 +75,20 @@ def ask_before_closing() -> bool:
     if not left or sys.platform != "win32":
         return True
     import ctypes
+    # A stopped recording still being made into its MP4 or MP3 does not come
+    # back "ready to continue": closing ends that step (round 34 of the hunt).
+    making = QUEUE.making()
+    left -= making
     one = left == 1
+    saving = ("A stopped recording is still being made into its MP4 or MP3. "
+              "Closing ends that: the recording is kept as .ts." if making == 1 else
+              f"{making} stopped recordings are still being made into their MP4 or MP3. "
+              "Closing ends that: the recordings are kept as .ts.") if making else ""
     text = (f"{'1 download is' if one else f'{left} downloads are'} not finished.\n\n"
             f"Close {APP_NAME} anyway? {'It stops' if one else 'They stop'} now, and "
-            f"{'comes' if one else 'come'} back the next time you open {APP_NAME}, ready to continue.")
+            f"{'comes' if one else 'come'} back the next time you open {APP_NAME}, ready to continue."
+            + (f"\n\n{saving}" if saving else "")) if left else (
+            f"{saving}\n\nClose {APP_NAME} anyway?")
     # MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST
     answer = ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x4 | 0x20 | 0x100 | 0x10000 | 0x40000)
     return answer == 6          # IDYES

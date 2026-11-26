@@ -349,11 +349,21 @@ def subs_note(files: list[Path], subs: str) -> str:
     videos = [f for f in files if f.suffix.lower() in (".mp4", ".mkv", ".webm")]
     if subs == "embed":
         bare = [f for f in videos if has_cover(f, "s") is False]
-        return "Saved without subtitles." if bare else ""
-    if subs == "file":
-        texts = [f for f in files if f.suffix.lower() == ".srt"]
-        return "Saved without the subtitle file." if videos and not texts else ""
-    return ""
+        missing = "without subtitles"
+    elif subs == "file":
+        # Per video, as "embed" is: a playlist of 5 with 2 subtitle files said
+        # nothing of the other 3 (round 34 of the hunt). yt-dlp names each
+        # one after its video: "<name>.<language>.srt".
+        texts = [f.name for f in files if f.suffix.lower() == ".srt"]
+        bare = [f for f in videos if not any(t.startswith(f.stem + ".") for t in texts)]
+        missing = "without the subtitle file"
+    else:
+        return ""
+    if not bare:
+        return ""
+    if len(videos) > 1 and len(bare) < len(videos):
+        return f"{len(bare)} of {len(videos)} videos were saved {missing}."
+    return f"Saved {missing}."
 
 
 def _kbps(path: Path) -> int | None:

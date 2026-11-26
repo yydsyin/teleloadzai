@@ -426,7 +426,12 @@ def _folder_note(old, answer: dict) -> dict:
     folder, and the answer says so -- it went there without a word (hunt of
     2026-11-08)."""
     # A "Save as" path keeps its own folder (or is refused): never this note.
-    if old.folder and not old.target and not answer.get("error") and not _retry_folder(old):
+    # Nor when the gone folder IS the Settings folder (an unplugged drive):
+    # "X no longer exists, so this download goes to X" (round 33 of the hunt).
+    # The run itself then says to plug it back in.
+    if (old.folder and not old.target and not answer.get("error") and not _retry_folder(old)
+            and os.path.normcase(os.path.abspath(str(old.folder)))
+            != os.path.normcase(os.path.abspath(str(download_folder())))):
         answer = {**answer, "note": f"The folder “{Path(old.folder).name or old.folder}” no longer exists, "
                                     f"so this download goes to {download_folder()}."}
     return answer
@@ -1444,10 +1449,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             switch_problem = _switch_cookies_on()      # importing IS the consent
             self._json({"switch_problem": switch_problem,
-                        "imported": summary["total"],
+                        # Not the file's expired ones kept out (round 34).
+                        "imported": summary["total"] - summary.get("newer_kept", 0),
                         "ignored": summary["ignored"],
                         "ignored_sites": summary["ignored_sites"],
                         "damaged": summary.get("damaged", 0),
+                        "newer_kept": summary.get("newer_kept", 0),
                         "cookies": cookies.state(not switch_problem)})
             return
 

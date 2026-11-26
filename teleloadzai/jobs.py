@@ -27,6 +27,15 @@ WAITING, RUNNING, DONE, ERROR, CANCELLED = "waiting", "running", "done", "error"
 ACTIVE_STATES = (WAITING, RUNNING)
 
 
+def _making(job) -> bool:
+    """A live recording stopped by the user whose file is still being made
+    (its MP4 or MP3, up to 30 minutes): Stop is how a recording ENDS, so the
+    row is "cancelled" at once -- and it said "Stopped" with no step while the
+    work went on; "Clear finished" took the row and the close box skipped it
+    (round 33 of the hunt). Its worker clears the step when it ends."""
+    return job.state == CANCELLED and job.live and bool(job.step) and not job.interrupted
+
+
 def _same_path(path: str) -> str:
     """One spelling per file: Windows names are not case-sensitive."""
     return os.path.normcase(os.path.abspath(path))
@@ -238,8 +247,10 @@ def _as_mp3(kept: list[Path], quality: str) -> tuple[list[Path], str]:
     final: list[Path] = []
     problem = ""
     for path in kept:
-        target = path.with_name(free_name(path.parent, path.stem, "mp3") + ".mp3")
         try:
+            # Inside the try: a folder Windows refuses to list raised here, the
+            # worker died and its row stayed "making" for good (round 34).
+            target = path.with_name(free_name(path.parent, path.stem, "mp3") + ".mp3")
             final.append(runners._to_mp3(path, target, quality, on_start=children.bind))
         except Exception as exc:
             final.append(path)
@@ -421,7 +432,9 @@ class Job:
             "part": self.part,
             "step": self.step,
             "step_elapsed": int(time.time() - self.step_started)
-                            if self.state == RUNNING and self.step and self.step_started else 0,
+                            if (self.state == RUNNING or _making(self)) and self.step
+                            and self.step_started else 0,
+            "making": _making(self),
             # A live recording and its limit: the row said "Downloading" over
             # an empty bar, never "live" nor "of 60 min" (loop round 2,
             # 2026-10-23). streamlink only ever records live streams.
@@ -602,7 +615,13 @@ class Queue:
     def unfinished(self) -> int:
         """Downloads waiting or running now: asked before the window closes."""
         with self._lock:
-            return sum(1 for j in self._jobs.values() if j.state in ACTIVE_STATES)
+            return sum(1 for j in self._jobs.values() if j.state in ACTIVE_STATES or _making(j))
+
+    def making(self) -> int:
+        """Stopped recordings still being made (counted in `unfinished`): the
+        close box says what closing does to them (round 34)."""
+        with self._lock:
+            return sum(1 for j in self._jobs.values() if _making(j))
 
     def targets_in_use(self, besides: str = "") -> set[str]:
         """The files that waiting or running jobs will write. Windows only
@@ -671,7 +690,9 @@ class Queue:
                 raise SameVideoBusy()
             if replace:
                 old = self._jobs.get(replace)
-                if old is None or old.state in ACTIVE_STATES:
+                # Nor a stopped recording still being made: its worker would
+                # put the file on a row gone (round 34 of the hunt).
+                if old is None or old.state in ACTIVE_STATES or _making(old):
                     return None
                 if items is None and job.tool == "yt-dlp":
                     items = [item.get("title", "") for item in old.items]
@@ -855,7 +876,7 @@ class Queue:
         finished" took every other row with it (review of 2026-09-27)."""
         with self._lock:
             job = self._jobs.get(job_id)
-            if job is None or job.state in ACTIVE_STATES:
+            if job is None or job.state in ACTIVE_STATES or _making(job):
                 return False
             del self._jobs[job_id]
             self._order.remove(job_id)
@@ -869,7 +890,7 @@ class Queue:
         files stay on the disk: only the rows go."""
         with self._lock:
             ended = [i for i in self._order if self._jobs[i].state in (DONE, CANCELLED, ERROR)
-                     and not self._jobs[i].interrupted]
+                     and not self._jobs[i].interrupted and not _making(self._jobs[i])]
             for job_id in ended:
                 del self._jobs[job_id]
                 self._order.remove(job_id)
@@ -883,7 +904,7 @@ class Queue:
         its own Remove. Nor an interrupted one: it is not finished."""
         with self._lock:
             finished = [i for i in self._order if self._jobs[i].state in ("done", "cancelled")
-                        and not self._jobs[i].interrupted]
+                        and not self._jobs[i].interrupted and not _making(self._jobs[i])]
             for job_id in finished:
                 del self._jobs[job_id]
                 self._order.remove(job_id)
@@ -1188,6 +1209,7 @@ class Queue:
                 kept = _keep_recording(destinations)
                 mp3_problem = ""
                 if job.mode == "mp3":
+                    on_step("making the MP3")   # the row said "60 of 60 min" meanwhile (round 34)
                     kept, mp3_problem = _as_mp3(kept, job.quality)
                 with self._lock:
                     job.files = [str(p) for p in kept]
@@ -1251,6 +1273,7 @@ class Queue:
                 kept = _keep_recording(destinations)
                 mp3_problem = ""
                 if job.mode == "mp3":
+                    on_step("making the MP3")   # minutes for a long one (round 33)
                     kept, mp3_problem = _as_mp3(kept, job.quality)
                 with self._lock:
                     job.files = [str(p) for p in kept]
@@ -1325,6 +1348,9 @@ class Queue:
                 named = job.title or saved
                 if job.group and job.group == job.id:
                     named = job.group_title or named    # the post, not its first file
+                # Its work is over: a stopped recording is no longer "making".
+                # Before the message below, which waits while one is.
+                job.step = ""
             if state == DONE and count > 1 and not skipped:
                 # A playlist in one row: its title and how many files.
                 notify.ended(named, "done", count)

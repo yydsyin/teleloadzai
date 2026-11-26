@@ -874,6 +874,15 @@ def _has_sound(path: Path) -> bool:
     return found.returncode != 0 or bool(found.stdout.strip())
 
 
+def _mp3_not_made(problem: Exception) -> str:
+    """A kept recording whose MP3 could not be made: the reason, washed, and
+    what was kept, said once (`_sound_of`'s own sentence may say it)."""
+    said = cookies.redact(str(problem))[:200].strip()
+    if said and not said.endswith((".", "!", "?")):
+        said += "."
+    return said if "kept" in said else f"The MP3 could not be made. {said} The recording was kept as it was.".replace("  ", " ")
+
+
 def _sound_of(written: list[Path], request: Request,
               on_start: Callable[[subprocess.Popen], None] | None,
               on_step: Callable[[str], None] | None = None) -> list[tuple[Path, str]]:
@@ -1627,11 +1636,15 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
             raise stopped
         if not live or not recorded:
             raise RunnerError("Stopped.")   # the pieces go with the work folder
+        mp3_problem = ""
         if request.mode == "mp3":
             try:
                 pairs = _sound_of(recorded, request, children.bind, on_step)
-            except RunnerError:
+            except RunnerError as problem:
                 pairs = [(p, p.name) for p in _finished(work, recipe, top_only=True)]
+                # Said, as on yt-dlp's road (jobs._as_mp3): a "Recorded" row
+                # beside a .ts video, the reason dropped (round 33 of the hunt).
+                mp3_problem = _mp3_not_made(problem)
         else:
             if recipe.after is _repackage_to_mp4:
                 _say(on_step, "making the MP4")     # as below (round 13)
@@ -1641,7 +1654,8 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         stayed_ts = (recipe.after is _repackage_to_mp4 and request.mode != "mp3"
                      and any(p.suffix.lower() == ".ts" for p in moved))
         return RunResult(moved, tail, note=("The recording could not be turned into an MP4, so it "
-                                            "was kept as .ts. It plays in VLC.") if stayed_ts else "")
+                                            "was kept as .ts. It plays in VLC.") if stayed_ts
+                         else mp3_problem)
 
     if code != 0:
         # A tool that failed is a failure, even when some files arrived (3
@@ -1697,7 +1711,7 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
                 kept = getattr(failure, "saved", [])
                 problem.keep_work = getattr(failure, "keep_work", False)
             if _stopped(request):
-                return RunResult(kept, tail)
+                return RunResult(kept, tail, note=_mp3_not_made(problem))
             problem.saved = kept
             raise
     else:

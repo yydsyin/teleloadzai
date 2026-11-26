@@ -592,8 +592,20 @@ def import_file(chosen: Path) -> dict:
                 "nothing was imported. They were not changed.") from None
         for _domain, _when, raw in _rows(stored.splitlines()):
             keeping[_key(raw)] = raw
-    for raw in summary["lines"]:
+    # ...except a cookie past its date over one still alive: an old export
+    # erased a log-in made in the window yesterday, and the page said only
+    # "12 cookies kept" (round 33 of the hunt). Counted, and said.
+    now = time.time()
+    def past(when: float | None) -> bool:
+        return when is not None and when != 0 and when < now
+    alive_stored = {_key(raw) for _d, when, raw in _rows(list(keeping.values())) if not past(when)}
+    newer_kept = 0
+    for _domain, when, raw in _rows(summary["lines"]):
+        if past(when) and _key(raw) in alive_stored:
+            newer_kept += 1
+            continue
         keeping[_key(raw)] = raw
+    summary["newer_kept"] = newer_kept
 
     try:
         _write_store(keeping.values())
