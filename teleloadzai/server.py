@@ -178,6 +178,9 @@ def load_settings() -> dict:
     }
 
 
+# Subtitle files beside a video ("Separate file"): never opened in its place.
+_SUBTITLE_ENDINGS = (".srt", ".vtt", ".ass")
+
 # The same link shape as the page's `linksIn`.
 _LINK = re.compile(r"https?://[^\s\"'<>，。！？、]+", re.IGNORECASE)
 
@@ -370,7 +373,13 @@ def forget_if_once() -> bool:
     if load_settings()["cookies_keep"] != "once":
         return False
     gone = cookies.clear()
-    login.forget_history()
+    try:
+        login.forget_history()
+    except OSError:
+        # Held: its error skipped the rest, and the next start said the
+        # log-ins "are still saved" though the cookies were gone (round 60;
+        # "Forget them" in Sites already guarded it).
+        pass
     # This runs after the window engine has stopped, which is the one moment
     # Windows lets the profile folder go (it stays locked while the app runs).
     if login.forget_browser() in ("now", "later"):
@@ -1421,6 +1430,10 @@ class Handler(BaseHTTPRequestHandler):
             job_id, _, action = path[len("/api/job/"):].rpartition("/")
             job = QUEUE.get(job_id)
             saved = [Path(f) for f in (job.files if job else []) if Path(f).is_file()]
+            # A subtitle file never stands in for its video: the video
+            # deleted, Open opened the .srt in Notepad with no word (round 54).
+            if job and any(Path(f).suffix.lower() not in _SUBTITLE_ENDINGS for f in job.files):
+                saved = [f for f in saved if f.suffix.lower() not in _SUBTITLE_ENDINGS]
             # A failed row with no file shows its unfinished pieces -- only
             # in the folder, never opened (they are half a video).
             if not saved and job and action == "reveal" and job.state == ERROR:

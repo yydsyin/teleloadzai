@@ -242,7 +242,10 @@ def main() -> int:
     # One that cannot be deleted is a copy of a log-in left on the disk:
     # said, not passed over (round 17 of the hunt).
     held = cookies.clear_run_copies()
-    if held:
+    if held < 0:
+        console.add("app", "Teleloadzai: the folder data/cookie-runs could not be read, so copies "
+                    "of your log-ins may be left in it; tried again at the next start.", "err")
+    elif held:
         console.add("app", f"Teleloadzai: {held} cop{'ies' if held > 1 else 'y'} of your log-ins "
                     f"in data/cookie-runs could not be deleted (held by another program); "
                     "tried again at the next start.", "err")

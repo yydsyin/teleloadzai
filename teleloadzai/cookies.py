@@ -152,7 +152,23 @@ def for_one_run(path: Path | None) -> Iterator[Path | None]:
             except OSError:
                 pass                    # ours stays as it was: nothing lost
             finally:
-                copy.unlink(missing_ok=True)
+                # gallery-dl saves its jar as "<copy>.txt.tmp" first: a Stop
+                # during that save left a whole jar there until the next
+                # start (round 56 of the hunt). Each guarded: a file still
+                # held (a tool, an antivirus) raised here, in place of the
+                # run's own outcome -- a finished download became a failed
+                # row (round 57; yutto's copy has had this since round 17).
+                left = False
+                for leftover in (copy.with_name(copy.name + ".tmp"), copy):
+                    try:
+                        leftover.unlink(missing_ok=True)
+                    except OSError:
+                        left = True
+                if left:
+                    from . import console
+                    console.add("app", "Teleloadzai: the copy of your log-ins given to this "
+                                "download could not be deleted yet; it is deleted at the next "
+                                "start.", "err")
 
 
 def _whole_jar(path: Path) -> bool:
@@ -179,14 +195,22 @@ copies_left = 0     # set by clear(): run copies it could not delete
 def clear_run_copies() -> int:
     """Delete every run copy -- at start (a crash leaves them) and when the
     user forgets the cookies. Returns how many could NOT be deleted (a tool
-    still holding one): a copy of a log-in left on the disk is said by the
+    still holding one), or -1 when the folder itself could not be read: a copy of a log-in left on the disk is said by the
     caller, never only "deleted at the next start" in silence (round 17)."""
     left = 0
     with _lock:
         if RUN_DIR.is_dir():
             # Every file: gallery-dl saves its jar as `<copy>.txt.tmp` first,
             # and one killed during that save left a whole jar behind.
-            for leftover in RUN_DIR.iterdir():
+            # A folder that cannot be listed raised here: at close it skipped
+            # "forget when I close" and the server's stop, at start it ended
+            # the app with a raw error (round 53). -1: "could not be read" --
+            # never a made-up count with another cause (round 54).
+            try:
+                leftovers = list(RUN_DIR.iterdir())
+            except OSError:
+                return -1
+            for leftover in leftovers:
                 try:
                     leftover.unlink()
                 except OSError:

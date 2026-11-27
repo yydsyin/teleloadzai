@@ -287,8 +287,16 @@ def _keep_recording(destinations: list[Path]) -> list[Path]:
 def _held_parts(destinations: list[Path]) -> str:
     """A live recording's .part Windows did not let us rename, named for the
     row: "Stopped" alone hid hours of recording (round 40 of the hunt)."""
-    held = [d.name + ".part" for d in destinations
-            if d.with_name(d.name + ".part").is_file()]
+    # Called in the worker's last step: an error here (a folder refusing a
+    # look) killed the worker before it cleared the row's step, and an
+    # update waiting on that row waited for ever (round 51).
+    held = []
+    for d in destinations:
+        try:
+            if d.with_name(d.name + ".part").is_file():
+                held.append(d.name + ".part")
+        except OSError:
+            pass
     return (f"The recording is still in the folder as {held[0]}: Windows did not let "
             "Teleloadzai rename it. It plays in VLC.") if held else ""
 
@@ -862,8 +870,11 @@ class Queue:
         all (joining, MP3), so every running download counts for it.
         Decision 19, changed 2026-10-21: a tool is never updated while it
         downloads -- and only that tool waits, not the others."""
+        # A stopped live recording still being made into its MP4 / MP3 uses
+        # FFmpeg (and its program) for up to 30 minutes: an update did not
+        # wait, failed on "in use by another program" -- our own (round 50).
         with self._lock:
-            return sum(1 for j in self._jobs.values() if j.state == RUNNING
+            return sum(1 for j in self._jobs.values() if (j.state == RUNNING or _making(j))
                        and (j.tool == tool_id or tool_id == "ffmpeg"))
 
     def hold(self, tool_id: str) -> None:
@@ -1204,6 +1215,21 @@ class Queue:
                 # Subtitles asked: are they in the file / beside it (item 7)?
                 made = [f for f in result.files if f not in getattr(result, "skipped", [])]
                 note = ytdlp.subs_note(made, job.subs)
+                # "Separate file" on a video already there: yt-dlp writes the
+                # new .srt and leaves the video alone, so the row is not
+                # "already there" -- and said "Done" as if the video came
+                # (round 46 of the hunt). Said, per video.
+                # Its exact name, as ytdlp gives it: "<video>.<language>.srt".
+                # A prefix matched "Lesson 1" with "Lesson 1. Intro.en.srt"
+                # (round 47).
+                texts = {Path(f).name for f in made if Path(f).suffix.lower() == ".srt"}
+                old = [Path(f) for f in getattr(result, "skipped", [])
+                       if f"{Path(f).stem}.{job.sub_lang}.srt" in texts]
+                if job.subs == "file" and old:
+                    note = " ".join(filter(None, [note, (
+                        "The video was already in this folder: only its subtitle file was written."
+                        if len(old) == 1 else
+                        f"{len(old)} videos were already in this folder: only their subtitle files were written.")]))
             if job.mode == "mp4" and job.tool == "yt-dlp":
                 # MP4 asked, sound only came (an audio-only site): said, asked
                 # to the file -- the row said done (round 27 of the hunt).

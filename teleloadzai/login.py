@@ -947,7 +947,7 @@ def forget_browser() -> str:
     """
     close()                       # nothing of OURS may hold the files open
     if not BROWSER_PROFILE.exists():
-        FORGET_MARKER.unlink(missing_ok=True)
+        _drop_marker()
         return ""
     try:
         shutil.rmtree(BROWSER_PROFILE)
@@ -959,8 +959,18 @@ def forget_browser() -> str:
         except OSError:
             return "kept"         # it holds no log-in (private window): housekeeping
         return "later"
-    FORGET_MARKER.unlink(missing_ok=True)
+    _drop_marker()
     return "now"
+
+
+def _drop_marker() -> None:
+    """The note for the next start, deleted -- never raising: held, its error
+    escaped a "never raises" function and could stop the app's start every
+    time (round 60). Left, it only makes the next start look once more."""
+    try:
+        FORGET_MARKER.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def forget_pending() -> bool:
@@ -977,7 +987,7 @@ def forget_pending() -> bool:
             gone = True
         except OSError:
             return False          # still locked: keep the marker, try again later
-    FORGET_MARKER.unlink(missing_ok=True)
+    _drop_marker()
     return gone
 
 

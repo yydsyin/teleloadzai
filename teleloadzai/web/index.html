@@ -452,7 +452,10 @@
   /* A finished row said "done" in the same small grey as nothing: a success
      reads as one (review of 2026-09-27). */
   .state-done .job-right .small { color: var(--ok-text); font-weight: 600; }
-  h2.section:focus { outline: none; }
+  /* A page's title takes the focus when its page opens (for screen readers);
+     it is not a control, so no ring: the browser's orange box showed on
+     every title after a keyboard change of page (impeccable loop 2026-11-27). */
+  h2.section:focus, .pane-title:focus { outline: none; }
   .label { font-weight: 500; }
   /* 24 px tall at least, the smallest target WCAG 2.5.8 allows: it was 20
      (first review of the redesign, 2026-10-23). */
@@ -1602,7 +1605,12 @@
     <div class="set-group">
       <div class="set-row">
         <span class="opt-icon icon-refresh" aria-hidden="true"></span>
-        <label class="set-main set-name" for="update-mode">Updates</label>
+        <div class="set-main">
+          <label class="set-name" for="update-mode">Updates</label>
+          <!-- What the chosen mode does, as the yt-dlp row below says its
+               line (impeccable loop 2026-11-27: "Manual" was a bare word). -->
+          <span class="set-sub" id="update-mode-sub"></span>
+        </div>
         <span class="set-control">
           <select id="update-mode">
             <option value="ask">Ask me first (recommended)</option>
@@ -3765,8 +3773,11 @@ document.addEventListener("click", (event) => {
 });
 document.addEventListener("keydown", (event) => {
   const open = document.querySelector(".more-menu:not(.hidden)");
-  // A menu, as its role says: the arrow keys move between its items.
-  if (open && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+  // A menu, as its role says: the arrow keys move between its items --
+  // only while the keyboard is in it (or on its "⋯"): from elsewhere they
+  // pulled the focus back into a menu left open (impeccable loop 2026-11-27).
+  const inside = open && open.parentElement.contains(document.activeElement);
+  if (inside && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
     const items = [...open.querySelectorAll("button")];
     const at = items.indexOf(document.activeElement);
     const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
@@ -3781,6 +3792,15 @@ document.addEventListener("keydown", (event) => {
   open.previousElementSibling.focus();
   event.stopPropagation();
 }, true);
+// Tab out of an open menu closes it: it stayed open over the list with
+// nothing in it focused (impeccable loop 2026-11-27). Focus going to the
+// menu's own "⋯" or items keeps it.
+document.addEventListener("focusout", (event) => {
+  const wrap = event.target.closest && event.target.closest(".more-wrap");
+  if (!wrap || !event.relatedTarget || wrap.contains(event.relatedTarget)) return;
+  const menu = wrap.querySelector(".more-menu");
+  if (menu && !menu.classList.contains("hidden")) closeMenus(null);
+});
 
 /** A "⋯" button and its menu, from the buttons' HTML ("" when there are none). */
 function moreMenu(items) {
@@ -4037,15 +4057,28 @@ async function retryRow(id, body = {}) {
 async function retryRows(rows) {
   const refused = [];
   const movedNotes = new Set();
+  let started = 0;
   for (const job of rows) {
-    const answer = await api("/api/job/" + job.id + "/retry", {});
+    // loopCall, as the card of several links: a server gone mid-loop left
+    // the button grey with no word, and a refused token wrote "not allowed"
+    // per row over "Reload this page" (round 51 of the hunt).
+    const answer = await loopCall("/api/job/" + job.id + "/retry", {});
+    if (!answer) { refused.lost = started; break; }
     if (answer.error) refused.push(`${job.title || shortLink(job.url)}: ${answer.error}`);
-    else if (answer.note) movedNotes.add(answer.note);
+    else {
+      started += 1;
+      if (answer.note) movedNotes.add(answer.note);
+    }
   }
   // Rows whose folder is gone go to the Settings folder: the caller says
   // it after its count (hunt of 2026-11-08).
   refused.moved = [...movedNotes].join(" ");
   return refused;
+}
+/** What a retry loop stopped by `loopCall` says. */
+function retryLostSentence(started, total) {
+  return `${started} of ${total} started again, then Teleloadzai stopped answering. `
+    + "Reload the page (F5) and press the button again.";
 }
 
 $("resume-all").addEventListener("click", async () => {
@@ -4055,6 +4088,7 @@ $("resume-all").addEventListener("click", async () => {
   const refused = await retryRows(rows);
   const again = rows.length - refused.length;
   button.disabled = false;
+  if (refused.lost !== undefined) { setStatus(retryLostSentence(refused.lost, rows.length)); return; }
   await refresh();
   if (!refused.length && !refused.moved) notify(again === 1 ? "1 download continues." : `${again} downloads continue.`);
   else if (!refused.length) setStatus(`${again === 1 ? "1 download continues." : `${again} downloads continue.`} ${refused.moved}`);
@@ -4074,6 +4108,7 @@ retryFailedButton.addEventListener("click", async () => {
   const refused = await retryRows(rows);
   const again = rows.length - refused.length;
   button.disabled = false;
+  if (refused.lost !== undefined) { setStatus(retryLostSentence(refused.lost, rows.length)); return; }
   await refresh();
   const word = again === 1 ? "download" : "downloads";     // "1 downloads" (round 20)
   if (!refused.length && !refused.moved) notify(`${again} ${word} started again.`);
@@ -4630,8 +4665,19 @@ function douyinNote(job) {
     changed it, an update will not fix this.</div>`;
 }
 
+/** Decision 19's three modes, in one line each. */
+const UPDATE_MODE_SUB = {
+  ask: "A newer version is offered; nothing changes without you.",
+  auto: "Programs update when Teleloadzai starts; a failed download updates its program and tries once more.",
+  manual: "Teleloadzai only shows which programs have a newer version.",
+};
+function paintUpdateSub() {
+  $("update-mode-sub").textContent = UPDATE_MODE_SUB[$("update-mode").value] || "";
+}
+
 $("update-mode").addEventListener("change", async () => {
   updateMode = $("update-mode").value;
+  paintUpdateSub();
   await api("/api/settings", { update_mode: updateMode });
   notify("Saved: updates · " + $("update-mode").selectedOptions[0].text + ".");
   renderUpdateBar();
@@ -6728,17 +6774,28 @@ async function watchLogin(name) {
   // looking (its window closed a moment ago) stops, or it announced the next
   // site's result under its own site's name (hunt of 2026-11-08, round 6).
   const mine = ++loginWatch;
+  // A look with no answer ended this watcher with no word, "Waiting for
+  // you" left up (round 62): a few misses are retried, then it is said.
+  const lost = () => setStatus("Teleloadzai stopped answering while the log-in window was open. "
+    + "Reload the page (F5) to see whether the log-in worked.");
   // Start from the outcome already known, or a second log-in in the same
   // session would announce the FIRST one's result.
-  const before = await api("/api/login/state", {});
+  const before = await loopCall("/api/login/state", {});
   if (mine !== loginWatch) return;
+  if (!before) { lost(); return; }
   loginSeen = (before.result || {}).number || 0;
   let closedLooks = 0;
+  let missed = 0;
   for (;;) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     if (mine !== loginWatch) return;
-    const state = await api("/api/login/state", {});
+    const state = await loopCall("/api/login/state", {});
     if (mine !== loginWatch) return;
+    if (!state) {
+      if (++missed > 5) { lost(); return; }
+      continue;
+    }
+    missed = 0;
     const result = state.result || {};
     if (result.number && result.number !== loginSeen) {
       loginSeen = result.number;
@@ -6921,7 +6978,11 @@ async function forgetCookies() {
   // (the user, 2026-11-15: keep only what is needed).
   // A copy a running download still holds is said: it was left in silence
   // until the next start (round 17 of the hunt).
-  setStatus("Cookies forgotten." + (result.copies_left
+  // -1: the copies' folder could not be read -- not a running download
+  // (round 54 of the hunt).
+  setStatus("Cookies forgotten." + (result.copies_left < 0
+    ? " The folder of download copies (data/cookie-runs) could not be read: copies of your log-ins may be left in it. Teleloadzai tries again at the next start."
+    : result.copies_left
     ? " A download still running holds a copy: it is deleted when that download ends, or at the next start."
     : ""));
 }
@@ -6935,6 +6996,7 @@ function showSettings(settings, start = true) {
   $("record-minutes").value = String(settings.record_minutes ?? 60);
   updateMode = ["ask", "auto", "manual"].includes(settings.update_mode) ? settings.update_mode : "ask";
   $("update-mode").value = updateMode;
+  paintUpdateSub();
   $("ytdlp-channel").value = settings.ytdlp_channel === "preview" ? "preview" : "stable";
   askWhere = settings.ask_where !== false;
   $("cookies-keep").value = settings.cookies_keep === "once" ? "once" : "keep";

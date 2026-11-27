@@ -74,6 +74,18 @@ _STEPS = (
     # After the join, a 342 MB lecture took seconds here, and the row still
     # said "joining picture and sound" (seen 2026-11-01).
     ("[EmbedSubtitle]", "adding the subtitles"),
+    # yt-dlp's other post-processors (the tags `_STEP_LINE` already knows):
+    # a big HLS file's [FixupM3u8] left the row on "800 MB / 800 MB" with no
+    # moving seconds (round 62, decision 33). Named plainly: what each one
+    # does to a given file is yt-dlp's business, not a claim of ours.
+    ("[Fixup", "finishing the file"),
+    ("[VideoRemuxer]", "finishing the file"),
+    ("[VideoConvertor]", "finishing the file"),
+    # Not [ThumbnailsConvertor]: an MP3's `--convert-thumbnails` runs it
+    # BEFORE the download, and the row said "Finishing the file…" over a
+    # download not begun (round 63).
+    ("[EmbedThumbnail]", "finishing the file"),
+    ("[Metadata]", "finishing the file"),
 )
 _FILE_TEMPLATE = f"after_move:{_FILE_TAG}\t%(filepath)s"
 # Said before the download starts: is this a live stream? Stop is how a live
@@ -144,8 +156,13 @@ def _progress(parts: list[str]) -> Progress:
     parts = parts + [""] * (10 - len(parts))
     speed, eta = _number(parts[2]), _number(parts[3])
     done, total, guess = _number(parts[6]), _number(parts[7]), _number(parts[8])
+    # "N/A%" or "Unknown %" when there is no total: a word shown as if it
+    # were a measure (round 62). No digit, no percent: the row says "so far".
+    percent = parts[1].strip()
+    if not any(ch.isdigit() for ch in percent):
+        percent = ""
     return Progress(
-        percent=parts[1].strip(), speed=speed or 0.0,
+        percent=percent, speed=speed or 0.0,
         eta=int(eta) if eta is not None else None, part=_part(parts[4], parts[5]),
         done=int(done or 0), total=int(total or guess or 0),
         estimated=not total and bool(guess), format_id=parts[9].strip(),
@@ -890,6 +907,12 @@ def download(
             if on_line:
                 on_line(f"Teleloadzai: the card's reading could not be used "
                         f"({problem.strerror or problem}); reading the link again.")
+            # A half-written copy (a full disk) stayed until the app closed:
+            # it may hold cookies (round 53 of the hunt).
+            try:
+                info_file.unlink(missing_ok=True)
+            except OSError:
+                pass                        # swept at close and at start
             info_file = None
 
     command = [

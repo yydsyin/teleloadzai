@@ -323,6 +323,25 @@ def _yutto(_exe: Path, r: Request) -> list[str]:
     return command
 
 
+def _drop(path: Path) -> bool:
+    """Delete a file of ours; one Windows still holds (an antivirus, a
+    program a moment after its end) is left for the work folder's sweep.
+    Never raises: in a clean-up, its error took the place of the real
+    outcome -- a finished recording lost, a said failure hidden (round 59)."""
+    try:
+        path.unlink(missing_ok=True)
+        return True
+    except OSError:
+        return False
+
+
+def _ts_alone(moved: list[Path]) -> bool:
+    """A recording kept as .ts with no MP4 made of it -- not a .ts listed
+    beside its MP4 because Windows held it a moment (round 60)."""
+    mp4s = {p.stem for p in moved if p.suffix.lower() == ".mp4"}
+    return any(p.suffix.lower() == ".ts" and p.stem not in mp4s for p in moved)
+
+
 def _repackage_to_mp4(files: list[Path]) -> list[Path]:
     """Turn a .ts recording into a .mp4, without touching the video itself.
 
@@ -371,11 +390,20 @@ def _repackage_to_mp4(files: list[Path]) -> list[Path]:
             continue
 
         if done.returncode == 0 and partial.is_file() and partial.stat().st_size > 0:
-            partial.replace(target)
-            path.unlink(missing_ok=True)
+            # The MP4 held a moment (an antivirus): its error escaped, and the
+            # work folder -- the .ts with it -- was deleted (round 59). The .ts
+            # is kept instead, as when FFmpeg fails.
+            try:
+                partial.replace(target)
+            except OSError:
+                _drop(partial)
+                final.append(path)
+                continue
+            if not _drop(path):
+                final.append(path)              # both kept: nothing lost
             final.append(target)
         else:
-            partial.unlink(missing_ok=True)     # never leave a broken mp4
+            _drop(partial)                      # never leave a broken mp4
             final.append(path)
     return final
 
@@ -659,7 +687,7 @@ def _to_mp3_or_clean(video: Path, target: Path, request: Request,
         _say(on_step, "making the MP3")
         cover = _cover(cover_address, video, site)
         if _stopped(request) and cover:
-            cover.unlink(missing_ok=True)
+            _drop(cover)
         _check_stop(request)
         return _to_mp3(video, target, request.quality, on_start=on_start, on_step=on_step,
                        tags=tags, cover=cover)
@@ -668,7 +696,7 @@ def _to_mp3_or_clean(video: Path, target: Path, request: Request,
         # `_to_mp3`), so the name may still be the user's own older MP3 --
         # deleting it on a Stop lost it (round 4 of the hunt, 2026-10-18).
         if _stopped(request):
-            video.unlink(missing_ok=True)
+            _drop(video)        # held, its error replaced the Stop (round 60)
         raise
 
 
@@ -801,7 +829,10 @@ def _to_mp3(video: Path, target: Path, quality: str = "best", remove: bool = Tru
     ffmpeg = tools.installed_path("ffmpeg")
     if ffmpeg is None:
         if cover:
-            cover.unlink(missing_ok=True)
+            try:
+                cover.unlink(missing_ok=True)
+            except OSError:
+                pass                    # the said error below wins
         raise RunnerError(
             f"The video was downloaded ({video.name}), but FFmpeg is not "
             "installed, so it could not be turned into an MP3.")
@@ -827,10 +858,16 @@ def _to_mp3(video: Path, target: Path, quality: str = "best", remove: bool = Tru
     try:
         code = process.wait()
     finally:
+        # Guarded: a held picture raised here after the MP3 was made, and
+        # the row failed with Windows' raw words (round 58). It is in our
+        # own work folder, removed with it.
         if cover:
-            cover.unlink(missing_ok=True)
+            try:
+                cover.unlink(missing_ok=True)
+            except OSError:
+                pass
     if code != 0 or not partial.is_file() or partial.stat().st_size == 0:
-        partial.unlink(missing_ok=True)
+        _drop(partial)
         raise RunnerError(
             f"The video was downloaded ({video.name}), but turning it into an "
             "MP3 failed. The video is kept.")
@@ -839,12 +876,16 @@ def _to_mp3(video: Path, target: Path, quality: str = "best", remove: bool = Tru
     except PermissionError as problem:
         # The old MP3 open in a player: Windows' bare "[WinError 5]" reached
         # the row, and the .tmp and the step video stayed (round 6 of the hunt).
-        partial.unlink(missing_ok=True)
+        _drop(partial)
         if remove:
-            video.unlink(missing_ok=True)
+            _drop(video)
         raise RunnerError(_held_sentence(target)) from problem
-    if remove:
-        video.unlink(missing_ok=True)
+    if remove and not _drop(video):
+        # The MP3 is made: a held video never undoes it -- but it stays
+        # beside the MP3, said rather than silent (round 60).
+        from . import console
+        console.add("app", f"Teleloadzai: the MP3 is made, but {video.name} could not be "
+                    f"deleted (Windows still holds it). It is in {video.parent}.", "err")
     return target
 
 
@@ -1268,12 +1309,12 @@ def _fetch(address: str, target: Path, site: str,
                 raise RunnerError(_held_sentence(target)) from problem
             raise
     except urllib.error.URLError as problem:
-        partial.unlink(missing_ok=True)     # never leave half a file behind
+        _drop(partial)                      # never leave half a file behind
         raise RunnerError(f"The video could not be downloaded: {problem.reason}") from problem
     except (TimeoutError, ConnectionError, http.client.HTTPException, ssl.SSLError) as problem:
         # Cut DURING the fetch (Wi-Fi lost, the site closed the line): Python's
         # bare words reached the row, with no step (silent-failure hunt, 2026-11-22).
-        partial.unlink(missing_ok=True)
+        _drop(partial)
         raise RunnerError(f"The connection was lost during the download ({str(problem) or type(problem).__name__}). "
                           "Nothing was kept: try again.") from problem
     except OSError as problem:
@@ -1294,7 +1335,7 @@ def _fetch(address: str, target: Path, site: str,
         raise RunnerError(f"The video could not be saved in the folder ({problem.strerror or problem}). "
                           "Check that the folder can be written to and the disk has room.") from problem
     except Exception:
-        partial.unlink(missing_ok=True)
+        _drop(partial)          # a held half file hid the said cut-off (round 60)
         raise
 
 
@@ -1652,7 +1693,7 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         moved, _ = _move_out(pairs, request, own_names)
         # The stopped recording too (round 5 of the hunt): as the note below.
         stayed_ts = (recipe.after is _repackage_to_mp4 and request.mode != "mp3"
-                     and any(p.suffix.lower() == ".ts" for p in moved))
+                     and _ts_alone(moved))
         return RunResult(moved, tail, note=("The recording could not be turned into an MP4, so it "
                                             "was kept as .ts. It plays in VLC.") if stayed_ts
                          else mp3_problem)
@@ -1742,7 +1783,7 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         kept = (f"{len(already)} file{'s were' if len(already) != 1 else ' was'} already in this "
                 f"folder and not downloaded again (\"{already[0]}\"{', …' if len(already) > 1 else ''}).")
         note = f"{note} {kept}".strip()
-    if recipe.after is _repackage_to_mp4 and any(p.suffix.lower() == ".ts" for p in moved):
+    if recipe.after is _repackage_to_mp4 and _ts_alone(moved):
         # The MP4 could not be made (FFmpeg missing or failed): the .ts was
         # kept with no word (round 4 of the hunt, 2026-11-22).
         note = (f"{note} The recording could not be turned into an MP4, so it was kept as "

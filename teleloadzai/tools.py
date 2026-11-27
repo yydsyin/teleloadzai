@@ -692,7 +692,13 @@ def _download(url: str, target: Path, on_progress: ProgressFn | None, label: str
 
         except Exception as exc:
             last_error = exc
-            target.unlink(missing_ok=True)      # never keep half a file
+            # Never keep half a file -- but a half file an antivirus holds
+            # raised here, hid the real error and skipped the retries
+            # (round 59). The next try writes over it.
+            try:
+                target.unlink(missing_ok=True)
+            except OSError:
+                pass
             if attempt < DOWNLOAD_TRIES:
                 if on_progress:
                     on_progress(f"{label} · connection lost, trying again "
@@ -790,7 +796,10 @@ def _install_exe(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
     try:
         _check_program(temporary, tool)
     except InstallError:
-        temporary.unlink(missing_ok=True)
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass                # the said reason below wins (round 59)
         raise
     _put_in_place(temporary, target, tool)
 
@@ -823,6 +832,17 @@ def _put_in_place(temporary: Path, target: Path, tool: ToolSpec) -> None:
 
 
 def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> None:
+    # A working copy stranded by a failed put-back (below) is put back
+    # first, before anything can fail: the next install's rmtree took the
+    # only copy (round 58 of the hunt).
+    folder, old = BIN_DIR / tool.id, BIN_DIR / f"{tool.id}.old"
+    if not tool.extract_only and old.exists() and not folder.exists():
+        try:
+            old.rename(folder)
+        except OSError as problem:
+            raise InstallError(
+                f"your {tool.name} is saved as bin\\{old.name} and could not be put back. "
+                f"Close Teleloadzai, rename that folder to {tool.id}, and try again.") from problem
     archive = BIN_DIR / f"{tool.id}.zip.part"
     _download(url, archive, on_progress, f"downloading {tool.name}")
     if on_progress:
@@ -872,7 +892,7 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
                 fresh = BIN_DIR / f"{tool.id}.new"
                 old = BIN_DIR / f"{tool.id}.old"
                 shutil.rmtree(fresh, ignore_errors=True)
-                shutil.rmtree(old, ignore_errors=True)
+                shutil.rmtree(old, ignore_errors=True)     # put back first, at the top
                 zipped.extractall(fresh)            # complete, beside the working one
                 # The program we will run must be in it, and run here --
                 # checked before the working folder is moved away.
@@ -891,6 +911,13 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
                             f"{tool.exe_name} is not in the downloaded "
                             f"archive; the installed {tool.name} was kept")
                     _check_program(program, tool)
+                if folder.exists() and old.exists():
+                    # An older copy Windows would not let go: every update
+                    # said "in use by another program", a cause not known
+                    # (round 59).
+                    raise InstallError(f"an older copy, bin\\{old.name}, could not be deleted. "
+                                       f"The installed {tool.name} was kept: close Teleloadzai, "
+                                       "delete that folder, and try again.")
                 if folder.exists():
                     try:
                         folder.rename(old)          # fails cleanly if the tool is in use
@@ -899,10 +926,21 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
                                            "installed one was kept: try again in a moment.") from problem
                 try:
                     fresh.rename(folder)
-                except OSError:
+                except OSError as problem:
                     if old.exists() and not folder.exists():
-                        old.rename(folder)          # put the working one back
-                    raise
+                        try:
+                            old.rename(folder)      # put the working one back
+                        except OSError:
+                            # Its own error hid the first, and the program
+                            # looked gone (round 58): where it is, said.
+                            raise InstallError(
+                                f"the new {tool.name} could not be put in place, and the "
+                                f"installed one could not be put back: it is saved as "
+                                f"bin\\{old.name}. Close Teleloadzai, rename that folder to "
+                                f"{tool.id}, and try again.") from problem
+                    raise InstallError(f"the new {tool.name} could not be put in place "
+                                       f"({problem.strerror or problem}). The installed one was "
+                                       "kept: try again in a moment.") from problem
                 shutil.rmtree(old, ignore_errors=True)
     # Said in words, as every other install failure: these two reached the
     # Programs row as "BadZipFile: File is not a zip file" and "[Errno 28]"
@@ -917,11 +955,17 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
         raise InstallError(f"there is not enough space on the disk to unpack {tool.name}. "
                            "The installed one was kept: free some space and try again.") from problem
     finally:
-        archive.unlink(missing_ok=True)
+        # Each guarded: an antivirus still scanning the archive raised here,
+        # in place of the install's own result -- a done update said
+        # "[WinError 5]" (round 58). A stale archive is written over next time.
+        for leftover in [archive] + [BIN_DIR / (Path(name).name + ".part")
+                                     for name in tool.extract_only or ()]:
+            try:
+                leftover.unlink(missing_ok=True)
+            except OSError:
+                pass
         for leftover in BIN_DIR.glob(f"{tool.id}.new"):
             shutil.rmtree(leftover, ignore_errors=True)
-        for name in tool.extract_only or ():       # a copy that stopped half-way
-            (BIN_DIR / (Path(name).name + ".part")).unlink(missing_ok=True)
 
     if on_progress:
         on_progress(f"unpacking {tool.name}", 100)
@@ -1307,7 +1351,10 @@ def remove(tool_id: str) -> bool:
         # file was held made the package an orphan (hunt, 2026-11-15).
         if gone:
             for leftover in libs_dir().glob(f"{tool.module}*"):
-                shutil.rmtree(leftover, ignore_errors=True) if leftover.is_dir() else leftover.unlink(missing_ok=True)
+                try:            # a held file raised past "could not be removed" (round 59)
+                    shutil.rmtree(leftover, ignore_errors=True) if leftover.is_dir() else leftover.unlink(missing_ok=True)
+                except OSError:
+                    pass        # judged below by what is left
         # And what it brought with it, if nothing else needs it now.
         if installed_path(tool_id) is None:
             remove_unneeded()
@@ -1325,6 +1372,9 @@ def remove(tool_id: str) -> bool:
     folder = BIN_DIR / tool.id
     if folder.is_dir():
         shutil.rmtree(folder, ignore_errors=True)
+    # An update's older copy too: left, the next install put a removed
+    # program back from it (round 59).
+    shutil.rmtree(BIN_DIR / f"{tool.id}.old", ignore_errors=True)
     # What is left in OUR folder decides -- `ignore_errors` hides a folder
     # Windows keeps locked. Not `installed_path`: it also looks at the PATH,
     # and a copy installed elsewhere on the PC is not ours to remove.
