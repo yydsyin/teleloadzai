@@ -178,6 +178,18 @@ def load_settings() -> dict:
     }
 
 
+# The programs' logos the page may load from web/logos/ -- an allow-list of
+# exact names and their types, nothing else under that folder is served.
+_LOGO_FILES = {
+    "yt-dlp.ico": "image/x-icon",
+    "streamlink.svg": "image/svg+xml",
+    "tiktokdownloader.png": "image/png",
+    "ks-downloader.png": "image/png",
+    "xhs-downloader.png": "image/png",
+    "yutto.svg": "image/svg+xml",
+    "n-m3u8dl-re.jpg": "image/jpeg",
+}
+
 # Subtitle files beside a video ("Separate file"): never opened in its place.
 _SUBTITLE_ENDINGS = (".srt", ".vtt", ".ass")
 
@@ -973,6 +985,14 @@ class Handler(BaseHTTPRequestHandler):
                     .replace("__APP_VERSION__", APP_VERSION)
                     .replace("__APP_REPO__", APP_REPO))
             self._send(page.encode("utf-8"), "text/html; charset=utf-8")
+            return
+
+        # The programs' own logos (web/logos/, each with its licence in
+        # LICENCES.md; the user's choice, 2026-11-27): only these exact names,
+        # never a path the request builds.
+        if path.startswith("/logos/") and path[len("/logos/"):] in _LOGO_FILES:
+            name = path[len("/logos/"):]
+            self._send((WEB_DIR / "logos" / name).read_bytes(), _LOGO_FILES[name])
             return
 
         if path.startswith("/api/"):

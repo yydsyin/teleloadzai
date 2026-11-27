@@ -277,6 +277,10 @@
     border: 1px solid var(--line); font-weight: 500;
   }
   button.tiny { min-height: 30px; padding: 4px 12px; font-size: 13px; font-weight: 500; }
+  /* Remove a program: red, told apart from Update beside it (the user's
+     choice, 2026-11-27). Still an outline: one filled button per screen. */
+  #tools-list button[data-remove] { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+  #tools-list button[data-remove]:not(:disabled):hover { color: var(--bad); border-color: var(--bad); }
   /* Quiet text buttons: Settings in the bar, "Clear finished", a row's own
      actions. A box around every one made the screen a grid of boxes. */
   #clear, #clear-all:not(.danger) { border-color: transparent; }
@@ -371,7 +375,8 @@
   /* The sites: one row per site, its name, its program, its log-in. */
   /* The name column holds "Needs your account · seen Oct 24" on one line
      since 2026-10-25 (it wrapped at 150 px). */
-  #sites-table { display: grid; grid-template-columns: minmax(96px, 230px) minmax(0, 1fr) auto; }
+  /* +32 px for the logo and its gap (2026-11-27): the need lines wrapped. */
+  #sites-table { display: grid; grid-template-columns: minmax(128px, 262px) minmax(0, 1fr) auto; }
   #sites-table > div { display: contents; }
   #sites-table > div > * {
     padding: 9px 10px 9px 0; border-top: 1px solid var(--line);
@@ -385,6 +390,17 @@
   /* The site's name, and under it what it needs (2026-10-25). */
   #sites-table .site-name { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
   #sites-table .need-line { font-size: 12px; color: var(--soft); font-weight: 400; }
+  /* Brand logos (model A, 2026-11-27): the logo left of the name and its need line. */
+  .brand-logo { width: 22px; height: 22px; flex: none; color: var(--ink); }
+  .brand-logo.letter { display: inline-grid; place-items: center; box-sizing: border-box; border-radius: 6px;
+    border: 1px solid var(--line-strong); color: var(--soft); font-size: 12px; font-weight: 700; }
+  #sites-table .site-name.has-logo { display: grid; grid-template-columns: 22px minmax(0, 1fr);
+    column-gap: 10px; align-items: center; justify-content: start; }
+  #sites-table .site-name.has-logo > .brand-logo { grid-row: 1 / span 2; }
+  #sites-table .site-name.has-logo > :not(.brand-logo) { grid-column: 2; }
+  .tool-id { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .seg-track .brand-logo { width: 16px; height: 16px; margin-right: 6px; vertical-align: -3px; }
+  img.brand-logo { object-fit: contain; border-radius: 4px; }
   /* Model A (2026-11-20): what changed in the sign list, until OK. */
   /* Model 1 (2026-11-20): a card like Sites' others, one row per change,
      who on top and the whole sentence under it. */
@@ -734,9 +750,17 @@
   .con-ex .what { display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
     font-size: 13px; color: var(--soft); margin-top: 2px; }
   .con-guide .none { font-size: 13px; color: var(--soft); margin: 0; }
+  .con-back { display: none; }
+  /* The small window: the guide shows IN PLACE of the log -- two stacked
+     boxes, each with its own scrollbar, were easy to get stuck in (model 2,
+     the user's choice, 2026-11-27). The command box stays, for "Put in box". */
   @media (max-width: 1100px) {
-    .con-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
-    .con-guide { max-height: 34vh; }
+    .con-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+    .con-body:not(.no-guide) { grid-template-rows: auto minmax(0, 1fr); }
+    .con-body:not(.no-guide) .con-box { display: none; }
+    .con-back { display: inline-flex; margin-left: auto; }
+    .con-guide-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+    .con-guide-head .con-guide-title { margin: 0; }
   }
   /* Full screen: larger text and a wider guide (the user, 2026-11-15: "it
      looks small"). After the rules above, so these win. */
@@ -1445,22 +1469,9 @@
         </div>
       </div>
 
-      <!-- Decision 13's first level (the program per site) and decision 36's
-           log-in, on one row per site. A switch only where there is a real
-           choice; elsewhere the program's name. -->
-      <div class="hint warn-text hidden" id="login-blocked" style="margin:0 0 8px"></div>
-      <div class="set-group">
-        <div id="sites-table" role="table" aria-label="Your sites">Loading…</div>
-      </div>
-
-      <div class="card warn set-warning">
-        Downloading a lot can get your account suspended. Use a second account.
-      </div>
-
-      <!-- The sites first, the cookie mechanics folded under them: about 560 px
-           of them stood before the first site in the small window (critique
-           of 2026-10-31, model 5 chosen by the user). The warning of hard rule
-           5 stays in sight, above. -->
+      <!-- The cookie file right under its switch, folded, then the account
+           warning (hard rule 5), then the sites (model 3, the user's choice,
+           2026-11-27; until then the sites came first, model 5 of 2026-10-31). -->
       <details class="set-group cookie-fold" id="cookie-fold">
         <summary class="set-row">
           <span class="opt-icon icon-key" aria-hidden="true"></span>
@@ -1524,6 +1535,20 @@
         </div>
       </details>
 
+      <div class="card warn set-warning">
+        Downloading a lot can get your account suspended. Use a second account.
+      </div>
+
+
+      <!-- Decision 13's first level (the program per site) and decision 36's
+           log-in, on one row per site. A switch only where there is a real
+           choice; elsewhere the program's name. -->
+      <div class="hint warn-text hidden" id="login-blocked" style="margin:0 0 8px"></div>
+      <div class="set-group">
+        <div id="sites-table" role="table" aria-label="Your sites">Loading…</div>
+      </div>
+
+
       <div class="card warn hidden" id="login-waiting">
         <div class="title" id="login-waiting-title">Waiting for you</div>
         <div class="hint" style="margin:6px 0 10px" id="login-waiting-text"></div>
@@ -1581,7 +1606,10 @@
         <p class="con-where" id="con-where">Runs in your download folder.</p>
       </div>
       <aside class="con-guide" id="con-guide" aria-label="Basic commands">
-        <h3 class="con-guide-title" id="con-guide-title">Basic commands</h3>
+        <div class="con-guide-head">
+          <h3 class="con-guide-title" id="con-guide-title">Basic commands</h3>
+          <button class="ghost tiny con-back" id="con-back" type="button">← Back to the log</button>
+        </div>
         <div id="con-guide-list"></div>
       </aside>
     </div>
@@ -4185,10 +4213,10 @@ function toolRow(tool, progress) {
 
   row.innerHTML = `
     <div class="tool-top">
-      <div style="min-width:0">
+      <div class="tool-id">${toolLogo(tool.id, tool.name)}<div style="min-width:0">
         <span class="tool-name"></span>${badges.join("")}
         <div class="hint"></div>
-      </div>
+      </div></div>
       <div class="tool-buttons">${buttons}</div>
     </div>
     ${running ? `<div class="bar"><i style="width:${progress.percent || 0}%"></i></div>
@@ -4772,10 +4800,20 @@ $("python-install").addEventListener("click", async () => {
 // hide a top-level card: that rule is the whole point of the change. A card
 // still hides ITSELF with .hidden when it has nothing to say -- the two
 // questions stay separate (see the CSS note on data-showing).
+/** The folder box shows the END of its path: the start ("C:\Users\…") hid
+ *  the folder's own name, which is what the user reads (impeccable loop
+ *  2026-11-27, three rounds in a row). The whole path on hover. */
+function showFolderEnd() {
+  const box = $("folder");
+  box.title = box.value;
+  if (document.activeElement !== box) box.scrollLeft = box.scrollWidth;
+}
+
 function showView(name) {
   const wrap = document.querySelector(".wrap");
   const leaving = wrap.dataset.showing;
   wrap.dataset.showing = name;
+  if (name === "settings") showFolderEnd();   // its width is read now: the page is shown
   // The "new" tags show on the first look at Sites only (the user,
   // 2026-11-20): seen now, gone when the page is left.
   if (name === "sites") lookAtTags();
@@ -4967,11 +5005,16 @@ $("con-bar").addEventListener("submit", async (event) => {
   showCommand(answer.command);
   pollConsole();
 });
-$("con-guide-toggle").addEventListener("click", () => {
-  const on = $("con-guide-toggle").getAttribute("aria-pressed") !== "true";
+function setGuide(on) {
   $("con-guide-toggle").setAttribute("aria-pressed", String(on));
   $("con-body").classList.toggle("no-guide", !on);
+}
+$("con-guide-toggle").addEventListener("click", () => {
+  setGuide($("con-guide-toggle").getAttribute("aria-pressed") !== "true");
 });
+$("con-back").addEventListener("click", () => { setGuide(false); $("con-guide-toggle").focus(); });
+// In the small window the guide replaces the log: the log comes first.
+if (window.matchMedia("(max-width: 1100px)").matches) setGuide(false);
 
 // Two clicks, like every other button that destroys (review of 2026-10-25):
 // the lines cannot come back.
@@ -6288,7 +6331,7 @@ $("browse").addEventListener("click", async () => {
   // A window that failed to open is not the same as the user cancelling.
   if (result.error) { setStatus("Error: " + result.error); return; }
   if (result.cancelled) setStatus(""); else folderSaved(result.folder_state || "there", result.download_folder);
-  if (result.download_folder) $("folder").value = result.download_folder;
+  if (result.download_folder) { $("folder").value = result.download_folder; showFolderEnd(); }
   if (batch.length) renderBatch();       // an open card shows this folder
 });
 
@@ -6556,6 +6599,45 @@ $("sign-news-ok").addEventListener("click", async () => {
   $("set-accounts").focus();                // the box is gone: the keyboard goes to the page title
 });
 
+/* Brand logos (the user's choice, model A, 2026-11-27): each brand's own shape from
+ * Simple Icons 16.38.1 (CC0; the logos stay their owners' trademarks), in its brand
+ * colour. Closer to the real logos: Instagram's gradient, TikTok's cyan and pink
+ * shadow, YouTube's white play triangle. A black logo follows the text colour, so it
+ * stays visible in dark mode. Decoration only: the name beside it is the label. */
+const LOGOS = {"youtube":{"hex":"#FF0000","d":"M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"},"bilibili":{"hex":"#00A1D6","d":"M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"},"instagram":{"hex":"#FF0069","d":"M7.0301.084c-1.2768.0602-2.1487.264-2.911.5634-.7888.3075-1.4575.72-2.1228 1.3877-.6652.6677-1.075 1.3368-1.3802 2.127-.2954.7638-.4956 1.6365-.552 2.914-.0564 1.2775-.0689 1.6882-.0626 4.947.0062 3.2586.0206 3.6671.0825 4.9473.061 1.2765.264 2.1482.5635 2.9107.308.7889.72 1.4573 1.388 2.1228.6679.6655 1.3365 1.0743 2.1285 1.38.7632.295 1.6361.4961 2.9134.552 1.2773.056 1.6884.069 4.9462.0627 3.2578-.0062 3.668-.0207 4.9478-.0814 1.28-.0607 2.147-.2652 2.9098-.5633.7889-.3086 1.4578-.72 2.1228-1.3881.665-.6682 1.0745-1.3378 1.3795-2.1284.2957-.7632.4966-1.636.552-2.9124.056-1.2809.0692-1.6898.063-4.948-.0063-3.2583-.021-3.6668-.0817-4.9465-.0607-1.2797-.264-2.1487-.5633-2.9117-.3084-.7889-.72-1.4568-1.3876-2.1228C21.2982 1.33 20.628.9208 19.8378.6165 19.074.321 18.2017.1197 16.9244.0645 15.6471.0093 15.236-.005 11.977.0014 8.718.0076 8.31.0215 7.0301.0839m.1402 21.6932c-1.17-.0509-1.8053-.2453-2.2287-.408-.5606-.216-.96-.4771-1.3819-.895-.422-.4178-.6811-.8186-.9-1.378-.1644-.4234-.3624-1.058-.4171-2.228-.0595-1.2645-.072-1.6442-.079-4.848-.007-3.2037.0053-3.583.0607-4.848.05-1.169.2456-1.805.408-2.2282.216-.5613.4762-.96.895-1.3816.4188-.4217.8184-.6814 1.3783-.9003.423-.1651 1.0575-.3614 2.227-.4171 1.2655-.06 1.6447-.072 4.848-.079 3.2033-.007 3.5835.005 4.8495.0608 1.169.0508 1.8053.2445 2.228.408.5608.216.96.4754 1.3816.895.4217.4194.6816.8176.9005 1.3787.1653.4217.3617 1.056.4169 2.2263.0602 1.2655.0739 1.645.0796 4.848.0058 3.203-.0055 3.5834-.061 4.848-.051 1.17-.245 1.8055-.408 2.2294-.216.5604-.4763.96-.8954 1.3814-.419.4215-.8181.6811-1.3783.9-.4224.1649-1.0577.3617-2.2262.4174-1.2656.0595-1.6448.072-4.8493.079-3.2045.007-3.5825-.006-4.848-.0608M16.953 5.5864A1.44 1.44 0 1 0 18.39 4.144a1.44 1.44 0 0 0-1.437 1.4424M5.8385 12.012c.0067 3.4032 2.7706 6.1557 6.173 6.1493 3.4026-.0065 6.157-2.7701 6.1506-6.1733-.0065-3.4032-2.771-6.1565-6.174-6.1498-3.403.0067-6.156 2.771-6.1496 6.1738M8 12.0077a4 4 0 1 1 4.008 3.9921A3.9996 3.9996 0 0 1 8 12.0077"},"tiktok":{"hex":"#000000","d":"M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"},"kuaishou":{"hex":"#FF4906","d":"M18.315 12.264c2.33 0 4.218 1.88 4.218 4.2V19.8c0 2.32-1.888 4.2-4.218 4.2h-6.202a4.218 4.218 0 0 1-4.023-2.938l-3.676 1.833a2.04 2.04 0 0 1-2.731-.903 2.015 2.015 0 0 1-.216-.907v-5.94a2.03 2.03 0 0 1 2.035-2.024 2.044 2.044 0 0 1 .919.218l3.673 1.85a4.218 4.218 0 0 1 4.02-2.925zm-.062 2.162h-6.078c-1.153 0-2.09.921-2.108 2.065v3.247c0 1.148.925 2.081 2.073 2.1h6.113c1.153 0 2.09-.922 2.109-2.065v-3.247a2.104 2.104 0 0 0-2.074-2.1zM4.18 15.72a.554.554 0 0 0-.555.542v3.734a.556.556 0 0 0 .798.496l.01-.004 3.463-1.756V17.51l-3.467-1.73a.557.557 0 0 0-.249-.06zM9.28 0a5.667 5.667 0 0 1 4.98 2.965 4.921 4.921 0 0 1 3.36-1.317c2.714 0 4.913 2.177 4.913 4.863 0 2.686-2.2 4.863-4.912 4.863a4.921 4.921 0 0 1-3.996-2.034 5.651 5.651 0 0 1-4.345 2.034c-3.131 0-5.67-2.546-5.67-5.687C3.61 2.546 6.149 0 9.28 0Zm8.34 3.926c-1.441 0-2.61 1.157-2.61 2.585s1.169 2.585 2.61 2.585c1.443 0 2.612-1.157 2.612-2.585s-1.169-2.585-2.611-2.585zM9.28 2.287a3.395 3.395 0 0 0-3.39 3.4c0 1.877 1.518 3.4 3.39 3.4a3.395 3.395 0 0 0 3.39-3.4c0-1.878-1.518-3.4-3.39-3.4z"},"xiaohongshu":{"hex":"#FF2442","d":"M22.405 9.879c.002.016.01.02.07.019h.725a.797.797 0 0 0 .78-.972.794.794 0 0 0-.884-.618.795.795 0 0 0-.692.794c0 .101-.002.666.001.777zm-11.509 4.808c-.203.001-1.353.004-1.685.003a2.528 2.528 0 0 1-.766-.126.025.025 0 0 0-.03.014L7.7 16.127a.025.025 0 0 0 .01.032c.111.06.336.124.495.124.66.01 1.32.002 1.981 0 .01 0 .02-.006.023-.015l.712-1.545a.025.025 0 0 0-.024-.036zM.477 9.91c-.071 0-.076.002-.076.01a.834.834 0 0 0-.01.08c-.027.397-.038.495-.234 3.06-.012.24-.034.389-.135.607-.026.057-.033.042.003.112.046.092.681 1.523.787 1.74.008.015.011.02.017.02.008 0 .033-.026.047-.044.147-.187.268-.391.371-.606.306-.635.44-1.325.486-1.706.014-.11.021-.22.03-.33l.204-2.616.022-.293c.003-.029 0-.033-.03-.034zm7.203 3.757a1.427 1.427 0 0 1-.135-.607c-.004-.084-.031-.39-.235-3.06a.443.443 0 0 0-.01-.082c-.004-.011-.052-.008-.076-.008h-1.48c-.03.001-.034.005-.03.034l.021.293c.076.982.153 1.964.233 2.946.05.4.186 1.085.487 1.706.103.215.223.419.37.606.015.018.037.051.048.049.02-.003.742-1.642.804-1.765.036-.07.03-.055.003-.112zm3.861-.913h-.872a.126.126 0 0 1-.116-.178l1.178-2.625a.025.025 0 0 0-.023-.035l-1.318-.003a.148.148 0 0 1-.135-.21l.876-1.954a.025.025 0 0 0-.023-.035h-1.56c-.01 0-.02.006-.024.015l-.926 2.068c-.085.169-.314.634-.399.938a.534.534 0 0 0-.02.191.46.46 0 0 0 .23.378.981.981 0 0 0 .46.119h.59c.041 0-.688 1.482-.834 1.972a.53.53 0 0 0-.023.172.465.465 0 0 0 .23.398c.15.092.342.12.475.12l1.66-.001c.01 0 .02-.006.023-.015l.575-1.28a.025.025 0 0 0-.024-.035zm-6.93-4.937H3.1a.032.032 0 0 0-.034.033c0 1.048-.01 2.795-.01 6.829 0 .288-.269.262-.28.262h-.74c-.04.001-.044.004-.04.047.001.037.465 1.064.555 1.263.01.02.03.033.051.033.157.003.767.009.938-.014.153-.02.3-.06.438-.132.3-.156.49-.419.595-.765.052-.172.075-.353.075-.533.002-2.33 0-4.66-.007-6.991a.032.032 0 0 0-.032-.032zm11.784 6.896c0-.014-.01-.021-.024-.022h-1.465c-.048-.001-.049-.002-.05-.049v-4.66c0-.072-.005-.07.07-.07h.863c.08 0 .075.004.075-.074V8.393c0-.082.006-.076-.08-.076h-3.5c-.064 0-.075-.006-.075.073v1.445c0 .083-.006.077.08.077h.854c.075 0 .07-.004.07.07v4.624c0 .095.008.084-.085.084-.37 0-1.11-.002-1.304 0-.048.001-.06.03-.06.03l-.697 1.519s-.014.025-.008.036c.006.01.013.008.058.008 1.748.003 3.495.002 5.243.002.03-.001.034-.006.035-.033v-1.539zm4.177-3.43c0 .013-.007.023-.02.024-.346.006-.692.004-1.037.004-.014-.002-.022-.01-.022-.024-.005-.434-.007-.869-.01-1.303 0-.072-.006-.071.07-.07l.733-.003c.041 0 .081.002.12.015.093.025.16.107.165.204.006.431.002 1.153.001 1.153zm2.67.244a1.953 1.953 0 0 0-.883-.222h-.18c-.04-.001-.04-.003-.042-.04V10.21c0-.132-.007-.263-.025-.394a1.823 1.823 0 0 0-.153-.53 1.533 1.533 0 0 0-.677-.71 2.167 2.167 0 0 0-1-.258c-.153-.003-.567 0-.72 0-.07 0-.068.004-.068-.065V7.76c0-.031-.01-.041-.046-.039H17.93s-.016 0-.023.007c-.006.006-.008.012-.008.023v.546c-.008.036-.057.015-.082.022h-.95c-.022.002-.028.008-.03.032v1.481c0 .09-.004.082.082.082h.913c.082 0 .072.128.072.128V11.19s.003.117-.06.117h-1.482c-.068 0-.06.082-.06.082v1.445s-.01.068.064.068h1.457c.082 0 .076-.006.076.079v3.225c0 .088-.007.081.082.081h1.43c.09 0 .082.007.082-.08v-3.27c0-.029.006-.035.033-.035l2.323-.003c.098 0 .191.02.28.061a.46.46 0 0 1 .274.407c.008.395.003.79.003 1.185 0 .259-.107.367-.33.367h-1.218c-.023.002-.029.008-.028.033.184.437.374.871.57 1.303a.045.045 0 0 0 .04.026c.17.005.34.002.51.003.15-.002.517.004.666-.01a2.03 2.03 0 0 0 .408-.075c.59-.18.975-.698.976-1.313v-1.981c0-.128-.01-.254-.034-.38 0 .078-.029-.641-.724-.998z"},"sinaweibo":{"hex":"#E6162D","d":"M10.098 20.323c-3.977.391-7.414-1.406-7.672-4.02-.259-2.609 2.759-5.047 6.74-5.441 3.979-.394 7.413 1.404 7.671 4.018.259 2.6-2.759 5.049-6.737 5.439l-.002.004zM9.05 17.219c-.384.616-1.208.884-1.829.602-.612-.279-.793-.991-.406-1.593.379-.595 1.176-.861 1.793-.601.622.263.82.972.442 1.592zm1.27-1.627c-.141.237-.449.353-.689.253-.236-.09-.313-.361-.177-.586.138-.227.436-.346.672-.24.239.09.315.36.18.601l.014-.028zm.176-2.719c-1.893-.493-4.033.45-4.857 2.118-.836 1.704-.026 3.591 1.886 4.21 1.983.64 4.318-.341 5.132-2.179.8-1.793-.201-3.642-2.161-4.149zm7.563-1.224c-.346-.105-.57-.18-.405-.615.375-.977.42-1.804 0-2.404-.781-1.112-2.915-1.053-5.364-.03 0 0-.766.331-.571-.271.376-1.217.315-2.224-.27-2.809-1.338-1.337-4.869.045-7.888 3.08C1.309 10.87 0 13.273 0 15.348c0 3.981 5.099 6.395 10.086 6.395 6.536 0 10.888-3.801 10.888-6.82 0-1.822-1.547-2.854-2.915-3.284v.01zm1.908-5.092c-.766-.856-1.908-1.187-2.96-.962-.436.09-.706.511-.616.932.09.42.511.691.932.602.511-.105 1.067.044 1.442.465.376.421.466.977.316 1.473-.136.406.089.856.51.992.405.119.857-.105.992-.512.33-1.021.12-2.178-.646-3.035l.03.045zm2.418-2.195c-1.576-1.757-3.905-2.419-6.054-1.968-.496.104-.812.587-.706 1.081.104.496.586.813 1.082.707 1.532-.331 3.185.15 4.296 1.383 1.112 1.246 1.429 2.943.947 4.416-.165.48.106 1.007.586 1.157.479.165.991-.104 1.157-.586.675-2.088.241-4.478-1.338-6.235l.03.045z"},"x":{"hex":"#000000","d":"M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"},"facebook":{"hex":"#0866FF","d":"M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"},"reddit":{"hex":"#FF4500","d":"M12 0C5.373 0 0 5.373 0 12c0 3.314 1.343 6.314 3.515 8.485l-2.286 2.286C.775 23.225 1.097 24 1.738 24H12c6.627 0 12-5.373 12-12S18.627 0 12 0Zm4.388 3.199c1.104 0 1.999.895 1.999 1.999 0 1.105-.895 2-1.999 2-.946 0-1.739-.657-1.947-1.539v.002c-1.147.162-2.032 1.15-2.032 2.341v.007c1.776.067 3.4.567 4.686 1.363.473-.363 1.064-.58 1.707-.58 1.547 0 2.802 1.254 2.802 2.802 0 1.117-.655 2.081-1.601 2.531-.088 3.256-3.637 5.876-7.997 5.876-4.361 0-7.905-2.617-7.998-5.87-.954-.447-1.614-1.415-1.614-2.538 0-1.548 1.255-2.802 2.803-2.802.645 0 1.239.218 1.712.585 1.275-.79 2.881-1.291 4.64-1.365v-.01c0-1.663 1.263-3.034 2.88-3.207.188-.911.993-1.595 1.959-1.595Zm-8.085 8.376c-.784 0-1.459.78-1.506 1.797-.047 1.016.64 1.429 1.426 1.429.786 0 1.371-.369 1.418-1.385.047-1.017-.553-1.841-1.338-1.841Zm7.406 0c-.786 0-1.385.824-1.338 1.841.047 1.017.634 1.385 1.418 1.385.785 0 1.473-.413 1.426-1.429-.046-1.017-.721-1.797-1.506-1.797Zm-3.703 4.013c-.974 0-1.907.048-2.77.135-.147.015-.241.168-.183.305.483 1.154 1.622 1.964 2.953 1.964 1.33 0 2.47-.81 2.953-1.964.057-.137-.037-.29-.184-.305-.863-.087-1.795-.135-2.769-.135Z"},"twitch":{"hex":"#9146FF","d":"M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"},"pinterest":{"hex":"#BD081C","d":"M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.172.271-.401.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.354-.629-2.758-1.379l-.749 2.848c-.269 1.045-1.004 2.352-1.498 3.146 1.123.345 2.306.535 3.55.535 6.607 0 11.985-5.365 11.985-11.987C23.97 5.39 18.592.026 11.985.026L12.017 0z"},"vimeo":{"hex":"#1AB7EA","d":"M23.9765 6.4168c-.105 2.338-1.739 5.5429-4.894 9.6088-3.2679 4.247-6.0258 6.3699-8.2898 6.3699-1.409 0-2.578-1.294-3.553-3.881l-1.9179-7.1138c-.719-2.584-1.488-3.878-2.312-3.878-.179 0-.806.378-1.8809 1.132l-1.129-1.457a315.06 315.06 0 003.501-3.1279c1.579-1.368 2.765-2.085 3.5539-2.159 1.867-.18 3.016 1.1 3.447 3.838.465 2.953.789 4.789.971 5.5069.5389 2.45 1.1309 3.674 1.7759 3.674.502 0 1.256-.796 2.265-2.385 1.004-1.589 1.54-2.797 1.612-3.628.144-1.371-.395-2.061-1.614-2.061-.574 0-1.167.121-1.777.391 1.186-3.8679 3.434-5.7568 6.7619-5.6368 2.4729.06 3.6279 1.664 3.4929 4.7969z"},"dailymotion":{"hex":"#0A0A0A","d":"M21.823 7.327a11.928 11.928 0 0 0-2.606-3.814 12.126 12.126 0 0 0-3.866-2.57A12.246 12.246 0 0 0 10.617 0H1.831a.602.602 0 0 0-.609.603v3.764c0 .162.064.312.179.426l4.164 4.123a.612.612 0 0 0 .439.177h4.56c.806 0 1.56.313 2.125.88.557.559.856 1.296.843 2.075-.029 1.571-1.343 2.849-2.931 2.849h-6.74a.613.613 0 0 0-.432.176.619.619 0 0 0-.178.427v3.764c0 .162.063.312.178.427l4.139 4.099a.647.647 0 0 0 .476.21h2.572a12.276 12.276 0 0 0 4.733-.945 12.145 12.145 0 0 0 3.866-2.571 11.959 11.959 0 0 0 2.607-3.813c.633-1.479.956-3.051.956-4.67 0-1.619-.321-3.19-.956-4.669l.001-.005ZM2.441 4.118V1.982l2.945 2.755.001 2.297-2.946-2.916Zm4.975 17.813-2.945-2.917v-2.137l2.945 2.755v2.299Zm-2.004-5.832h5.19c2.248 0 4.107-1.807 4.147-4.03a4.027 4.027 0 0 0-1.192-2.937 4.203 4.203 0 0 0-2.996-1.239H6.606V5.216h3.996c1.831 0 3.553.706 4.849 1.986a6.724 6.724 0 0 1-.152 9.736 6.875 6.875 0 0 1-4.697 1.84H8.275L5.412 16.1v-.001Zm15.289.1a10.753 10.753 0 0 1-2.345 3.431 10.91 10.91 0 0 1-3.48 2.314 11.018 11.018 0 0 1-4.26.847H8.633v-2.814h1.916c2.145 0 4.161-.802 5.675-2.254a7.88 7.88 0 0 0 2.451-5.728c0-2.177-.87-4.21-2.451-5.728-1.514-1.454-3.528-2.254-5.675-2.254h-4.16L3.383 1.202h7.234c1.479 0 2.911.285 4.259.847a10.957 10.957 0 0 1 3.48 2.313 10.769 10.769 0 0 1 2.345 3.432c.571 1.33.86 2.743.86 4.202 0 1.46-.289 2.873-.86 4.203Z"},"rumble":{"hex":"#85C742","d":"M14.4528 13.5458c.8064-.6542.9297-1.8381.2756-2.6445a1.8802 1.8802 0 0 0-.2756-.2756 21.2127 21.2127 0 0 0-4.3121-2.776c-1.066-.51-2.256.2-2.4261 1.414a23.5226 23.5226 0 0 0-.14 5.5021c.116 1.23 1.292 1.964 2.372 1.492a19.6285 19.6285 0 0 0 4.5062-2.704v-.008zm6.9322-5.4002c2.0335 2.228 2.0396 5.637.014 7.8723A26.1487 26.1487 0 0 1 8.2946 23.846c-2.6848.6713-5.4168-.914-6.1662-3.5781-1.524-5.2002-1.3-11.0803.17-16.3045.772-2.744 3.3521-4.4661 6.0102-3.832 4.9242 1.174 9.5443 4.196 13.0764 8.0121v.002z"},"odysee":{"hex":"#EF1970","d":"M11.965 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12 12 12 0 0 0-3.209-8.167 7.272 7.272 0 0 1-.799 3.218c-.548.957-2.281 2.77-3.264 3.699a.723.723 0 0 0 .056 1.104c.996.74 2.658 2.151 2.788 3.422.176 1.835 1.6 4.02 1.675 4.159a.67.67 0 0 1-.105.327 12.067 12.067 0 0 1-2.03 1.898 2.435 2.435 0 0 1-.807.126c-1.944-.04-1.526-1.866-1.712-2.905s-.78-3.085-2.716-2.788c0 0 .484 4.243-1.489 5.546s-5.843 2.27-6.55-.408 2.46-2.384 2.684-2.384c.223 0 2.233-.632 1.267-2.53-.967-1.898-2.01-3.5-2.01-3.5a11.37 11.37 0 0 0-2.735 1.285 5.42 5.42 0 0 0-1.061.82c-1.065 1.104-2.19 1.713-2.954 1.358a1.368 1.368 0 0 1-.32-.221A11.926 11.926 0 0 1 .1 13.503c.43-.641 2.082-2.038 3.696-2.906 1.304-.702 2.737-.988 3.118-1.355-.671-2.235-1.882-5.703.832-7.33C9.881.634 12.69-.142 13.77 2.958c1.08 3.1.802 3.796 1.267 3.796.465 0 1.608.223 2.09-1.75.356-1.445.574-2.685 1.379-3.087A12 12 0 0 0 12 0a12 12 0 0 0-.035 0zm-.498 2.125c-.353-.019-.78.05-1.303.224 0 0-1.895.52-1.749 2.53.13 1.777 1.08 2.753 3.053 2.01 1.972-.737 2.31-1.264 1.824-2.753-.364-1.117-.765-1.956-1.825-2.011zm.48.726a.249.249 0 0 1 .183.07 1.58 1.58 0 0 1 .232.346.253.253 0 0 1-.197.37.253.253 0 0 1-.233-.131 1.559 1.559 0 0 0-.148-.232.256.256 0 0 1 0-.353.249.249 0 0 1 .163-.07zm3.529.152a.22.22 0 0 1 .192.103.22.22 0 0 1-.07.305.22.22 0 1 1-.122-.408zM12.609 4.27a.253.253 0 0 1 .227.133 1.5 1.5 0 0 1 .102.982.253.253 0 0 1-.246.205h-.049a.253.253 0 0 1-.2-.295 1.013 1.013 0 0 0-.071-.697.253.253 0 0 1 .237-.328zm-8.035.552a.12.12 0 0 1 .029.003.12.12 0 1 1-.147.091.12.12 0 0 1 .118-.094zm15.77 3.419.273.539.593.12-.539.275-.123.592-.272-.539-.592-.123.538-.272zm-17.767.535a.22.22 0 0 1 .193.104.22.22 0 0 1-.07.304.22.22 0 1 1-.123-.408zm16.004 2.79a.258.258 0 0 1 .062.007.258.258 0 1 1-.31.195.258.258 0 0 1 .248-.202zM4.914 16.115a.17.17 0 0 1 .165.14.17.17 0 0 1-.137.197.17.17 0 1 1-.028-.337zm9.769 4.094a.2.2 0 0 1 .036.004.2.2 0 1 1-.233.15.2.2 0 0 1 .197-.154z"},"soundcloud":{"hex":"#FF5500","d":"M23.999 14.165c-.052 1.796-1.612 3.169-3.4 3.169h-8.18a.68.68 0 0 1-.675-.683V7.862a.747.747 0 0 1 .452-.724s.75-.513 2.333-.513a5.364 5.364 0 0 1 2.763.755 5.433 5.433 0 0 1 2.57 3.54c.282-.08.574-.121.868-.12.884 0 1.73.358 2.347.992s.948 1.49.922 2.373ZM10.721 8.421c.247 2.98.427 5.697 0 8.672a.264.264 0 0 1-.53 0c-.395-2.946-.22-5.718 0-8.672a.264.264 0 0 1 .53 0ZM9.072 9.448c.285 2.659.37 4.986-.006 7.655a.277.277 0 0 1-.55 0c-.331-2.63-.256-5.02 0-7.655a.277.277 0 0 1 .556 0Zm-1.663-.257c.27 2.726.39 5.171 0 7.904a.266.266 0 0 1-.532 0c-.38-2.69-.257-5.21 0-7.904a.266.266 0 0 1 .532 0Zm-1.647.77a26.108 26.108 0 0 1-.008 7.147.272.272 0 0 1-.542 0 27.955 27.955 0 0 1 0-7.147.275.275 0 0 1 .55 0Zm-1.67 1.769c.421 1.865.228 3.5-.029 5.388a.257.257 0 0 1-.514 0c-.21-1.858-.398-3.549 0-5.389a.272.272 0 0 1 .543 0Zm-1.655-.273c.388 1.897.26 3.508-.01 5.412-.026.28-.514.283-.54 0-.244-1.878-.347-3.54-.01-5.412a.283.283 0 0 1 .56 0Zm-1.668.911c.4 1.268.257 2.292-.026 3.572a.257.257 0 0 1-.514 0c-.241-1.262-.354-2.312-.023-3.572a.283.283 0 0 1 .563 0Z"},"bandcamp":{"hex":"#408294","d":"M0 18.75l7.437-13.5H24l-7.438 13.5H0z"},"mixcloud":{"hex":"#5000FF","d":"M2.462 8.596l1.372 6.49h.319l1.372-6.49h2.462v6.808H6.742v-5.68l.232-.81h-.402l-1.43 6.49H2.854l-1.44-6.49h-.391l.222.81v5.68H0V8.596zM24 8.63v1.429L21.257 12 24 13.941v1.43l-3.235-2.329h-.348l-3.226 2.329v-1.43l2.734-1.94-2.733-1.942V8.63l3.225 2.338h.348zm-7.869 2.75v1.24H9.304v-1.24z"},"niconico":{"hex":"#231815","d":"M.4787 7.534v12.1279A2.0213 2.0213 0 0 0 2.5 21.6832h2.3888l1.323 2.0948a.4778.4778 0 0 0 .4043.2205.4778.4778 0 0 0 .441-.2205l1.323-2.0948h6.9828l1.323 2.0948a.4778.4778 0 0 0 .441.2205c.1838 0 .3308-.0735.4043-.2205l1.323-2.0948h2.6462a2.0213 2.0213 0 0 0 2.0213-2.0213V7.5339a2.0213 2.0213 0 0 0-2.0213-1.9845h-7.681l4.4468-4.4469L17.1637 0l-5.1452 5.1452L6.8 0 5.6973 1.1025l4.4102 4.4102H2.5367a2.0213 2.0213 0 0 0-2.058 2.058z"},"internetarchive":{"hex":"#666666","d":"M22.667 22.884V24H1.333v-1.116zm-.842-1.675v1.396H2.175v-1.396zM4.233 6.14l.234.118.118 1.882.117 3.058v2.941l-.117 3.666-.02 2.47-.332.098H3.062l-.352-.098-.136-2.47-.118-3.646v-2.941l.118-3.078.107-1.892.244-.107zm16.842 0l.235.118.117 1.882.117 3.058v2.941l-.117 3.666-.02 2.47-.332.098h-1.171l-.352-.098-.137-2.47-.117-3.646v-2.941l.117-3.078.108-1.892.244-.107zm-11.79 0l.235.118.117 1.882.117 3.058v2.941l-.117 3.666-.02 2.47-.331.098H8.114l-.352-.098-.136-2.47-.117-3.646v-2.941l.117-3.078.107-1.892.244-.107zm6.457 0l.234.118.117 1.882.118 3.058v2.941l-.118 3.666-.019 2.47-.332.098H14.57l-.351-.098-.137-2.47-.117-3.646v-2.941l.117-3.078.108-1.892.244-.107zm6.083-2.511V5.58H2.175V3.628zM11.798 0l10.307 2.347-.413.723H1.951l-.618-.587Z"},"ted":{"hex":"#E62B1E","d":"M0 7.664v2.223h2.43v6.449H5.1v-6.45h2.43V7.665zm7.945 0v8.672h7.31v-2.223h-4.638v-1.08h4.637v-2.066h-4.637v-1.08h4.637V7.664zm7.759 0v8.672h3.863c3.024 0 4.433-1.688 4.433-4.349 0-2.185-1.021-4.323-3.912-4.323zm2.672 2.223h.85c1.931 0 2.102 1.518 2.102 2.063 0 .815-.243 2.163-1.907 2.163h-1.045z"},"wechat":{"hex":"#07C160","d":"M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.047c.134 0 .24-.111.24-.247 0-.06-.023-.12-.038-.177l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-6.656-6.088V8.89c-.135-.01-.27-.027-.407-.03zm-2.53 3.274c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.969-.982z"},"ffmpeg":{"hex":"#007808","d":"M21.72 17.91V6.5l-.53-.49L9.05 18.52l-1.29-.06L24 1.53l-.33-.95-11.93 1-5.75 6.6v-.23l4.7-5.39-1.38-.77-9.11.77v2.85l1.91.46v.01l.19-.01-.56.66v10.6c.609-.126 1.22-.241 1.83-.36L14.12 5.22l.83-.04L0 21.44l9.67.82 1.35-.77 6.82-6.74v2.15l-5.72 5.57 11.26.95.35-.94v-3.16l-3.29-.18c.434-.403.858-.816 1.28-1.23z"}};
+// A site whose logo has another name (Douyin: TikTok's note, the same company's).
+const SITE_LOGO = { twitter: "x", weibo: "sinaweibo", archive: "internetarchive", wechat_channels: "wechat", douyin: "tiktok" };
+function brandLogo(slug) {
+  const l = LOGOS[slug];
+  if (!l) return "";
+  const dark = parseInt(l.hex.slice(1, 3), 16) + parseInt(l.hex.slice(3, 5), 16) + parseInt(l.hex.slice(5, 7), 16) < 100;   // near black only (niconico 82; FFmpeg's green 128 stays green)
+  let paint = dark ? "currentColor" : l.hex, under = "", defs = "";
+  if (slug === "instagram") {
+    defs = '<defs><radialGradient id="logo-ig" cx="30%" cy="107%" r="150%">'
+      + '<stop offset="0" stop-color="#fdf497"/><stop offset=".05" stop-color="#fdf497"/>'
+      + '<stop offset=".45" stop-color="#fd5949"/><stop offset=".6" stop-color="#d6249f"/>'
+      + '<stop offset=".9" stop-color="#285aeb"/></radialGradient></defs>';
+    paint = "url(#logo-ig)";
+  }
+  if (slug === "tiktok") under = `<path fill="#25f4ee" transform="translate(-.7 -.7)" d="${l.d}"/>`
+    + `<path fill="#fe2c55" transform="translate(.7 .7)" d="${l.d}"/>`;
+  if (slug === "youtube") under = '<path fill="#fff" d="M9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>';
+  return `<svg class="brand-logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">`
+    + `${defs}${under}<path fill="${paint}" d="${l.d}"/></svg>`;
+}
+/** A program's mark: its logo where it has one (FFmpeg), else its first letter. */
+// The programs' own logos from their GitHub projects (web/logos/LICENCES.md).
+const TOOL_LOGO_FILES = {
+  "yt-dlp": "yt-dlp.ico", streamlink: "streamlink.svg", tiktokdownloader: "tiktokdownloader.png",
+  "ks-downloader": "ks-downloader.png", "xhs-downloader": "xhs-downloader.png", yutto: "yutto.svg",
+  "n-m3u8dl-re": "n-m3u8dl-re.jpg",
+};
+function toolLogo(id, name) {
+  if (id === "ffmpeg") return brandLogo("ffmpeg");
+  if (TOOL_LOGO_FILES[id]) return `<img class="brand-logo" src="/logos/${TOOL_LOGO_FILES[id]}" alt="" aria-hidden="true">`;
+  const letter = (name || "?").trim().charAt(0).toUpperCase().replace(/[^A-Z0-9]/, "?");
+  return `<span class="brand-logo letter" aria-hidden="true">${letter}</span>`;
+}
 function renderSites() {
   const table = $("sites-table");
   if (siteTools === null) return;           // the programs are not known yet
@@ -6597,13 +6679,16 @@ function renderSites() {
     const row = cell("div");
     row.setAttribute("role", "row");
     const name = cell("span", "label site-name");
-    name.append(cell("span", "", site.name));
+    const logo = brandLogo(SITE_LOGO[site.id] || site.id);
+    if (logo) { name.classList.add("has-logo"); name.insertAdjacentHTML("afterbegin", logo); }
+    const label = cell("span", "", site.name);
+    name.append(label);
     // Model A: a site whose sign changed since the last OK.
     if (signNews.some((c) => c.site === site.id && (c.tag || tagsThisVisit.has(c.id)))) {
       const tag = cell("span", "badge new new-tag", "new");
       tag.dataset.tip = "Its sign changed. See “What changed” at the top.";
       tag.tabIndex = 0;                     // a hover box opens on Tab too (pass 1)
-      name.firstChild.append(tag);
+      label.append(tag);                     // the name, not the logo before it
     }
     const program = cell("span", "program");
     const login = cell("span", "login");
@@ -6635,6 +6720,8 @@ function renderSites() {
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = tool.name;
+        // Its logo before its name (the user, 2026-11-27); a letter only on Programs.
+        if (tool.id === "ffmpeg" || TOOL_LOGO_FILES[tool.id]) button.insertAdjacentHTML("afterbegin", toolLogo(tool.id, tool.name));
         button.dataset.tip = toolTip(tool);
         if (tool.fails_note) button.appendChild(warnSign());
         button.setAttribute("aria-pressed", String(tool.id === site.tools.chosen));
@@ -6992,6 +7079,7 @@ async function forgetCookies() {
  *  value the server did not take (hunt of 2026-11-08). */
 function showSettings(settings, start = true) {
   $("folder").value = settings.download_folder || "";
+  showFolderEnd();
   $("parallel").value = String(settings.max_parallel || 2);
   $("record-minutes").value = String(settings.record_minutes ?? 60);
   updateMode = ["ask", "auto", "manual"].includes(settings.update_mode) ? settings.update_mode : "ask";

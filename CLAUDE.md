@@ -39,6 +39,7 @@ One desktop interface that groups the best video/audio download tools behind a s
 | `server.py` | the local server |
 | `__main__.py` | opens the real app window (pywebview) |
 | `web/index.html` | the whole interface, one file. **Screens are `data-view`, and `showView()` is the only thing that changes one.** A card is drawn when the screen matches **and** the card has something to say (`.hidden`) — two separate questions that used to be answered by one mechanism. *(2026-09-22: Settings was a card wedged under the link box. Hiding it with CSS would have hidden the status line with it, and every message the app says would have gone somewhere invisible. Adding a screen is now one `data-view`.)* |
+| `web/logos/` | the programs' own logos from their GitHub projects (2026-11-27), separate files under their own licences (`LICENCES.md`, not MIT), served only by name from `server._LOGO_FILES`. The sites' logos and FFmpeg's are drawn in `index.html` (Simple Icons, CC0). |
 
 ## 2. How to work with the user
 
