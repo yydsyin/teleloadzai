@@ -25,7 +25,7 @@ from typing import Callable
 
 from . import children, cookies, explain
 from .dialogs import MEDIA_ENDING, NAME_ENDING, PATH_LIMIT, PathTooLong, name_room, units
-from .paths import BIN_DIR, make_folder
+from .paths import BIN_DIR, make_writable_folder
 
 # Keeps the black console window from flashing when the GUI runs a tool.
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -863,7 +863,9 @@ def download(
     """
     asked = dict(locals())                  # to start again from the link (_EXPIRED)
     tool = require_ytdlp()
-    make_folder(out_dir)
+    # Written in, not only made: yt-dlp writes straight into it, and a refused
+    # folder came back as its own words (round 37 of the hunt).
+    make_writable_folder(out_dir)
     # The card's reading instead of a second one (_take_read): never for a
     # playlist, whose reading listed its videos without reading them.
     saved = _take_read(url, reuse_key) if reuse_key is not None and not playlist else None

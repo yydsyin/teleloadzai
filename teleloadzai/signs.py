@@ -117,6 +117,10 @@ def clean(data) -> tuple[dict | None, list[str]]:
     from .tools import SPECS
     sites, programs = {p.id for p in PLATFORMS}, {s.id for s in SPECS}
     out, problems = {"updated": data["updated"]}, []
+    # Which lines were left out: the list in use takes the shipped line there
+    # (current), never "no line" -- a damaged warning read as "Works again"
+    # and vanished for every user (round 41 of the hunt).
+    left_out: dict[str, set[str] | None] = {}
     # A part missing is a broken file, not "no lines": a list that lost its
     # "download_fails" would take every warning from every user (hunt 2026-11-18).
     missing = [s for s in SECTIONS if s not in data]
@@ -126,6 +130,7 @@ def clean(data) -> tuple[dict | None, list[str]]:
         lines = data[section]
         if not isinstance(lines, dict):
             problems.append(f"{section}: not a list")
+            left_out[section] = None        # the whole part: the shipped one is used
             lines = {}
         kept = {}
         for key, entry in lines.items():
@@ -135,9 +140,11 @@ def clean(data) -> tuple[dict | None, list[str]]:
                    "an unknown program" if program not in programs else _line(section, entry))
             if why:
                 problems.append(f"{section} · {str(key)[:60]}: {why}")
+                left_out.setdefault(section, set()).add(str(key))
             else:
                 kept[key] = {k: v for k, v in entry.items() if k != "why"}
         out[section] = kept
+    out["_left_out"] = left_out
     return out, problems
 
 
@@ -162,6 +169,7 @@ def _load(path: Path, where: str) -> dict | None:
         return None
     for problem in problems:
         _say(f"a line of the sign list {where} was left out — {problem}.")
+    _state.setdefault("left_out", {})[where] = signs.pop("_left_out", {})
     return signs
 
 
@@ -190,6 +198,16 @@ def current() -> dict:
         # A fetched list of the same date wins: it is the same, or newer.
         if fetched and (not shipped or fetched["updated"] >= shipped["updated"]):
             signs = fetched
+            # A line left out of the fetched list: the shipped line for that
+            # key, never "no line" ("Works again" for a damaged warning).
+            left = _state.get("left_out", {}).get("fetched from GitHub", {})
+            if left and shipped:
+                signs = {**fetched}
+                for section, keys in left.items():
+                    ours = shipped.get(section, {})
+                    signs[section] = (dict(ours) if keys is None else
+                                      {**signs.get(section, {}),
+                                       **{k: v for k, v in ours.items() if k in keys}})
         else:
             signs = shipped or {}
         if _state["generation"] == generation:
@@ -218,6 +236,8 @@ def _file(path: Path) -> tuple[dict, list[str]]:
     except OSError as problem:
         return {}, [f"it could not be read ({problem.strerror or problem})"]
     signs, problems = read_text(raw) if len(raw) <= MAX_BYTES else (None, ["it is too big"])
+    if signs:
+        signs.pop("_left_out", None)        # current()'s business only
     return signs or {}, problems
 
 

@@ -213,7 +213,9 @@ def clipboard_links() -> list[str]:
             return []                               # a picture, a file, nothing
         pointer = kernel32.GlobalLock(handle)
         if not pointer:
-            return []
+            # Text there, not readable: "No link in what you copied" was false
+            # (round 44). Said like a held clipboard (the route says it).
+            raise OSError("the copied text could not be read just now")
         try:
             text = ctypes.wstring_at(pointer)
         finally:
@@ -376,7 +378,13 @@ def forget_if_once() -> bool:
     with _settings_change:
         settings = load_settings()
         settings["cookies_enabled"] = False
-        save_settings(settings)
+        try:
+            save_settings(settings)
+        except OSError:
+            # The log-ins ARE gone: a locked settings file made the start say
+            # "They are still saved" (round 43). The switch left on has no
+            # file behind it, so no download is given anything.
+            pass
     return gone
 
 
@@ -388,8 +396,15 @@ def _login_saved(kept: int) -> str:
     logging in IS the consent. Without this, a window that finished on its
     own would leave the switch off, and the next download would run without
     the cookies the user has just logged in for.
+    Turned on from OFF: said -- every site's log-ins are used from now on,
+    and a window looked at and closed did it with no word (round 43).
     """
-    return _switch_cookies_on()
+    was_on = bool(load_settings().get("cookies_enabled"))
+    problem = _switch_cookies_on()
+    if problem or was_on:
+        return problem
+    # No "again": a first log-in ever turns it on from off too (round 44).
+    return "“Use my log-ins” is now on: your saved log-ins are used for downloads."
 
 
 def _switch_cookies_on() -> str:
@@ -432,8 +447,10 @@ def _folder_note(old, answer: dict) -> dict:
     if (old.folder and not old.target and not answer.get("error") and not _retry_folder(old)
             and os.path.normcase(os.path.abspath(str(old.folder)))
             != os.path.normcase(os.path.abspath(str(download_folder())))):
-        answer = {**answer, "note": f"The folder “{Path(old.folder).name or old.folder}” no longer exists, "
-                                    f"so this download goes to {download_folder()}."}
+        moved = (f"The folder “{Path(old.folder).name or old.folder}” no longer exists, "
+                 f"so this download goes to {download_folder()}.")
+        # Added to a note already there (what the new program drops, round 45).
+        answer = {**answer, "note": f"{answer.get('note', '')} {moved}".strip()}
     return answer
 
 
@@ -461,10 +478,19 @@ def _retry_target(old, replace_own: bool = False) -> str:
     if replace_own and old.state == DONE and not target_clashes(old.target, taken) \
             and os.path.normcase(os.path.abspath(chosen)) in mine:
         return old.target
-    if not any(Path(f).is_file() for f in old.files) and not chosen.exists() \
+    # Its ".part" too: a live recording Windows would not let us rename after
+    # a crash, and Continue's --force-overwrites restarted it from zero (round 39).
+    # A LIVE recording only: a cut normal download's .part is its own pieces,
+    # restarted under the same name -- a new name left the .part behind (round 41).
+    live_part = ((old.live or old.tool in runners.LIVE_RECORDERS)
+                 and chosen.with_name(chosen.name + ".part").exists())
+    if not any(Path(f).is_file() for f in old.files) and not chosen.exists() and not live_part \
             and not target_clashes(old.target, taken):
         return old.target
     ending = chosen.suffix.lstrip(".")
+    if live_part:
+        # free_name looks for "name.mp4" only: it gave the same name back.
+        taken = set(taken) | {os.path.normcase(os.path.abspath(chosen))}
     return str(chosen.with_name(dialogs.free_name(chosen.parent, chosen.stem, ending, taken)
                                 + chosen.suffix))
 
@@ -494,7 +520,12 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
     can = runners.CHOICES.get(tool, {})
     if mode not in can:
         return {"error": f"{tool_name(tool)} cannot make an MP3. Choose MP4, or another program."}, 400
+    # What is dropped is said (the answer's note): "Try with yutto" on a
+    # failed row lost its subtitles and its 720p with no word (round 45).
+    dropped: list[str] = []
     if not can[mode]:
+        if quality != "best":
+            dropped.append(f"the {quality}{'p' if mode == 'mp4' else ' kbps'} you chose")
         quality = "best"
     # A height the tool would silently lower (yutto without a log-in gives
     # 480p for 1080p): refused in words, never carried as if it would happen.
@@ -512,6 +543,8 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
     # Subtitles (Phase 2 item 7): only in MP4, only for a program that makes
     # them (runners.CHOICES "subs"), only a code shaped like one. Anything
     # else is dropped, never passed on as if it would happen.
+    if subs in ("embed", "file") and mode == "mp4" and not can.get("subs"):
+        dropped.append("subtitles")
     if subs not in ("embed", "file") or mode != "mp4" or not can.get("subs") \
             or not ytdlp.SUB_LANG.fullmatch(sub_lang or ""):
         subs, sub_lang = "", ""
@@ -519,7 +552,10 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
     # choice, 2026-10-24), and a Retry goes back to where its first try
     # went. Only a folder that exists: never one made up by a page.
     if folder and not Path(folder).is_dir():
-        return {"error": f"The folder {folder} does not exist."}, 400
+        # The advice the run gives (paths.make_folder): a bare "does not
+        # exist" for a stick just unplugged (round 42 of the hunt).
+        return {"error": f"The folder {folder} does not exist. If it was on a drive that was "
+                         "removed, plug it back in; otherwise choose another folder."}, 400
     # Cookies, when the user has them on AND this tool can take them. `note`
     # is the sentence for the case where it cannot -- it travels with the job
     # so the row can say it instead of failing in silence.
@@ -548,7 +584,12 @@ def queue_download(url: str, mode: str, quality: str, title: str, target: str,
                          "or choose another folder."}, 409
     if job is None:
         return {"error": "that download is still running, or no longer exists"}, 409
-    return job.as_dict(), 200
+    answer = job.as_dict()
+    if dropped:
+        answer["note"] = (f"{tool_name(tool)} makes no subtitles" if dropped == ["subtitles"]
+                          else f"{tool_name(tool)} cannot take {' and '.join(dropped)}") \
+            + ": this download goes without."
+    return answer, 200
 
 
 def other_tool(job: dict) -> dict | None:
@@ -1191,8 +1232,9 @@ class Handler(BaseHTTPRequestHandler):
             for tool in tools.SPECS:
                 answer = tools.latest_release(tool.id, force=True)
                 error = answer.get("error", "")
-                refused = refused or answer.get("stale", "") or (
-                    error if error.startswith("cannot reach GitHub") else "")
+                # Any reason, not only "cannot reach": a refusal, an answer
+                # not read, a release with no Windows file (round 38).
+                refused = refused or answer.get("stale", "") or error
             self._json({"tools": tools.status_all(), "python": tools.python_state(),
                         "github_problem": refused})
             return
@@ -1310,6 +1352,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/console/save":
             # "Save as file": the Windows window, then the lines the SERVER
             # kept (already washed) -- never text the page sends.
+            if not console.since(0)[0]:
+                # After Clear: a blank file and "Saved" (round 35 of the hunt).
+                self._json({"error": "the Console is empty, so there is nothing to save"}, 400)
+                return
             try:
                 chosen = dialogs.save_file("Teleloadzai console", "txt", download_folder())
             except dialogs.DialogError as problem:
@@ -1405,13 +1451,26 @@ class Handler(BaseHTTPRequestHandler):
             if old is None:
                 self._json({"error": "that download no longer exists"}, 404)
                 return
+            # A stopped or interrupted live row that kept a recording: "Record
+            # again" / Continue get a row of their own. Replaced, a failed try
+            # (the stream had ended) left no pointer to the first recording
+            # (round 40 of the hunt).
+            # ...or whose recording is a .part Windows would not rename (its
+            # row names it on the error line, files empty): replaced, that
+            # sentence went with the row (round 41 of the hunt).
+            recorded_before = (old.state == "cancelled"
+                               and (old.live or old.tool in runners.LIVE_RECORDERS)
+                               and (any(Path(f).is_file() for f in old.files)
+                                    or "still in the folder as" in (old.error or "")))
             answer, status = queue_download(
                 url=old.url, mode=old.mode, quality=old.quality, title=old.title,
                 target=_retry_target(old, replace_own=bool(body.get("force"))),
                 tool=old.tool, platform=old.platform,
-                force=bool(body.get("force")), replace=old.id, folder=_retry_folder(old),
-                subs=old.subs, sub_lang=old.sub_lang,
+                force=bool(body.get("force")), replace="" if recorded_before else old.id,
+                folder=_retry_folder(old), subs=old.subs, sub_lang=old.sub_lang,
             )
+            if recorded_before and not answer.get("error"):
+                QUEUE.keep_as_recorded(old.id)      # "Recorded", no more "Continue"
             self._json(_folder_note(old, answer), status)
             return
 
@@ -1549,6 +1608,11 @@ class Handler(BaseHTTPRequestHandler):
                     written = save_settings(settings)
                 except OSError as problem:      # Windows refused the write
                     written, refused = False, problem
+            if written:
+                # The write test too, as for a typed folder: C:\Windows picked
+                # with Browse said "Folder saved." (round 38 of the hunt).
+                from .paths import write_refused
+                settings = {**settings, "folder_state": "refused" if write_refused(Path(chosen)) else "there"}
             self._json(settings if written else _not_saved(refused), 200 if written else 409)
             return
 
@@ -1584,6 +1648,8 @@ class Handler(BaseHTTPRequestHandler):
             tools.set_preview("yt-dlp", held["ytdlp_channel"] == "preview")
             if written and "max_parallel" in body:
                 QUEUE.wake()            # more at once: the waiting rows start now (round 10)
+            if written and "cookies_enabled" in body and not held["cookies_enabled"]:
+                QUEUE.without_log_ins()     # off pauses both roads, for the waiting rows too (round 36)
             if written and typed:
                 # Not a setting: whether the typed folder is there yet. A typo
                 # ("D:\Vdeos") was saved as "Folder saved." and made in silence
@@ -1591,7 +1657,10 @@ class Handler(BaseHTTPRequestHandler):
                 # A file of that name, or a drive not connected, is not "made
                 # at the first download" (round 16): each said as it is.
                 chosen = Path(held["download_folder"])
-                state = ("there" if chosen.is_dir() else "file" if chosen.exists()
+                # And a folder Windows refuses to write in (round 37 of the hunt).
+                from .paths import write_refused
+                state = (("refused" if write_refused(chosen) else "there") if chosen.is_dir()
+                         else "file" if chosen.exists()
                          else "no_drive" if not Path(chosen.anchor or ".").exists() else "missing")
                 held = {**held, "folder_state": state}
             self._json(held if written else _not_saved(refused), 200 if written else 409)

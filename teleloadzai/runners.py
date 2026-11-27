@@ -534,7 +534,7 @@ def _tiktok(request: Request, on_progress: Callable[[int], None] | None,
     # Said on the row: starting its server can take seconds, and reading
     # the post more (decision 33 -- a step, not only a clock).
     _say(on_step, "starting TikTokDownloader")
-    toolservers.TIKTOK.start()
+    toolservers.TIKTOK.start(request.stop)
     try:
         # Stopped while it started: the post is not read, the cookie not sent.
         _check_stop(request)
@@ -603,7 +603,7 @@ def _kuaishou(request: Request, on_progress: Callable[[int], None] | None,
     cookie = cookies.header_for("kuaishou.com", True) if request.cookie_header else ""
 
     _say(on_step, "starting KS-Downloader")
-    toolservers.KS.start()
+    toolservers.KS.start(request.stop)
     try:
         _check_stop(request)
         _say(on_step, "reading the post")
@@ -1679,7 +1679,10 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
         problem.saved = moved
         raise problem
 
-    written = _finished(work, recipe)
+    # N_m3u8DL-RE merges into the top of the work folder and keeps its pieces
+    # in a sub-folder: only the top counts, as on a failure -- an exit 0 with
+    # no merge put dozens of pieces in the user's folder as "done" (round 35).
+    written = _finished(work, recipe, top_only=tool_id == "n-m3u8dl-re")
     if recipe.reported:
         written = sorted(set(written) | set(recipe.reported(tail, work)))
 
@@ -1705,8 +1708,8 @@ def _run_in(work: Path, recipe: Recipe, exe: Path, head: list[str], tool_id: str
             if _stopped(request) and not live:
                 raise
             try:
-                kept, _ = _move_out([(p, p.name) for p in _finished(work, recipe)],
-                                    request, own_names)
+                kept, _ = _move_out([(p, p.name) for p in _finished(
+                    work, recipe, top_only=tool_id == "n-m3u8dl-re")], request, own_names)
             except RunnerError as failure:
                 kept = getattr(failure, "saved", [])
                 problem.keep_work = getattr(failure, "keep_work", False)

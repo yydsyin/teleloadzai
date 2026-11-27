@@ -33,7 +33,10 @@ def _making(job) -> bool:
     row is "cancelled" at once -- and it said "Stopped" with no step while the
     work went on; "Clear finished" took the row and the close box skipped it
     (round 33 of the hunt). Its worker clears the step when it ends."""
-    return job.state == CANCELLED and job.live and bool(job.step) and not job.interrupted
+    # `job.live` is set by yt-dlp's road only: streamlink and N_m3u8DL-RE make
+    # their MP4 / MP3 in the runner, and the fix missed them (round 35).
+    return (job.state == CANCELLED and (job.live or job.tool in runners.LIVE_RECORDERS)
+            and bool(job.step) and not job.interrupted)
 
 
 def _same_path(path: str) -> str:
@@ -67,7 +70,10 @@ _KEPT = ("id", "url", "mode", "quality", "title", "folder", "target", "tool",
          # Kept through a restart: a failed "Download again" on a split post
          # still owes the old rows their removal, else a later Retry listed
          # every file twice (hunt of 2026-11-08).
-         "old_parts", "tool_version")
+         "old_parts", "tool_version",
+         # A yt-dlp live recording's files while it records: after a crash its
+         # .part is kept at the next start, never written over by Continue (round 38).
+         "live_parts")
 # Rows kept; the oldest finished ones go first. Measured 2026-11-01 with the
 # page's own refresh(): each update while downloading took 14-19 ms at 200
 # rows, 40 ms at 500, 84-91 ms at 1,000 (felt as stutter), 177-217 ms at
@@ -278,6 +284,15 @@ def _keep_recording(destinations: list[Path]) -> list[Path]:
     return kept
 
 
+def _held_parts(destinations: list[Path]) -> str:
+    """A live recording's .part Windows did not let us rename, named for the
+    row: "Stopped" alone hid hours of recording (round 40 of the hunt)."""
+    held = [d.name + ".part" for d in destinations
+            if d.with_name(d.name + ".part").is_file()]
+    return (f"The recording is still in the folder as {held[0]}: Windows did not let "
+            "Teleloadzai rename it. It plays in VLC.") if held else ""
+
+
 @dataclass
 class Job:
     id: str
@@ -352,6 +367,7 @@ class Job:
     # to pick up: the row says they are there (a Bilibili video, 2026-10-24:
     # its whole sound and 1.4 MB of picture, and the row said nothing).
     pieces: list[str] = field(default_factory=list)
+    live_parts: list[str] = field(default_factory=list)   # see _KEPT (round 38)
     # When the job started running. Until a tool prints a percentage there is
     # nothing else true to show, and a silent 0% bar looks frozen (decision
     # 33). Seen 2026-09-25: 12 to 18 s of nothing at the start of every
@@ -480,6 +496,27 @@ class Queue:
                 job = Job(**kept)
                 if job.state in ACTIVE_STATES:
                     job.state, job.interrupted = CANCELLED, True
+                    if job.live and job.live_parts:
+                        # Killed while recording: what was recorded becomes
+                        # its .ts, as Stop does -- Continue reused the same
+                        # "Save as" name and started it again from zero, the
+                        # 10 minutes never said (round 38 of the hunt).
+                        kept = _keep_recording([Path(p) for p in job.live_parts])
+                        job.files += [str(k) for k in kept if str(k) not in job.files]
+                        if kept:
+                            job.note = "What was recorded before Teleloadzai closed was kept as .ts."
+                        else:
+                            # Windows refused the rename (held by another
+                            # program): the .part is named, never forgotten (round 39).
+                            held = [Path(p).name + ".part" for p in job.live_parts
+                                    if Path(p + ".part").is_file()]
+                            if held:
+                                # The error line: a stopped or interrupted row shows
+                                # it, not the note (round 40).
+                                job.error = (f"What was recorded before Teleloadzai closed is still in "
+                                            f"the folder as {held[0]}: Windows did not let Teleloadzai "
+                                            f"rename it.")
+                job.live_parts = []
                 # Every row, not only the active ones: a row the app's closing
                 # stopped while waiting (or whose worker took over 8 s) was
                 # saved CANCELLED with its videos still "Waiting" (round 3 of
@@ -533,7 +570,9 @@ class Queue:
                 if extra > 0:
                     def keep_longer(i: str) -> bool:
                         return self._jobs[i].state == ERROR or self._jobs[i].interrupted
-                    ended = [i for i in self._order if self._jobs[i].state not in ACTIVE_STATES]
+                    # Nor a stopped recording still being made (round 36).
+                    ended = [i for i in self._order if self._jobs[i].state not in ACTIVE_STATES
+                             and not _making(self._jobs[i])]
                     gone: list[str] = []
                     for job_id in sorted(ended, key=keep_longer):      # stable: oldest first in each
                         if len(gone) >= extra:
@@ -785,6 +824,9 @@ class Queue:
             stop_tree(process)      # the worker sees CANCELLED and stays quiet
         self._pump()
         self.save()
+        # A waiting row has no worker to do it: held "ended" messages stayed
+        # held and were counted again with a later one (round 40 of the hunt).
+        notify.check()
         return True
 
     def cancel_all(self) -> int:
@@ -807,6 +849,7 @@ class Queue:
                 stop_tree(process)  # each worker sees CANCELLED and stays quiet
         self._pump()
         self.save()
+        notify.check()          # as in cancel (round 40)
         return len(active)
 
     # Retry lives in server.py now (`queue_download(..., replace=)`): it must
@@ -837,6 +880,33 @@ class Queue:
         with self._lock:
             self._held.discard(tool_id)
         self._pump()
+
+    def keep_as_recorded(self, job_id: str) -> None:
+        """An interrupted live row whose recording was kept, once a new
+        recording of it started: it stays as "Recorded", its "Continue" gone
+        (round 40 of the hunt)."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is not None and job.state == CANCELLED:
+                job.interrupted = False
+        self.save()
+
+    def without_log_ins(self) -> int:
+        """“Use my log-ins” switched off: the waiting rows start without them.
+        The cookies were decided when each row was added, and the rows still
+        waiting started later with the account the user had just paused, no
+        row saying so (decision 36: off pauses both roads; round 36 of the
+        hunt). A running download keeps what it started with."""
+        changed = 0
+        with self._lock:
+            for job in self._jobs.values():
+                if job.state == WAITING and (job.cookie_file or job.cookie_header):
+                    job.cookie_file, job.cookie_header = "", False
+                    job.cookie_note = "“Use my log-ins” was switched off"
+                    changed += 1
+        if changed:
+            self.save()
+        return changed
 
     def wake(self) -> None:
         """Start what may start now: "Downloads at the same time" raised left
@@ -981,6 +1051,11 @@ class Queue:
         def on_destination(path: Path) -> None:
             with self._lock:
                 job.destinations.append(path)
+                live = job.live
+                if live:
+                    job.live_parts = [str(d) for d in job.destinations]
+            if live:
+                self.save()     # a crash must not lose where the recording is
 
         def on_title(title: str) -> None:
             """yt-dlp's own title, for a row added with none read (several
@@ -998,6 +1073,8 @@ class Queue:
             the row ends DONE on the kept file, not "stopped"."""
             with self._lock:
                 job.live = True
+                job.live_parts = [str(d) for d in job.destinations]
+            self.save()         # where the recording is, before a crash can come (round 38)
             if job.limit_minutes > 0:
                 timer = threading.Timer(job.limit_minutes * 60, end_live)
                 timer.daemon = True
@@ -1185,6 +1262,15 @@ class Queue:
                         job.skip_reason = ("The file was already in this folder and was not "
                                            "downloaded again, but yt-dlp still added the "
                                            "subtitles into it.")
+                    top = runners.TOP_WITHOUT_LOGIN.get(job.tool)
+                    if (top and not job.cookie_header and job.quality.isdigit()
+                            and int(job.quality) > top and not job.skipped):
+                        # Its log-in taken away while it waited ("Use my log-ins"
+                        # switched off): 1080p asked, 480p came, "done" with no
+                        # word -- the row's warning shows only before the end
+                        # (round 37 of the hunt).
+                        cap = (f"It ran without your log-in, so {job.tool} gives {top}p at most.")
+                        note = f"{note} {cap}".strip() if note else cap
                     job.note = note
                     job.state = DONE
                     job.percent = "100%"
@@ -1271,8 +1357,15 @@ class Queue:
             # stream), so it becomes `<name>.ts` under a free name.
             if stopped and live:
                 kept = _keep_recording(destinations)
+                if not kept and _held_parts(destinations):
+                    with self._lock:
+                        job.error = _held_parts(destinations)
                 mp3_problem = ""
                 if job.mode == "mp3":
+                    # The .ts first: closing the app during the MP3 left a row
+                    # with no pointer to it (round 35).
+                    with self._lock:
+                        job.files = [str(p) for p in kept]
                     on_step("making the MP3")   # minutes for a long one (round 33)
                     kept, mp3_problem = _as_mp3(kept, job.quality)
                 with self._lock:
@@ -1286,11 +1379,23 @@ class Queue:
             # can pick it up (yt-dlp resumes it, unless "Save as" chose the
             # name: then it starts again, --force-overwrites says no-continue).
             if stopped and not live and not interrupted:
+                left: list[Path] = []
                 for piece in _leftovers(destinations, job.started - 2, writing):
                     try:
                         piece.unlink()
                     except OSError:
-                        pass            # still held: a leftover, never a crash
+                        # Still held: a leftover, never a crash -- and said. Not
+                        # one the dying program removed itself meanwhile (round 45).
+                        if piece.exists():
+                            left.append(piece)
+                if left:
+                    # ...but said: "Stopped" with pieces left in the folder and
+                    # no word (round 44 of the hunt; decision 34).
+                    with self._lock:
+                        job.error = (f"{len(left)} unfinished piece{'s' if len(left) != 1 else ''} "
+                                     f"({left[0].name}{', …' if len(left) > 1 else ''}) could not be "
+                                     f"deleted: Windows refused. "
+                                     f"{'They are' if len(left) != 1 else 'It is'} in {left[0].parent}.")
             # A failure keeps its pieces -- yt-dlp picks them up on Retry --
             # and remembers them, so the row can say where they are. The same
             # narrow list as a Stop's: only names announced for THIS job. An

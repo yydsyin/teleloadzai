@@ -32,6 +32,9 @@ def ensure_dirs() -> None:
         folder.mkdir(parents=True, exist_ok=True)
 
 
+THIS_IS_THE_CHECK = False      # set by dev/quality_check.py once it holds its lock
+
+
 def quality_check_running() -> bool:
     """Teleloadzai's own daily check (`dev/quality_check.py`) is running now.
 
@@ -42,6 +45,11 @@ def quality_check_running() -> bool:
     (round 16 of the hunt). Asked only when something is already refused:
     the lock is taken for an instant and given back at once.
     """
+    # Asked INSIDE the check (its own TikTokDownloader test finding 5555
+    # taken): its second look at its own lock was refused, and it named
+    # itself where the app's server held the port (round 35 of the hunt).
+    if THIS_IS_THE_CHECK:
+        return False
     lock = DATA_DIR / "quality-check" / "running.lock"
     if not lock.is_file():
         return False
@@ -65,6 +73,40 @@ def quality_check_running() -> bool:
 
 class FolderError(RuntimeError):
     """A folder we need could not be created, said in plain words."""
+
+
+def write_refused(folder: Path) -> OSError | None:
+    """Windows' refusal to let us write in `folder`, or None. Asked with a
+    tiny file of our own, deleted at once: C:\\Windows or a read-only stick
+    said "Folder saved." and yt-dlp then failed in its own words (round 37 of
+    the hunt). The other programs learn it from their work folder."""
+    import os
+    import uuid
+    probe = folder / f"teleloadzai-write-test-{uuid.uuid4().hex[:8]}.tmp"
+    # Deleted by Windows itself when closed (O_TEMPORARY): a delete refused
+    # afterwards (a sync client holding the new file) left one probe per
+    # download in the user's folder (round 38 of the hunt).
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_TEMPORARY", 0)
+    try:
+        handle = os.open(probe, flags)
+    except OSError as problem:
+        return problem
+    os.close(handle)
+    if not getattr(os, "O_TEMPORARY", 0):
+        try:
+            probe.unlink()
+        except OSError:
+            pass
+    return None
+
+
+def make_writable_folder(folder: Path) -> None:
+    """`make_folder`, then the write test: one sentence for both."""
+    make_folder(folder)
+    refused = write_refused(folder)
+    if refused is not None:
+        raise FolderError(f"Teleloadzai could not write in {folder}. Choose another folder. "
+                          f"(Windows says: {refused.strerror or refused})")
 
 
 def make_folder(folder: Path) -> None:

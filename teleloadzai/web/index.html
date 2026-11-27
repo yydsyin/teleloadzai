@@ -1759,6 +1759,9 @@ let probeReason = "";
 let probeKnown = false;
 // Which tool read the title ({id, name}), or null when nobody did.
 let readBy = null;
+// Was the reading program logged in when the link was read? A refusal read
+// BEFORE a log-in made just now said "log in again here" (round 41).
+let readWithLogIn = false;
 // The failed read's explanation (explain.py), or {} -- its `retry`,
 // `next_step` and `action` shape the card.
 let probeExplain = {};
@@ -2130,6 +2133,9 @@ function needText(tool) {
   // a title read that had used it (review of 2026-09-28).
   // The title says the refusal; the box gives the one thing to try --
   // advice, not a cause (decision 38).
+  if (n.met && stillRefused(tool) && !readWithLogIn) {
+    return "You are logged in now: press “Read again” to read the link with your log-in.";
+  }
   if (n.met) return stillRefused(tool) ? `If you can watch it on ${site}, log in again here.` : "";
   // Logged in in the window, not proven yet (blue until proven, round 20):
   // never "log in" again as if nothing was done.
@@ -2761,6 +2767,8 @@ async function readLink(url, mine) {
   // fail there: "Unsupported URL" on Kuaishou, every time); elsewhere nobody,
   // and the card says so rather than wait seconds for a red herring.
   readBy = found.read_by || null;
+  const readTool = (found.tools || []).find((t) => readBy && t.id === readBy.id);
+  readWithLogIn = Boolean(readTool && readTool.need && readTool.need.met);
   if (!readBy) {
     titleReading = false;     // nobody reads it: no sizes will come
     endReadingShapes();       // a shape left by the link before
@@ -3089,7 +3097,9 @@ async function copyText(text) {
     area.style.position = "fixed"; area.style.opacity = "0";
     document.body.appendChild(area);
     area.select();
-    const done = document.execCommand("copy");
+    // It may throw too: every caller then says "Could not copy" (round 41).
+    let done = false;
+    try { done = document.execCommand("copy"); } catch { done = false; }
     area.remove();
     return done;
   }
@@ -3107,7 +3117,8 @@ function compactRow(job) {
  *  file is there. It read as a failure: "Stopped", "Download again" (review of
  *  2026-11-05). */
 function recordedRow(job) {
-  return job.state === "cancelled" && job.live && !job.interrupted && Boolean(job.on_disk);
+  // Not while its MP3 is being made: its .ts is listed then (round 35).
+  return job.state === "cancelled" && job.live && !job.interrupted && Boolean(job.on_disk) && !job.making;
 }
 
 /** A skip because the file is in the folder (decision 24, gallery-dl's own
@@ -4345,7 +4356,21 @@ async function installTool(id) {
 async function waitForInstall(id) {
   // ~30 minutes: an update waits for the downloads of its tool to finish.
   for (let i = 0; i < 2250; i++) {
-    const progress = (await api("/api/tools/progress")).progress[id];
+    // A look that fails is an answer its callers say: thrown, their button
+    // stayed grey on "Installing…" for good (round 42 of the hunt).
+    let answer = null;
+    // A single bad look is tried again (3 times): one hiccup ended the wait
+    // while the install went on (round 43).
+    for (let tries = 0; tries < 3 && !(answer && answer.progress); tries++) {
+      try { answer = await api("/api/tools/progress"); } catch { answer = null; }
+      if (tokenRefused) {
+        // Its "Reload this page (F5)" stays the sentence, not "not allowed".
+        return { state: "error", error: `${APP_NAME} restarted. Reload this page (F5)` };
+      }
+      if (!(answer && answer.progress)) await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+    if (!answer || !answer.progress) return { state: "error", error: (answer && answer.error) || `${APP_NAME} did not answer` };
+    const progress = answer.progress[id];
     if (!progress || progress.state !== "running") return progress || null;
     await new Promise((resolve) => setTimeout(resolve, 800));
   }
@@ -4653,6 +4678,13 @@ $("python-manual").addEventListener("click", () => {
   window.open(toolsData.python.download_page || "https://www.python.org/downloads/windows/", "_blank");
 });
 $("python-recheck").addEventListener("click", async () => {
+  // Not during Windows' install: "Still not found." hid "installing…" for
+  // up to 30 minutes (round 43 of the hunt).
+  if ($("python-install").disabled) {
+    $("python-help-status").textContent =
+      "Windows is still installing Python. Check again once its window has closed.";
+    return;
+  }
   $("python-help-status").textContent = "Checking…";
   // Not checked is not "Still not found." (round 25 of the hunt).
   if (!(await loadTools())) {
@@ -4667,14 +4699,26 @@ $("python-recheck").addEventListener("click", async () => {
 });
 let pythonNeedsRestart = false;     // winget said it installed Python
 $("python-install").addEventListener("click", async () => {
+  // One install at a time: a second press started a second winget beside the
+  // first, and a failed call left "installing…" for good (round 42 of the hunt).
+  const button = $("python-install");
+  if (button.disabled) return;
+  button.disabled = true;
   $("python-help-status").textContent =
     "Windows is installing Python. Answer its window if it asks. This can take minutes…";
-  const result = await api("/api/python/install", {});
-  if (result.installed) pythonNeedsRestart = true;
-  $("python-help-status").textContent = result.ok
-    ? "Python installed."
-    : result.installed ? result.error      // installed; the app restarts to see it
-    : "Not installed: " + (result.error || "unknown") + `. You may need to restart ${APP_NAME}.`;
+  try {
+    const result = await api("/api/python/install", {});
+    if (result.installed) pythonNeedsRestart = true;
+    $("python-help-status").textContent = result.ok
+      ? "Python installed."
+      : result.installed ? result.error      // installed; the app restarts to see it
+      : "Not installed: " + (result.error || "unknown") + `. You may need to restart ${APP_NAME}.`;
+  } catch {
+    $("python-help-status").textContent = `${APP_NAME} did not answer, so it is not known whether `
+      + "Python was installed. Press “Check again”.";
+  } finally {
+    button.disabled = false;
+  }
   loadTools();
 });
 
@@ -4887,7 +4931,10 @@ $("con-guide-toggle").addEventListener("click", () => {
 // the lines cannot come back.
 $("con-clear").addEventListener("click", () => twoClicks($("con-clear"), "Clear all? Click again", async () => {
   consoleEpoch++;             // a look already on its way brings back nothing (round 11)
-  const answer = await api("/api/console/clear", {});
+  let answer;
+  // Our server gone: the click said nothing (round 35 of the hunt).
+  try { answer = await api("/api/console/clear", {}); }
+  catch { setStatus(`${APP_NAME} did not answer, so the Console was not cleared. Restart ${APP_NAME}.`); return; }
   if (answer.error) return;   // not cleared on the server: the lines stay shown, api() said why
   // Raised again: a look sent between the first raise and the server's
   // clear carried the new number and could bring old lines back (round 13).
@@ -4901,7 +4948,9 @@ $("con-copy").addEventListener("click", async () => {
   notify("Console copied.");
 });
 $("con-save").addEventListener("click", async () => {
-  const answer = await api("/api/console/save", {});
+  let answer;
+  try { answer = await api("/api/console/save", {}); }
+  catch { setStatus(`${APP_NAME} did not answer, so nothing was saved. Restart ${APP_NAME}.`); return; }
   if (answer.error) setStatus("Not saved: " + answer.error);
   else if (!answer.cancelled) notify(`Saved: ${answer.path}`);
 });
@@ -5258,7 +5307,11 @@ async function goPressed(mine) {
     platform: currentPlatformId,
     // Opened by "Read the link again": the failed row's place, for this
     // same link only (another link pasted since gets a row of its own).
-    replace: rereadFor && rereadFor.url === currentUrl ? rereadFor.id : "",
+    // And only while that row is still there and failed: removed since, the
+    // 409 came back at every press; retried and finished, it was replaced in
+    // silence (round 36 of the hunt).
+    replace: rereadFor && rereadFor.url === currentUrl
+      && lastJobs.some((j) => j.id === rereadFor.id && j.state === "error") ? rereadFor.id : "",
     ...subsRequest(),
   });
   if (job.error) { setStatus("Error: " + job.error); return; }
@@ -5501,15 +5554,20 @@ function eachRow(item) {
       item.subLang = startSubLangOf(tracks, item.info.language);
     }
     item.subs = how && item.subLang ? how : "";
+    // Its program switched to one that makes none (yutto): the language
+    // stayed shown and none came, with no word (round 38 of the hunt). The
+    // list stays, on "None with yutto": a language picked moves the row.
+    const makes = makesSubs(rowTool(item));
+    if (!makes) item.subs = "";
     if (how) {
       const s = document.createElement("select");
       s.className = "each-subs";
       s.setAttribute("aria-label", "Subtitle language for " + label);
       // The card said "In the video" and the row "No subtitles": the row's
       // own way out says whose choice it is (round 2 of the critique).
-      s.add(new Option("Not this video", ""));
+      s.add(new Option(makes ? "Not this video" : `None with ${rowTool(item).name}`, ""));
       for (const t of tracks) s.add(new Option(`${t.name}${t.auto ? " (automatic)" : ""}`, t.code));
-      s.value = item.subLang || "";
+      s.value = makes ? item.subLang || "" : "";
       s.addEventListener("change", () => {
         item.subLang = s.value;
         item.subs = item.subLang ? eachSubsNow() : "";
@@ -5652,6 +5710,9 @@ function batchTool(found, wanted) {
   const first = all[0];
   const n = first && first.need;
   let tool = usable[0];
+  // The usual program (or the one chosen on Sites) removed: the links went
+  // to the next one with no word (round 37 of the hunt).
+  const missing = first && !first.installed ? first : null;
   // Both moves are said on the card, as the one-link card says them
   // (decision 13): here they were silent (round 14 of the hunt).
   let away = null;                  // the usual program, its log-in missing
@@ -5662,9 +5723,9 @@ function batchTool(found, wanted) {
   if (wanted === "mp3" && !("mp3" in (tool.choices || {}))) {
     const maker = usable.find((t) => "mp3" in (t.choices || {}));
     if (!maker) return { why: "no program here makes an MP3 of it." };
-    return { tool: maker, from: tool, away: away && away.id !== maker.id ? away : null };
+    return { tool: maker, from: tool, away: away && away.id !== maker.id ? away : null, missing };
   }
-  return { tool, away };
+  return { tool, away, missing };
 }
 
 /** A long folder as its drive and its end: the end is what tells it apart. */
@@ -5738,6 +5799,7 @@ function renderBatch() {
   const skipped = [];
   const movedFrom = new Set();      // programs passed over for the MP3
   const loginAway = new Map();      // usual program -> the one used, its log-in missing
+  const notInstalled = new Map();   // usual program -> the one used, it is not installed
   let noFfmpeg = false;
   for (const item of batch) {
     item.tool = null;
@@ -5755,6 +5817,7 @@ function renderBatch() {
     item.tool = pick.tool;
     if (pick.from) movedFrom.add(pick.from.name);
     if (pick.away) loginAway.set(pick.away.name, pick.tool.name);
+    if (pick.missing && pick.missing.id !== pick.tool.id) notInstalled.set(pick.missing.name, pick.tool.name);
     if (f.ffmpeg_missing) noFfmpeg = true;
   }
   const each = severalMode === "each";
@@ -5804,6 +5867,7 @@ function renderBatch() {
     // "Same for all" only: in "Choose for each" every row has its own format
     // and program, shown on the row (round 15 of the hunt).
     + (each ? "" : [...loginAway].map(([usual, used]) => ` · Using ${used}: ${usual} needs a log-in`).join(""))
+    + (each ? "" : [...notInstalled].map(([usual, used]) => ` · Using ${used}: ${usual} is not installed`).join(""))
     + (movedFrom.size && !each ?` · Chosen for the MP3: ${[...movedFrom].join(", ")} make${movedFrom.size > 1 ? "" : "s"} none` : "");
   // The program on each line only when they differ: "yt-dlp" on every line
   // told a beginner nothing.
@@ -6015,8 +6079,12 @@ $("batch-go").addEventListener("click", async () => {
   // up: it is still this card, closed as before (round 10 of the hunt: the
   // card stayed with "Adding 3 of 3…").
   const newer = readNumber !== startRead && batch !== startBatch;
-  if (!newer) closeCard();
-  const back = !newer ? restoreLeftOut(leftOut)
+  // Nothing added (the folder's stick unplugged, every link refused): the
+  // card and its links stay -- closed, 20 pasted links went with it (round 42).
+  const keep = added === 0 && !lost && !newer;
+  if (keep) paintPicks();
+  if (!newer && !keep) closeCard();
+  const back = !newer && !keep ? restoreLeftOut(leftOut)
     : leftOut.length ? ` ${leftOut.length} link${leftOut.length === 1 ? " was" : "s were"} left out: paste ${leftOut.length === 1 ? "it" : "them"} again.` : "";
   refresh();
   if (lost) { setStatus(lostSentence(added, jobs.length) + back); return; }
@@ -6101,8 +6169,12 @@ async function downloadEach(ready) {
   // up: it is still this card, closed as before (round 10 of the hunt: the
   // card stayed with "Adding 3 of 3…").
   const newer = readNumber !== startRead && batch !== startBatch;
-  if (!newer) closeCard();
-  const back = !newer ? restoreLeftOut(leftOut)
+  // Nothing added (the folder's stick unplugged, every link refused): the
+  // card and its links stay -- closed, 20 pasted links went with it (round 42).
+  const keep = added === 0 && !lost && !newer;
+  if (keep) paintPicks();
+  if (!newer && !keep) closeCard();
+  const back = !newer && !keep ? restoreLeftOut(leftOut)
     : leftOut.length ? ` ${leftOut.length} link${leftOut.length === 1 ? " was" : "s were"} left out: paste ${leftOut.length === 1 ? "it" : "them"} again.` : "";
   refresh();
   if (lost) { setStatus(lostSentence(added, ready.length) + back); return; }
@@ -6158,6 +6230,7 @@ function folderSaved(state, folder) {
   // Not "made at the first download": it cannot be (round 16).
   if (state === "file") parts.push("But a file has that name: downloads will fail until you choose another folder.");
   if (state === "no_drive") parts.push("But its drive is not connected: downloads will fail until it is.");
+  if (state === "refused") parts.push("But Windows does not let Teleloadzai write in it: downloads will fail until you choose another folder.");
   if (busy) parts.push(`The ${busy} download${busy > 1 ? "s" : ""} already in the list keep${busy > 1 ? "" : "s"} the old folder.`);
   if (parts.length > 1) setStatus(parts.join(" "));   // stays: read it
   else notify(parts[0]);
@@ -6168,7 +6241,7 @@ $("browse").addEventListener("click", async () => {
   const result = await api("/api/browse", {});
   // A window that failed to open is not the same as the user cancelling.
   if (result.error) { setStatus("Error: " + result.error); return; }
-  if (result.cancelled) setStatus(""); else folderSaved("there", result.download_folder);
+  if (result.cancelled) setStatus(""); else folderSaved(result.folder_state || "there", result.download_folder);
   if (result.download_folder) $("folder").value = result.download_folder;
   if (batch.length) renderBatch();       // an open card shows this folder
 });
@@ -6379,8 +6452,9 @@ function lookAtTags() {
   for (const id of fresh) tagsThisVisit.add(id);
   for (const c of signNews) c.tag = false;
   api("/api/signs/tags-seen", { ids: fresh }).then((result) => {
-    if (result && !result.ok) notify(result.error);
-  });
+    // Not over "Reload this page (F5)" when the token was refused (round 37).
+    if (result && !result.ok && !tokenRefused) setStatus(result.error);   // stays: read it (round 36)
+  }).catch(() => {});
 }
 
 function renderSignNews(date) {
@@ -6416,14 +6490,18 @@ function renderSignNews(date) {
 $("sign-news-ok").addEventListener("click", async () => {
   // Which list was shown: a newer one taken meanwhile is not marked seen
   // unseen -- it is shown instead (round 17 of the hunt).
-  const result = await api("/api/signs/seen", { date: signNewsDate });
+  let result = null;
+  try { result = await api("/api/signs/seen", { date: signNewsDate }); } catch { /* said below */ }
   if (result && result.changed) {
     notify(result.error);
     await loadSignNews();
     return;
   }
   if (!result || !result.ok) {              // nothing hidden on a failed save
-    notify((result && result.error) || "Not saved: the server did not answer.");
+    // Stays on screen: a 4-second line was gone before it was read (round 36).
+    if (tokenRefused) return;               // "Reload this page (F5)" stays (round 37)
+    setStatus(((result && result.error) || "Not saved: Teleloadzai did not answer.")
+      + " The box stays until it can be saved.");
     return;
   }
   signNews = [];
@@ -6691,6 +6769,12 @@ function loginMessage(result, name) {
     if (result.how === "auto" && result.signed !== "logged_in") {
       return "The log-in window closed when " + name + " left its log-in page: " + saved
         + " saved. Teleloadzai cannot check the log-in yet: if a download failed for a log-in, press Retry on it.";
+    }
+    // Closed by hand, and no log-in seen: "press Retry" only failed again
+    // (round 43 of the hunt). Said as the sign says it.
+    if (result.how !== "auto" && result.signed === "visited") {
+      return "Window closed: " + saved + " saved, but no log-in was seen: Sites shows " + name
+        + " as Visited. If a download needs an account, open the window again and log in.";
     }
     return (result.how === "auto" ? "Logged in to " + name + ": " : "Window closed: ")
       + saved + " saved. If a download failed, press Retry on it.";

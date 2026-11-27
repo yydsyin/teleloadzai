@@ -166,9 +166,13 @@ class _Server:
             if len(seen) > 8000:            # never grow without bound
                 seen = seen[-2000:]
 
-    def _wait_for_port(self, deadline: float) -> None:
+    def _wait_for_port(self, deadline: float, stop=None) -> None:
         stuck_at = None
         while time.time() < deadline:
+            # The job pressed Stop: the row said "Stopped" while the server went
+            # on starting on 0.0.0.0 for up to 120 s (round 38 of the hunt).
+            if stop is not None and stop.is_set():
+                raise ToolServerError("Stopped.")
             # The app is closing: a start in progress held the lock for up
             # to 120 s, and the app stayed alive with no window (round 3).
             if self._closed:
@@ -183,8 +187,10 @@ class _Server:
             if not self._alive():
                 # The disclaimer advice is TikTokDownloader's own case; for
                 # another tool we know nothing more than that it stopped.
-                advice = (" Open it once by hand to accept its disclaimer, then "
-                          "try again." if self._prompts else "")
+                # Said as advice, never as the cause: a port taken in a way our
+                # check does not see ends it too (round 43; decision 38).
+                advice = (" If it asks you to accept its disclaimer, open it once by hand and "
+                          "accept it, then try again." if self._prompts else "")
                 raise ToolServerError(
                     f"{self.name} closed itself while starting." + advice
                     + self._last_words()
@@ -212,8 +218,9 @@ class _Server:
                 return " Its last words: " + cookies.redact(line)[:220]
         return ""
 
-    def start(self) -> None:
-        """Make sure the server is running, and count one more user."""
+    def start(self, stop=None) -> None:
+        """Make sure the server is running, and count one more user. `stop`:
+        the job's Stop, which ends a start still waiting for the port."""
         with self._lock:
             if self._closed:
                 raise ToolServerError(f"Teleloadzai is closing, so {self.name} was not started.")
@@ -264,7 +271,7 @@ class _Server:
                 target=self._answer_prompts, args=(self._process,), daemon=True)
             reader.start()
             try:
-                self._wait_for_port(time.time() + _START_TIMEOUT)
+                self._wait_for_port(time.time() + _START_TIMEOUT, stop)
             except Exception:
                 self._kill()
                 raise

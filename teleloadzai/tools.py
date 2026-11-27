@@ -522,6 +522,25 @@ def _is_fresh(entry: dict, hours: float = CACHE_HOURS) -> bool:
     return timedelta(0) <= age < timedelta(hours=hours)
 
 
+def _github_problem(exc: Exception) -> str:
+    """What went wrong with GitHub, as known. Every failure said "cannot reach
+    GitHub (HTTPError)": a refusal read as a network fault (round 38 of the
+    hunt). Its hourly limit only when GitHub itself says it is used up."""
+    import urllib.error
+    if isinstance(exc, urllib.error.HTTPError):
+        headers = exc.headers or {}
+        if exc.code in (403, 429) and headers.get("X-RateLimit-Remaining") == "0":
+            try:
+                opens = datetime.fromtimestamp(int(headers.get("X-RateLimit-Reset", "")))
+                return f"GitHub's hourly limit is used up (it opens again at {opens:%H:%M})"
+            except (TypeError, ValueError, OSError):
+                return "GitHub's hourly limit is used up (try again in an hour)"
+        return f"GitHub answered with an error (HTTP {exc.code})"   # no cause guessed (decision 38)
+    if isinstance(exc, ValueError):         # json.JSONDecodeError, a cut answer
+        return "GitHub's answer could not be read"
+    return f"cannot reach GitHub ({type(exc).__name__})"
+
+
 def latest_release(tool_id: str, force: bool = False,
                    max_age_hours: float | None = None) -> dict:
     """Latest version + the file to download, from the tool's chosen channel.
@@ -575,10 +594,11 @@ def latest_release(tool_id: str, force: bool = False,
         # Keep an old answer rather than nothing -- marked as old, so "Check
         # versions" can say GitHub did not answer (silent-failure hunt,
         # 2026-11-22: offline, the old versions came back as if new).
+        why = _github_problem(exc)
         if remembered:
             return ({k: entry.get(k, "") for k in ("version", "url", "size")}
-                    | {"error": "", "stale": f"cannot reach GitHub ({type(exc).__name__})"})
-        return {"error": f"cannot reach GitHub ({type(exc).__name__})"}
+                    | {"error": "", "stale": why})
+        return {"error": why}
 
     found = {"version": (data.get("tag_name") or "").lstrip("v"), "url": "", "size": 0}
     if tool.kind != "pip":
@@ -786,6 +806,12 @@ def _put_in_place(temporary: Path, target: Path, tool: ToolSpec) -> None:
             return
         except PermissionError:
             time.sleep(1)
+        except FileNotFoundError:
+            # The new file gone before it could be put in place (an antivirus
+            # took it): Windows' bare "[WinError 2]" reached the row (round 36).
+            # No cause given: none is known (decision 38).
+            raise InstallError(f"The new {tool.name} disappeared from the disk before it could be "
+                               "put in place. The installed one was kept: try again.") from None
     temporary.unlink(missing_ok=True)
     # Our own daily check can hold it for minutes, not "a moment" (round 16).
     from . import paths
@@ -833,9 +859,13 @@ def _install_zip(tool: ToolSpec, url: str, on_progress: ProgressFn | None) -> No
                             raise               # nothing replaced: "the installed one was kept" is true
                         # ffmpeg.exe new, ffprobe.exe old: "kept" would be false
                         # (round 2 of the hunt, 2026-11-22).
+                        # ...and the real reason: a new file gone from the disk is
+                        # not "in use" (round 37 of the hunt).
+                        why = (f"the new {target.name} disappeared from the disk before it could "
+                               "be put in place" if "disappeared" in str(problem)
+                               else f"{target.name} is in use by another program")
                         raise InstallError(f"{', '.join(done)} {'was' if len(done) == 1 else 'were'} updated, "
-                                           f"but {target.name} is in use by another program. "
-                                           f"Update {tool.name} again in a moment.") from problem
+                                           f"but {why}. Update {tool.name} again in a moment.") from problem
                     done.append(target.name)
             else:
                 folder = BIN_DIR / tool.id

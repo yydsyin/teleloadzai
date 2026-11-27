@@ -949,7 +949,15 @@ def tell(title: str, text: str, report_file: Path | None) -> None:
         from teleloadzai import notify
         notify.set_app_id()
         if report_file is not None:
-            notify.on_click = lambda: os.startfile(report_file)
+            def open_report() -> None:
+                # A click that opens nothing (the file deleted, no program for
+                # .md) went to print() under pythonw: nowhere (round 44).
+                try:
+                    os.startfile(report_file)
+                except OSError as problem:
+                    log_run(f"MESSAGE CLICK opened nothing ({report_file.name}): "
+                            f"{problem.strerror or problem}")
+            notify.on_click = open_report
         notify._start()
         if not notify._hwnd:
             # Windows refused the hidden window: notify says so only on the
@@ -996,6 +1004,8 @@ def _take_lock() -> bool:
                 return False
             time.sleep(1)
     _lock_handle = handle
+    import teleloadzai.paths as app_paths
+    app_paths.THIS_IS_THE_CHECK = True      # its own lock is not "another check"
     try:                    # when this run began: a stuck run is said by the next one
         LOCK_SINCE.write_text(str(time.time()), encoding="utf-8")
     except OSError:
@@ -1679,6 +1689,10 @@ def main() -> int:
         print("Another quality check is already running: this one stops.")
         return 0
     problems: list[str] = []
+    # The app's own run copies (yutto's log-in file, yt-dlp's saved reading)
+    # go to OUR folder: the app empties data/cookie-runs at its start and
+    # close, and took a file this check was using (round 35 of the hunt).
+    cookies.RUN_DIR = RUN_COPIES
     # A copy of the whole cookie file left by a run cut off mid-read (log-off,
     # shut-down): deleted before anything else (hunt, 2026-11-15).
     if RUN_COPIES.is_dir():
@@ -1780,6 +1794,8 @@ def main() -> int:
         # reload once put a test's paths back to the real ones, 2026-11-15).
         if runners.WORK_LIST.parent != OUT_DIR:
             raise RuntimeError(f"runners.WORK_LIST points at {runners.WORK_LIST}, not inside {OUT_DIR}")
+        if cookies.RUN_DIR != RUN_COPIES:       # the same guard for the run copies (round 36)
+            raise RuntimeError(f"cookies.RUN_DIR points at {cookies.RUN_DIR}, not at {RUN_COPIES}")
         new_programs[key] = now = check_program(site, tool, links[site], cookies_on)
         said = ("not installed" if now.get("not_installed") else "BROKEN (port taken)" if now.get("port_taken")
                 else "FAILED on every link" if now.get("fails")
@@ -1789,6 +1805,19 @@ def main() -> int:
     problems += [f"a download test folder was left: {left}" for left in _LEFT_BEHIND]
     problems += [f"a copy of your cookie file could not be deleted (the next run deletes it): {left}"
                  for left in _COPIES_LEFT]
+    # What the app's code wrote there (yutto's log-in file, yt-dlp's saved
+    # reading) and could not delete: the app's own sweeps no longer reach this
+    # folder, so it goes now, or is said (round 36 of the hunt).
+    said_already = {left.split(":", 1)[0] for left in _COPIES_LEFT}
+    if RUN_COPIES.is_dir():
+        for leftover in RUN_COPIES.iterdir():
+            if leftover.name in said_already:
+                continue
+            try:
+                leftover.unlink()
+            except OSError as problem:
+                problems.append(f"a test's log-in or reading file could not be deleted (the next "
+                                f"run deletes it): {leftover.name}: {problem.strerror or problem}")
     switch = "unknown (settings unreadable)" if cookies_on is None else ("on" if cookies_on else "off")
     header = [f"- yt-dlp {version} · “Use my log-ins” {switch} · {len(sites)} sites read"
               f" · {len(pairs)} other program tests",

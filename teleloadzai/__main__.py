@@ -15,6 +15,7 @@ import sys
 
 from . import commands, console, cookies, login, notify, runners, toolservers
 from .config import APP_NAME, APP_VERSION
+from .paths import ensure_dirs
 from .server import QUEUE, claim, forget_if_once, holder_is_us, serve, start_background
 
 WINDOW_SIZE = (860, 900)
@@ -46,9 +47,21 @@ def opening_place() -> tuple[int, int, int | None, int | None]:
             area.top + max(0, (free_height - height) // 2))
 
 
-def say_port_taken(port: int, show_box: bool) -> None:
+def say_port_taken(port: int, show_box: bool, folders: OSError | None = None) -> None:
     """The second copy says why it opens nothing -- never a silent exit
-    (decision 34). In a Windows box, because the app has no other screen."""
+    (decision 34). In a Windows box, because the app has no other screen.
+    `folders`: not the port at all -- its data folders could not be made (a
+    read-only stick): "port 8777 is in use" sent the user to Task Manager for
+    nothing (round 37 of the hunt)."""
+    if folders is not None:
+        text = (f"{APP_NAME} cannot start: it could not make its folders next to it "
+                f"({folders.strerror or folders}). Put {APP_NAME} in a folder you can write in, "
+                f"such as Documents, then start it again.")
+        print(text)
+        if show_box and sys.platform == "win32":
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x40)
+        return
     # A frozen copy answers nothing and looked like "another program"; the
     # advice "--port and another number" then started a second copy on the
     # SAME data folder, whose start-up sweep takes the first one's running
@@ -199,6 +212,11 @@ def main() -> int:
 
     # The port FIRST: one Teleloadzai at a time. A second copy stops here,
     # before the lines below touch the first copy's log-ins.
+    try:
+        ensure_dirs()
+    except OSError as problem:
+        say_port_taken(args.port, show_box=not args.no_browser, folders=problem)
+        return 1
     try:
         httpd = claim(args.port)
     except OSError:

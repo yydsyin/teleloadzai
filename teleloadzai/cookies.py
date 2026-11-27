@@ -311,7 +311,15 @@ _LONG_TOKEN = re.compile(r"[A-Za-z0-9_\-+/=.%|]{24,}")
 
 # "Cookie: a=b; c=d", "set-cookie: ...", "cookie=..." -- everything after the
 # marker goes, whatever shape it has.
-_COOKIE_LINE = re.compile(r"((?:set-)?cookie\s*[:=]\s*).*", re.IGNORECASE)
+# The same for the other headers that carry a pass: a short "Authorization:
+# Bearer abcd1234efgh5678" or "X-Auth-Token: 0123…" is under 24 characters and
+# reached the Console and its saved file whole (round 35 of the hunt).
+# A quote may close the name ({'Authorization': 'Bearer …'}, JSON); an "x-"
+# header starts a word, so HLS's "#EXT-X-KEY:" and "max-keyint=" keep their
+# words (round 36).
+_COOKIE_LINE = re.compile(r"((?:set-)?cookie['\"]?\s*[:=]\s*|(?:proxy-)?authorization['\"]?\s*[:=]\s*"
+                          r"|(?<![\w-])x-[a-z0-9-]*(?:token|key|auth)[a-z0-9-]*['\"]?\s*[:=]\s*).*",
+                          re.IGNORECASE)
 
 _HIDDEN = "[hidden]"
 
