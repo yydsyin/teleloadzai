@@ -123,6 +123,8 @@ EXTRACTORS = {
     "rumble": r"rumble", "odysee": r"lbry|odysee", "soundcloud": r"soundcloud",
     "bandcamp": r"bandcamp", "mixcloud": r"mixcloud", "niconico": r"^nico|niconico",
     "archive": r"archive", "ted": r"^ted",
+    "bluesky": r"bluesky", "linkedin": r"linkedin", "huya": r"huya", "zhihu": r"zhihu",
+    "snapchat": r"snapchat",
 }
 
 # yt-dlp 2026.11.04.232659, Bilibili, seen 2026-11-10 with --no-quiet:

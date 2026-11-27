@@ -1,6 +1,6 @@
 {
  "format": 1,
- "updated": "2026-11-21T12:00",
+ "updated": "2026-11-27T20:00",
  "about": "What the app tells users about each site and program, from the quality check (dev/quality_check.py), each line reviewed. Every user's app reads this file from GitHub (teleloadzai/signs.py). 'why' is the evidence: never shown to users.",
  "before_download": {
   "instagram|gallery-dl": {"need": "login", "why": "\"HTTP redirect to login page\" on a public reel; yt-dlp got the same reel (audit 2026-09-26)."},
@@ -25,6 +25,7 @@
  },
  "download_fails": {
   "bilibili|yt-dlp": {"avoid": "av01", "prefer": "h264", "height": 1080, "seen": "2026-11-16", "why": "BV1Gsnj6XE9M: Bilibili's main server cuts the AV1 1080p file (100026), 5.2 MB of 23.6 MB, on 2026-11-09 and 2026-11-16; the H.264 1080p (30080) came whole both times (88.6 MB, ffprobe 1080p, 257 s). 3 other videos' AV1 1080p came whole; AV1 720p whole, so only 1080p. Not tied to a yt-dlp version."},
+  "snapchat|yt-dlp": {"fails": true, "seen": "2026-11-27", "next": "yt-dlp cannot read Snapchat at the moment. Its authors know (yt-dlp issue 18052); Teleloadzai updates yt-dlp when a fix comes out.", "why": "Both of yt-dlp's own test links for Spotlight, no cookies, 2026-11-27: \"[SnapchatSpotlight] ...: Unable to extract next.js data\" (yt-dlp 2026.11.17.232707). Reported upstream as issue 18052 (open, updated 2026-11-14). No other tool passes decision 39 (snapchat-dl: stories by username only; cobalt: Node.js server). Added with this warning at the user's yes, 2026-11-27."},
   "reddit|gallery-dl": {"fails": true, "seen": "2026-11-21", "next": "Reddit blocked it in our last check, with and without a log-in. It may work on another network, or after an update.", "why": "Both test links, no cookies AND your cookies: \"[reddit][error] You've been blocked by network security.\" on 2026-11-19, 20 and 21 (gallery-dl 1.32.20). Reddit says this when it does not trust the network, so other networks may pass; yt-dlp on the same network got a different answer (asks for an account). Reviewed by the user 2026-11-21."},
   "xiaohongshu|xhs-downloader": {"fails": true, "version": "XHS-Downloader V2.8 Stable", "seen": "2026-11-16", "who": "XHS-Downloader 2.8", "next": "Its authors fixed it: the fix comes with its next version.", "why": "V2.8 crashes reading Xiaohongshu's page (`new Set([])`): \"yaml.parser.ParserError … expected ',' or '}', but got '['\", both links, 2026-11-16. Issue #497 closed as done 2026-10-23, no release after 2.8."}
  }

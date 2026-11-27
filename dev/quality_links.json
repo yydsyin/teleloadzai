@@ -22,5 +22,10 @@
   "mixcloud": ["https://www.mixcloud.com/dholbach/cryptkeeper/", "https://www.mixcloud.com/gillespeterson/caribou-7-inch-vinyl-mix-chat/"],
   "niconico": ["https://www.nicovideo.jp/watch/sm8628149", "https://www.nicovideo.jp/watch/nm14296458", "https://www.nicovideo.jp/watch/so38016254"],
   "archive": ["https://archive.org/details/Cops1922", "https://archive.org/details/Election_Ads", "https://archive.org/details/irelandthemakingofarepublic"],
-  "ted": ["https://www.ted.com/talks/candace_parker_how_to_break_down_barriers_and_not_accept_limits", "https://embed.ted.com/talks/janet_stovall_how_to_get_serious_about_diversity_and_inclusion_in_the_workplace"]
+  "ted": ["https://www.ted.com/talks/candace_parker_how_to_break_down_barriers_and_not_accept_limits", "https://embed.ted.com/talks/janet_stovall_how_to_get_serious_about_diversity_and_inclusion_in_the_workplace"],
+  "bluesky": ["https://bsky.app/profile/bsky.app/post/3l3vgf77uco2g"],
+  "linkedin": ["https://www.linkedin.com/posts/mishalkhawaja_sendinblueviews-toronto-digitalmarketing-ugcPost-6850898786781339649-mM20", "https://www.linkedin.com/posts/the-mathworks_2_what-is-mathworks-cloud-center-activity-7151241570371948544-4Gu7"],
+  "huya": ["https://www.huya.com/video/play/1002412640.html", "https://www.huya.com/video/play/556054543.html"],
+  "zhihu": ["https://www.zhihu.com/zvideo/1342930761977176064"],
+  "snapchat": ["https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYWtidGhudGZpAX1TKn0JAX1TKnXJAAAAAA", "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYcnVjYWdwcGV1AZEaIYn5AZEaIYnrAAAAAQ"]
 }

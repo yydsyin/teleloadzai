@@ -161,6 +161,18 @@ PLATFORMS: tuple[Platform, ...] = (
     Platform("niconico", "Niconico", ("nicovideo.jp",), _only_ytdlp()),
     Platform("archive", "Archive.org", ("archive.org",), _only_ytdlp()),
     Platform("ted", "TED", ("ted.com",), _only_ytdlp()),
+    # Added 2026-11-27 at the user's request, each seen once with yt-dlp, no
+    # log-in (a real file, ffprobe: picture + sound): Bluesky 1.8 MB / 29.8 s,
+    # LinkedIn 1.7 MB / 13.2 s, Huya 0.8 MB / 14.3 s, Zhihu 6.9 MB / 146 s.
+    # Not added: Kick (this PC could not resolve kick.com), Snapchat (yt-dlp's
+    # reader broken: "Unable to extract next.js data"), Douyu (needs PhantomJS).
+    Platform("bluesky", "Bluesky", ("bsky.app",), _only_ytdlp()),
+    Platform("linkedin", "LinkedIn", ("linkedin.com",), _only_ytdlp()),
+    Platform("huya", "Huya", ("huya.com",), _only_ytdlp()),
+    Platform("zhihu", "Zhihu", ("zhihu.com",), _only_ytdlp()),
+    # Snapchat, added the same day WITH a warning (signs.json): yt-dlp's reader
+    # is broken (issue 18052); the daily check says when it works again.
+    Platform("snapchat", "Snapchat", ("snapchat.com",), _only_ytdlp()),
     Platform("wechat_channels", "WeChat Channels",
              ("channels.weixin.qq.com", "finder.video.qq.com"),
              (),  # a tool exists, but it does not fit the "paste a link" model
