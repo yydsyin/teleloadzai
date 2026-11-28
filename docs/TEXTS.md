@@ -1,6 +1,6 @@
 # Texts shown by Teleloadzai
 
-> Made 2026-11-27 by a script that reads the code (`web/index.html` and the Python files).
+> Made 2026-11-28 by a script that reads the code (`web/index.html` and the Python files).
 > It is the list for translation: every sentence the window, its messages and its errors can show.
 > It is made by reading the code, so a line may still be a word nobody sees: check before translating.
 > `{…}` or `${…}` marks a value put in by the program (a name, a number).
@@ -793,27 +793,27 @@
 
 | Line | Text |
 |---|---|
-| 126 | Douyin shows its QR code by itself after about 15 to 30 seconds. Scan it with the Douyin app. |
-| 468 | Teleloadzai is running in a browser tab, not in its own window, so it has no window to open the log-in in. Start it normally, or import a cookies.txt instead |
-| 465 | the window engine is not installed, so Teleloadzai cannot open a log-in window. Import a cookies.txt instead |
-| 850 | no log-in window is open |
-| 409 | could not be read ({…}) |
-| 577 | Teleloadzai does not know where to log in for |
-| 585 | a log-in window is already open. Finish that one first |
-| 590 | Log in to |
-| 689 | The cookies are saved, but “Use my log-ins” could not be switched on ({…}). |
-| 387 | not a table |
-| 415 | Teleloadzai: {…} {…}: the Sites page does not show how you logged in, and new log-ins are not noted in it. |
-| 445 | Teleloadzai: the log-in is saved, but {…} could not be written ({…}): the Sites page will not show when it was made. |
-| 882 | The site took too long to answer, so the cookies could not be read, and the log-in window was closed. Open the log-in again on the Sites page: you may need to log in once more. |
-| 957 | delete the login profile at the next start |
-| 400 | is damaged and could not be set aside ({…}) |
-| 403 | Teleloadzai: {…} was damaged. It was kept as {…}; the Sites page forgets how you logged in. |
-| 446 | ): the Sites page will not show when it was made. |
-| 808 | ; if (p) { const r = p.getBoundingClientRect(); if (r.width > 0 && r.height > 0) return true; } const b = |
-| 810 | ; if (b) b.click(); return false; })() |
-| 396 | logins (unreadable {…}).json |
-| 404 | ; the Sites page forgets how you logged in. |
+| 136 | Douyin shows its QR code by itself after about 15 to 30 seconds. Scan it with the Douyin app. |
+| 481 | Teleloadzai is running in a browser tab, not in its own window, so it has no window to open the log-in in. Start it normally, or import a cookies.txt instead |
+| 478 | the window engine is not installed, so Teleloadzai cannot open a log-in window. Import a cookies.txt instead |
+| 863 | no log-in window is open |
+| 422 | could not be read ({…}) |
+| 590 | Teleloadzai does not know where to log in for |
+| 598 | a log-in window is already open. Finish that one first |
+| 603 | Log in to |
+| 702 | The cookies are saved, but “Use my log-ins” could not be switched on ({…}). |
+| 400 | not a table |
+| 428 | Teleloadzai: {…} {…}: the Sites page does not show how you logged in, and new log-ins are not noted in it. |
+| 458 | Teleloadzai: the log-in is saved, but {…} could not be written ({…}): the Sites page will not show when it was made. |
+| 895 | The site took too long to answer, so the cookies could not be read, and the log-in window was closed. Open the log-in again on the Sites page: you may need to log in once more. |
+| 970 | delete the login profile at the next start |
+| 413 | is damaged and could not be set aside ({…}) |
+| 416 | Teleloadzai: {…} was damaged. It was kept as {…}; the Sites page forgets how you logged in. |
+| 459 | ): the Sites page will not show when it was made. |
+| 821 | ; if (p) { const r = p.getBoundingClientRect(); if (r.width > 0 && r.height > 0) return true; } const b = |
+| 823 | ; if (b) b.click(); return false; })() |
+| 409 | logins (unreadable {…}).json |
+| 417 | ; the Sites page forgets how you logged in. |
 
 ## `needs.py` (10)
 
@@ -986,9 +986,9 @@
 | Line | Text |
 |---|---|
 | 18 | Bilibili keeps “1080p high bitrate” for its premium members: a normal log-in did not unlock it. |
-| 28 | yt-dlp cannot read Snapchat at the moment. Its authors know (yt-dlp issue 18052); Teleloadzai updates yt-dlp when a fix comes out. |
-| 29 | Reddit blocked it in our last check, with and without a log-in. It may work on another network, or after an update. |
-| 30 | Its authors fixed it: the fix comes with its next version. |
+| 29 | yt-dlp cannot read Snapchat at the moment. Its authors know (yt-dlp issue 18052); Teleloadzai updates yt-dlp when a fix comes out. |
+| 30 | Reddit blocked it in our last check, with and without a log-in. It may work on another network, or after an update. |
+| 31 | Its authors fixed it: the fix comes with its next version. |
 
 ## `signs.py` (46)
 
