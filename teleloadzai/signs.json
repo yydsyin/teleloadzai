@@ -1,6 +1,6 @@
 {
  "format": 1,
- "updated": "2026-11-27T20:00",
+ "updated": "2026-11-28T12:00",
  "about": "What the app tells users about each site and program, from the quality check (dev/quality_check.py), each line reviewed. Every user's app reads this file from GitHub (teleloadzai/signs.py). 'why' is the evidence: never shown to users.",
  "before_download": {
   "instagram|gallery-dl": {"need": "login", "why": "\"HTTP redirect to login page\" on a public reel; yt-dlp got the same reel (audit 2026-09-26)."},
@@ -16,6 +16,7 @@
   "instagram|gallery-dl": {"need": "account", "seen": "2026-09-26", "why": "gallery-dl: \"redirect to login page\" with no log-in (the audit, §4)."},
   "kuaishou|ks-downloader": {"need": "account", "seen": "2026-09-26", "why": "KS-Downloader: \"Failed to retrieve posts data\"; worked with a log-in."},
   "bilibili|yt-dlp": {"need": "none", "seen": "2026-11-09", "why": "\"Unable to extract initial state\" without a log-in on 2026-10-24; on 2026-11-09 (2026.11.04) 11 of 12 qualities came whole with NO cookies."},
+  "linkedin|yt-dlp": {"need": "none", "seen": "2026-11-27", "why": "yt-dlp's own test post (mishalkhawaja ... 6850898786781339649) with NO cookies: 1.7 MB, 13.2 s, H.264 960p + AAC (ffprobe). Some LinkedIn videos need the log-in (linkedin.py raises login_required without li_at): offered on Sites."},
   "bilibili|yutto": {"need": "none", "seen": "2026-11-09", "why": "yutto 2.3.1 with no cookies: a whole 480p video (1080p needs the log-in, said on the card: runners.TOP_WITHOUT_LOGIN)."},
   "reddit|yt-dlp": {"need": "account", "seen": "2026-11-15", "why": "Quality check 2026-11-15, reviewed by the user: yt-dlp asked for an account on every public link, with no cookies and with a visit's (\"Account authentication is required\"). Worked with none on 2026-09-26."},
   "vimeo|yt-dlp": {"need": "account", "seen": "2026-11-15", "why": "Quality check 2026-11-15, reviewed by the user: yt-dlp asked for an account (\"only works when logged-in\")."}

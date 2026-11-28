@@ -100,7 +100,17 @@ _LOGIN_URL = {
     "bandcamp": "https://bandcamp.com/login",
     "mixcloud": "https://www.mixcloud.com/login/",
     "archive": "https://archive.org/account/login",
+    # 2026-11-28 (a site added the day before): a plain request lands on it,
+    # its title "LinkedIn Login, Sign in | LinkedIn".
+    "linkedin": "https://www.linkedin.com/login",
 }
+
+# Sites added 2026-11-27 whose yt-dlp reader never uses cookies (read in its
+# source that day: bluesky.py, huya.py, zhihu.py, snapchat.py -- no cookie, no
+# log-in code). A log-in there would be a button with nothing behind it
+# (decision 40), and Bluesky's front-page fallback ("www.bsky.app") does not
+# even exist (no connection, probed 2026-11-28). Not offered.
+_NO_LOGIN = {"bluesky", "huya", "zhihu", "snapchat"}
 
 # Sites whose log-in is a pop-up on the front page: we press the site's own
 # button, so the user sees the log-in straight away. If the site renames it,
@@ -159,6 +169,7 @@ _BADGES = {
     "reddit": ("reddit_session",),                # reddit.py, _is_logged_in
     "twitch": ("auth-token",),                    # twitch.py, gql_auth
     "niconico": ("user_session",),                # niconico.py, is_logged_in
+    "linkedin": ("li_at",),                       # linkedin.py, raise_login_required without it (read 2026-11-28)
     "kuaishou": _SESSION_COOKIES["kuaishou"],     # seen on the user's log-in
     "douyin": _SESSION_COOKIES["douyin"],         # seen on the user's log-in
 }
@@ -232,7 +243,9 @@ class LoginError(RuntimeError):
 
 
 def login_url(platform_id: str) -> str | None:
-    """Where to send the user for this platform."""
+    """Where to send the user for this platform (None: no log-in offered)."""
+    if platform_id in _NO_LOGIN:
+        return None
     if platform_id in _LOGIN_URL:
         return _LOGIN_URL[platform_id]
     for platform in PLATFORMS:
